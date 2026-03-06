@@ -27,6 +27,7 @@ kraken paper buy BTCUSD 0.01          # simulated trade, no account needed
 - [For AI Agents](#for-ai-agents)
 - [Why Agent-First?](#why-agent-first)
 - [Installation](#installation)
+- [Verifying Binaries](#verifying-binaries)
 - [Quick Start](#quick-start)
 - [API Keys & Configuration](#api-keys--configuration)
 - [MCP Server](#mcp-server)
@@ -108,6 +109,24 @@ cd kraken-cli
 cargo install --path .
 ```
 </details>
+
+## Verifying Binaries
+
+Release binaries are signed with [minisign](https://jedisct1.github.io/minisign/). Every artifact on the [Releases](https://github.com/krakenfx/kraken-cli/releases) page has a corresponding `.minisig` signature file.
+
+**Public key:**
+
+```
+RWQJue8SwPzZBZO8Up5ppAUqm0wM/gK5yjnam+Dbf7KbY0utkiO+7XCd
+```
+
+**Verify a downloaded binary:**
+
+```bash
+minisign -Vm kraken-cli-aarch64-apple-darwin.tar.gz -P RWQJue8SwPzZBZO8Up5ppAUqm0wM/gK5yjnam+Dbf7KbY0utkiO+7XCd
+```
+
+Install minisign: `brew install minisign` (macOS) or `apt install minisign` (Linux).
 
 ## Quick Start
 
