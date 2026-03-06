@@ -271,7 +271,7 @@ jobs:
           for file in *; do
             [ -f "$file" ] || continue
             echo "Signing: $file"
-            echo "" | minisign -Sm "$file" -s /tmp/minisign.key -t "krakenfx/kraken-cli release artifact"
+            printf '%s\n' "$MINISIGN_PASSWORD" | minisign -Sm "$file" -s /tmp/minisign.key -t "krakenfx/kraken-cli release artifact"
             SIGNED=$((SIGNED + 1))
           done
 
@@ -281,7 +281,7 @@ jobs:
           fi
 
           sha256sum * | grep -v '\.minisig$' > SHA256SUMS.txt
-          echo "" | minisign -Sm SHA256SUMS.txt -s /tmp/minisign.key -t "krakenfx/kraken-cli release checksums"
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -Sm SHA256SUMS.txt -s /tmp/minisign.key -t "krakenfx/kraken-cli release checksums"
 
           echo "All artifacts signed successfully"
           ls -la *.minisig SHA256SUMS.txt
