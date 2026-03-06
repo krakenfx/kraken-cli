@@ -9,3 +9,4 @@ targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-
 pr-run-mode = "plan"
 unix-archive = ".tar.gz"
 github-attestations = true
+allow-dirty = ["ci"]
