@@ -12,15 +12,13 @@ Works with Cursor, Claude Code, Codex, Copilot, Gemini CLI, OpenClaw, and any ag
 
 > **Warning:** Experimental software. Interacts with the live Kraken exchange and can execute real financial transactions. Read [DISCLAIMER.md](DISCLAIMER.md) before using with real funds or AI agents.
 
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh | sh
-```
+Paste any of these into your AI agent:
 
-```bash
-kraken ticker BTCUSD -o json          # live BTC price (no auth needed)
-kraken orderbook BTCUSD --count 5     # top 5 book levels
-kraken paper buy BTCUSD 0.01          # simulated trade, no account needed
-```
+> *"Install kraken-cli (https://github.com/krakenfx/kraken-cli) and build me a morning market brief."*
+
+> *"Watch ETH, SOL, and BTC for 30 seconds. Tell me which one you'd buy and why."*
+
+> *"You are a Wall Street veteran with 20 years of experience. You have 1 minute. Paper trade BTC and show me your P&L."*
 
 ## Contents
 
