@@ -1,18 +1,16 @@
 # Kraken CLI
 
-The first CLI built for AI agents to trade crypto.
-
-One Rust binary that gives any AI agent full access to Kraken.
-
-Works with Cursor, Claude Code, Codex, Copilot, Gemini CLI, OpenClaw, and any agent that can call a CLI or speak MCP.
-
-![version](https://img.shields.io/badge/version-0.1.0-blue)
+![version](https://img.shields.io/github/v/release/krakenfx/kraken-cli?color=blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 
-> **Warning:** Experimental software. Interacts with the live Kraken exchange and can execute real financial transactions. Read [DISCLAIMER.md](DISCLAIMER.md) before using with real funds or AI agents.
+The first AI-native CLI for crypto trading.
 
-Paste any of these into your AI agent:
+Full Kraken API access. Built-in MCP server. Live and paper trading. Single binary.
+
+Works with Cursor, Claude, Codex, Copilot, Gemini, Goose, and OpenClaw.
+
+Try these with your AI agent:
 
 > *"Install kraken-cli (https://github.com/krakenfx/kraken-cli) and build me a morning market brief."*
 
@@ -20,24 +18,58 @@ Paste any of these into your AI agent:
 
 > *"You are a Wall Street veteran with 20 years of experience. You have 1 minute. Paper trade BTC and show me your P&L."*
 
+---
+
+**Warning:** Experimental software. Interacts with the live Kraken exchange and can execute real financial transactions. Read [DISCLAIMER.md](DISCLAIMER.md) before using with real funds or AI agents.
+
 ## Contents
 
-- [For AI Agents](#for-ai-agents)
-- [Why Agent-First?](#why-agent-first)
 - [Installation](#installation)
-- [Verifying Binaries](#verifying-binaries)
 - [Quick Start](#quick-start)
-- [API Keys & Configuration](#api-keys--configuration)
 - [MCP Server](#mcp-server)
-- [Output & Errors](#output--errors)
-- [Commands](#commands)
 - [Paper Trading](#paper-trading)
-- [Examples](#examples)
-- [Agent Skills](#agent-skills)
-- [Troubleshooting](#troubleshooting)
-- [Architecture](#architecture)
-- [Development](#development)
+- [Commands](#commands)
+- [API Keys & Configuration](#api-keys--configuration)
+- [Verifying Binaries](#verifying-binaries)
 - [License & Disclaimer](#license--disclaimer)
+
+## Installation
+
+Single binary, no runtime dependencies.
+
+### One-liner
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh | sh
+```
+
+Detects your OS and architecture, downloads the right binary, and installs it. macOS (Apple Silicon and Intel) and Linux (x86_64 and ARM64) are supported. Windows: use WSL.
+
+Verify it works:
+
+```bash
+kraken status && kraken ticker BTCUSD
+```
+
+Pre-built binaries are also available on the [GitHub Releases](https://github.com/krakenfx/kraken-cli/releases) page.
+
+<details>
+<summary>Build from source</summary>
+
+Requires [Rust](https://rustup.rs/).
+
+```bash
+cargo install --git https://github.com/krakenfx/kraken-cli
+```
+
+Or clone and build:
+
+```bash
+git clone https://github.com/krakenfx/kraken-cli.git
+cd kraken-cli
+cargo install --path .
+```
+</details>
 
 ## For AI Agents
 
@@ -62,7 +94,8 @@ kraken <command> [args...] -o json 2>/dev/null
 - Exit code 0 means success. Non-zero means failure.
 - stderr carries diagnostics only (enabled with `-v`). Never parse stderr for data.
 
-## Why Agent-First?
+<details>
+<summary>Why Agent-First?</summary>
 
 Most CLIs are built for humans at a terminal. This one is built for LLM-based agents, MCP tool servers, and automated pipelines that need to call Kraken reliably without custom API clients.
 
@@ -76,36 +109,6 @@ Most CLIs are built for humans at a terminal. This one is built for LLM-based ag
 
 Humans benefit from the same design: `--output table` renders clean tables, `kraken shell` provides a REPL, and `kraken setup` walks through configuration.
 
-## Installation
-
-Single binary, no runtime dependencies.
-
-### One-liner
-
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh | sh
-```
-
-Detects your OS and architecture, downloads the right binary, and installs it. macOS (Apple Silicon and Intel) and Linux (x86_64 and ARM64) are supported. Windows: use WSL.
-
-Pre-built binaries are also available on the [GitHub Releases](https://github.com/krakenfx/kraken-cli/releases) page.
-
-<details>
-<summary>Build from source</summary>
-
-Requires [Rust](https://rustup.rs/).
-
-```bash
-cargo install --git https://github.com/krakenfx/kraken-cli
-```
-
-Or clone and build:
-
-```bash
-git clone https://github.com/krakenfx/kraken-cli.git
-cd kraken-cli
-cargo install --path .
-```
 </details>
 
 ## Verifying Binaries
@@ -277,7 +280,8 @@ Default: `market,account,paper`. Streaming groups (`websocket`, `futures-ws`) ar
 
 Dangerous tools carry the `destructive_hint` annotation and include `[DANGEROUS: requires human confirmation]` in the description. In guarded mode (default), dangerous calls must include `acknowledged=true`. In autonomous mode (`--allow-dangerous`), this requirement is disabled.
 
-## Output & Errors
+<details>
+<summary>Output & Errors</summary>
 
 ### JSON (`-o json`)
 
@@ -333,6 +337,8 @@ Request/response diagnostics go to stderr, keeping stdout clean:
 ```bash
 kraken balance -o json -v 2>/dev/null | jq .
 ```
+
+</details>
 
 ## Commands
 
@@ -615,6 +621,12 @@ kraken ws ticker BTC/USD -o json | while read -r line; do
 done
 ```
 
+### Stream multiple tickers
+
+```bash
+kraken ws ticker BTC/USD ETH/USD SOL/USD -o json
+```
+
 ### Dead man's switch
 
 ```bash
@@ -625,25 +637,10 @@ Cancels all open orders if the CLI does not reset the timer within 60 seconds.
 
 ## Agent Skills
 
-The repo ships 50 Agent Skills (`SKILL.md` files): 30 core skills covering every domain the CLI supports, plus 20 curated recipes for common trading workflows. See the full [Skills Index](skills/INDEX.md).
+Ships with 50 agent skills covering trading strategies, market analysis, and portfolio management. See the full [Skills Index](skills/INDEX.md).
 
-Skill types: core, market data, spot trading, futures, strategies (DCA, grid, rebalance, TWAP), funding & earn, portfolio & account, and multi-step recipes.
-
-OpenClaw users can install skills directly:
-
-```bash
-# Symlink all skills
-cd /path/to/kraken-cli
-for skill in skills/kraken-* skills/recipe-*; do
-  ln -s "$(pwd)/$skill" ~/.openclaw/skills/
-done
-
-# Or pick specific skills
-cp -r skills/kraken-spot-execution ~/.openclaw/skills/
-cp -r skills/recipe-start-dca-bot ~/.openclaw/skills/
-```
-
-## Troubleshooting
+<details>
+<summary>Troubleshooting</summary>
 
 **macOS blocks the binary ("Apple could not verify")**
 
@@ -667,7 +664,10 @@ Verify `kraken` is on your PATH. Run `kraken mcp -s market` in a terminal to con
 
 Run `kraken paper reset` to clear and reinitialize.
 
-## Architecture
+</details>
+
+<details>
+<summary>Architecture</summary>
 
 ```
 src/
@@ -705,6 +705,8 @@ src/
     table.rs       -- Human-readable table output
     json.rs        -- JSON output and NDJSON streaming
 ```
+
+</details>
 
 ## Development
 
