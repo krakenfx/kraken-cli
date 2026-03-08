@@ -4,7 +4,7 @@
 ![license](https://img.shields.io/badge/license-MIT-green)
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
 
-The first AI-native CLI for crypto trading.
+The first AI-native CLI for trading crypto, stocks, forex, and derivatives.
 
 Full Kraken API access. Built-in MCP server. Live and paper trading. Single binary.
 
@@ -16,15 +16,19 @@ Try these with your AI agent:
 
 > *"Watch ETH, SOL, and BTC for 30 seconds. Tell me which one you'd buy and why."*
 
+> *"Look up AAPLx, TSLAx, and SPYx on xStocks. Which one is the better value right now?"*
+
 > *"You are a Wall Street veteran with 20 years of experience. You have 1 minute. Paper trade BTC and show me your P&L."*
 
 ---
 
-**Warning:** Experimental software. Interacts with the live Kraken exchange and can execute real financial transactions. Read [DISCLAIMER.md](DISCLAIMER.md) before using with real funds or AI agents.
+> [!CAUTION]
+> Experimental software. Interacts with the live Kraken exchange and can execute real financial transactions. Read [DISCLAIMER.md](DISCLAIMER.md) before using with real funds or AI agents.
 
 ## Contents
 
 - [Installation](#installation)
+- [What You Can Trade](#what-you-can-trade)
 - [Quick Start](#quick-start)
 - [MCP Server](#mcp-server)
 - [Paper Trading](#paper-trading)
@@ -71,6 +75,21 @@ cargo install --path .
 ```
 </details>
 
+## What You Can Trade
+
+One binary covers six asset classes. All trading commands work across asset classes using the same interface; pass `--asset-class` where needed.
+
+| Asset class | Instruments | Margin | Flag | Example |
+|---|---|---|---|---|
+| **Crypto spot** | 1,400+ pairs (BTC, ETH, SOL, and hundreds more) | Up to 10x on major pairs | _(default)_ | `kraken order buy BTCUSD 0.001 --type limit --price 50000` |
+| **Tokenized U.S. stocks & ETFs ([xStocks](https://www.kraken.com/xstocks))** | 79 assets: AAPL, NVDA, TSLA, GOOGL, AMZN, MSFT, SPY, QQQ, and more | Up to 3x on top 10 | `--asset-class tokenized_asset` | `kraken order buy AAPLx/USD 0.1 --type limit --price 200 --asset-class tokenized_asset` |
+| **Forex** | 11 fiat pairs: EUR/USD, GBP/USD, USD/JPY, AUD/USD, and more | — | `--asset-class forex` | `kraken ticker EURUSD --asset-class forex` |
+| **Perpetual futures** | 317 contracts: crypto, 5 forex perps, 11 equity/index perps (AAPL, NVDA, TSLA, SPY, QQQ, S&P 500) | Up to 50x | _(futures engine)_ | `kraken futures order buy PF_XBTUSD 1 --type limit --price 50000` |
+| **Inverse & fixed-date futures** | 20 contracts: BTC, ETH, SOL, LTC, XRP, ADA, DOGE, LINK | Varies | _(futures engine)_ | `kraken futures order buy FI_XBTUSD_260327 1 --type limit --price 50000` |
+| **Earn / staking** | Flexible and bonded strategies across multiple assets | — | — | `kraken earn strategies --asset ETH` |
+
+*xStocks are not available in the USA. Availability for all products varies by jurisdiction.*
+
 ## For AI Agents
 
 If you're an AI agent or building one, start here:
@@ -103,7 +122,7 @@ Most CLIs are built for humans at a terminal. This one is built for LLM-based ag
 - **Consistent error envelopes.** Errors are JSON objects with a stable `error` field (`auth`, `rate_limit`, `validation`, `api`, `network`). Agents route on `error` without parsing human sentences.
 - **Predictable exit codes.** Success is 0, failure is non-zero. Combined with JSON errors on stdout, agents detect and classify failures programmatically.
 - **Paper trading for safe iteration.** Test strategies against live prices with `kraken paper` commands. No API keys, no real money, same interface.
-- **Full API surface.** 134 commands covering Spot, Futures, Funding, Earn, Subaccounts, and WebSocket streaming.
+- **Full API surface.** 134 commands covering Spot, Futures, xStocks, Forex, Funding, Earn, Subaccounts, and WebSocket streaming.
 - **Built-in MCP server.** Native Model Context Protocol support over stdio. No subprocess wrappers needed.
 - **Rate-limit aware.** Built-in Spot counter/decay and Futures token-bucket rate limiting.
 
@@ -233,12 +252,8 @@ Resolution: CLI flag > environment variable > default. Only `https://` and `wss:
 
 `kraken-cli` includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio. No subprocess wrappers needed.
 
-Security note:
-- MCP is local-first and designed for your own machine.
-- Any agent connected to this MCP server uses the same configured Kraken account and API key permissions.
-- Do not expose, tunnel, or share this MCP server outside systems you control.
-- Always use `https://` and `wss://` endpoints.
-- Treat this integration as alpha and use least-privilege API keys.
+> [!WARNING]
+> MCP is local-first and designed for your own machine. Any agent connected to this MCP server uses the same configured Kraken account and API key permissions. Do not expose, tunnel, or share this server outside systems you control. Always use `https://` and `wss://` endpoints. Treat this integration as alpha and use least-privilege API keys.
 
 ```bash
 kraken mcp                           # read-only (market, account, paper)
@@ -348,7 +363,7 @@ kraken balance -o json -v 2>/dev/null | jq .
 |-------|----------|------|-------------|
 | market | 10 | No | Ticker, orderbook, OHLC, trades, spreads, asset info |
 | account | 18 | Yes | Balances, orders, trades, ledgers, positions, exports |
-| trade | 9 | Yes | Order placement, amendment, cancellation |
+| trade | 9 | Yes | Order placement, amendment, cancellation (spot, xStocks, forex) |
 | funding | 10 | Yes | Deposits, withdrawals, wallet transfers |
 | earn | 6 | Yes | Staking strategies and allocations |
 | subaccount | 2 | Yes | Create subaccounts, transfer between accounts |

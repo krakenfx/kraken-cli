@@ -1,6 +1,6 @@
 # kraken-cli
 
-Agent-first CLI for Kraken exchange operations with structured JSON output.
+Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken with structured JSON output.
 
 ## Start Here
 
