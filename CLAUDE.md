@@ -10,7 +10,7 @@ Fast entry points:
 
 ## What is kraken-cli?
 
-A command-line interface for the Kraken cryptocurrency exchange. Every command returns structured JSON. Designed for AI agents and automated pipelines.
+A command-line interface for trading crypto, stocks, forex, and derivatives on Kraken. Every command returns structured JSON. Designed for AI agents and automated pipelines.
 
 ## Invocation
 
@@ -74,6 +74,24 @@ kraken order buy BTCUSD 0.001 --type limit --price 50000 --validate -o json
 
 # Then execute (requires user confirmation)
 kraken order buy BTCUSD 0.001 --type limit --price 50000 -o json
+```
+
+### xStocks and forex
+
+Stock symbols use the `x` suffix (AAPL becomes `AAPLx`). Pass `--asset-class tokenized_asset` on trade and market commands. Forex uses `--asset-class forex` on market data.
+
+```bash
+kraken ticker AAPLx/USD --asset-class tokenized_asset -o json
+kraken order buy AAPLx/USD 0.1 --type limit --price 200 --asset-class tokenized_asset -o json
+kraken ticker EURUSD --asset-class forex -o json
+```
+
+### Futures
+
+Futures use a separate engine with separate credentials. Symbols: `PF_XBTUSD` (perp), `FI_XBTUSD_260327` (fixed-date), `PF_AAPLXUSD` (equity perp).
+
+```bash
+kraken futures order buy PF_XBTUSD 1 --type limit --price 50000 -o json
 ```
 
 ### Paper trading (no auth, safe)

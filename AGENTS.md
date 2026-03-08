@@ -93,6 +93,58 @@ kraken paper buy BTCUSD 0.01 -o json
 kraken paper status -o json
 ```
 
+## Asset Classes
+
+The CLI supports six asset classes through the same command surface. Most commands default to crypto. For other asset classes, pass the `--asset-class` flag.
+
+### Crypto spot (default)
+
+No flag needed. Covers 1,400+ pairs with margin up to 10x on major pairs.
+
+```bash
+kraken ticker BTCUSD -o json
+kraken order buy BTCUSD 0.001 --type limit --price 50000 -o json
+kraken order buy BTCUSD 0.001 --type limit --price 50000 --leverage 5 -o json
+```
+
+### Tokenized U.S. stocks & ETFs (xStocks)
+
+Requires `--asset-class tokenized_asset`. Stock symbols use the `x` suffix: AAPL becomes `AAPLx`, TSLA becomes `TSLAx`. 79 assets available with margin up to 3x on the top 10. Not available in the USA.
+
+```bash
+kraken ticker AAPLx/USD --asset-class tokenized_asset -o json
+kraken order buy AAPLx/USD 0.1 --type limit --price 200 --asset-class tokenized_asset -o json
+kraken order buy TSLAx/USD 0.5 --type limit --price 250 --asset-class tokenized_asset --leverage 3 -o json
+```
+
+To list all xStocks assets: `kraken assets --aclass tokenized_asset -o json`
+
+### Forex
+
+Requires `--asset-class forex` on market data commands. 11 fiat pairs including EUR/USD, GBP/USD, USD/JPY, AUD/USD.
+
+```bash
+kraken ticker EURUSD --asset-class forex -o json
+```
+
+### Futures
+
+Separate engine with its own credentials (`KRAKEN_FUTURES_API_KEY`, `KRAKEN_FUTURES_API_SECRET`). Covers crypto perpetuals, 5 forex perps (PF_EURUSD, PF_GBPUSD, PF_AUDUSD, PF_CHFUSD, PF_JPYUSD), 11 equity/index perps (PF_AAPLXUSD, PF_NVDAXUSD, PF_TSLAXUSD, PF_SPYXUSD, PF_QQQXUSD, PF_SPXUSD, and others), and fixed-date contracts. Leverage up to 50x.
+
+```bash
+kraken futures instruments -o json                                            # list all contracts
+kraken futures order buy PF_XBTUSD 1 --type limit --price 50000 -o json      # crypto perp
+kraken futures order buy PF_AAPLXUSD 10 --type limit --price 200 -o json     # equity perp
+kraken futures order buy FI_XBTUSD_260327 1 --type limit --price 50000 -o json  # fixed-date
+```
+
+### Earn / staking
+
+```bash
+kraken earn strategies --asset ETH -o json
+kraken earn allocate <STRATEGY_ID> 1.0 -o json
+```
+
 ## Output Parsing
 
 ### Success response
@@ -213,7 +265,7 @@ A 0.26% taker fee is applied to all fills (Kraken Starter tier default). Limit o
 |-------|------|----------|-------------|
 | market | No | 10 | Public market data: ticker, orderbook, OHLC, trades, spreads |
 | account | Yes | 18 | Balances, orders, trades, ledgers, positions, export, L3 orderbook |
-| trade | Yes | 9 | Order placement, amendment, cancellation |
+| trade | Yes | 9 | Order placement, amendment, cancellation (spot, xStocks, forex) |
 | funding | Yes | 10 | Deposits, withdrawals, wallet transfers |
 | earn | Yes | 6 | Staking strategies, allocations |
 | subaccount | Yes | 2 | Create subaccounts, transfer between accounts |
