@@ -1,7 +1,7 @@
 ---
 name: kraken-rate-limits
-version: 1.0.0
-description: "Understand and manage API rate limit budgets across spot and futures."
+version: 2.0.0
+description: "Understand Kraken API rate limits and adapt agent behavior when limits are hit."
 metadata:
   openclaw:
     category: "finance"
@@ -12,59 +12,68 @@ metadata:
 # kraken-rate-limits
 
 Use this skill for:
-- understanding call budgets per tier (starter, intermediate, pro)
-- spacing requests to avoid rate limit errors
-- managing separate spot and futures rate limits
-- building agent loops that stay within bounds
+- understanding Kraken's rate limit systems (Spot REST, trading engine, Futures)
+- adapting agent behavior when rate limit errors occur
+- choosing optimal request patterns (WebSocket vs REST, batch vs individual)
 
-## Spot Rate Limits
+## How Rate Limiting Works
 
-Kraken spot uses a counter/decay model. Each call adds to a counter; the counter decays over time. If the counter exceeds the tier limit, requests are rejected.
+The CLI does not pre-throttle or retry rate-limited requests. The Kraken API server enforces rate limits. When a limit is hit, the CLI returns the error immediately with structured fields:
+
+```json
+{
+  "error": "rate_limit",
+  "message": "Spot REST API rate limit exceeded ...",
+  "suggestion": "Wait 5-15 seconds before retrying. ...",
+  "retryable": true,
+  "docs_url": "https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/"
+}
+```
+
+Read the `suggestion` field to understand what limit was hit and how to adapt.
+
+## Kraken's Rate Limit Systems
+
+### 1. Spot REST Counter
+
+Counter-decay model. Each call adds to a counter; the counter decays over time.
 
 | Tier | Max Counter | Decay Rate |
 |------|-------------|------------|
-| Starter | 15 | 1 per 3s |
-| Intermediate | 20 | 1 per 2s |
-| Pro | 20 | 1 per 1s |
+| Starter | 15 | 0.33/s |
+| Intermediate | 20 | 0.5/s |
+| Pro | 20 | 1.0/s |
 
-Most calls cost 1 point. Heavier calls (ledgers, trade history, recent trades, query-ledgers) cost 2. Check your tier:
+Most calls cost 1 point. Ledgers, trade history, and query-ledgers cost 2. AddOrder and CancelOrder are excluded from this counter (they use the trading engine limiter instead).
 
-```bash
-kraken volume -o json 2>/dev/null
-```
+Docs: https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/
 
-Set the tier in config for accurate local tracking:
+### 2. Spot Trading Engine (per-pair)
 
-```toml
-[settings]
-rate_tier = "starter"
-```
+Separate per-pair counter with penalties for short-lived orders:
 
-## Futures Rate Limits
+| Tier | Threshold | Decay Rate |
+|------|-----------|------------|
+| Starter | 60 | 1/s |
+| Intermediate | 125 | 2.34/s |
+| Pro | 180 | 3.75/s |
 
-Futures uses a token-bucket model. Tokens refill at a fixed rate. Each call consumes tokens; if the bucket is empty, requests queue or fail.
+Cancel within 5 seconds costs +8, amend within 5 seconds costs +3. Let orders rest longer to reduce cost.
 
-The CLI handles futures rate limiting internally. Agents do not need to track futures buckets manually.
+Docs: https://docs.kraken.com/api/docs/guides/spot-ratelimits
 
-## Agent Spacing Patterns
+### 3. Futures Cost Budget
 
-For starter tier with 15-point budget and 3s decay:
+Cost-based system with two separate pools:
 
-- Safe burst: 10 calls, then pause 30s
-- Sustained: 1 call per 3s indefinitely
-- Mixed read/trade: alternate reads (1 point) and trades (1 point), 1 per 3s
+- `/derivatives` endpoints: budget of 500 per 10 seconds. `sendorder` costs 10, `editorder` costs 10, `cancelorder` costs 10, `batchorder` costs 9 + batch size, `cancelallorders` costs 25, `accounts` costs 2.
+- `/history` endpoints: pool of 100 tokens, refills at 100 per 10 minutes.
 
-For polling loops, prefer intervals that stay well under the limit:
+Docs: https://docs.kraken.com/api/docs/guides/futures-rate-limits/
 
-```bash
-# Safe polling interval for starter tier
-while true; do
-  kraken ticker BTCUSD -o json 2>/dev/null
-  sleep 5
-done
-```
+## Agent Strategies
 
-## Prefer WebSocket Over Polling
+### Prefer WebSocket over REST polling
 
 Streaming does not consume REST rate limit points. For real-time data, always prefer:
 
@@ -72,23 +81,33 @@ Streaming does not consume REST rate limit points. For real-time data, always pr
 kraken ws ticker BTC/USD -o json 2>/dev/null
 ```
 
-Over repeated REST calls.
+### Use batch orders
 
-## Handling Rate Limit Errors
+Batch orders cost less per-order on both Spot and Futures. Up to 15 orders per batch on Spot.
 
-When the CLI receives a rate limit error, the agent should:
+### Read the suggestion field
 
-1. Parse the `rate_limit` error category.
-2. Back off for at least 5 seconds (starter) or 3 seconds (intermediate/pro).
-3. Reduce polling frequency going forward.
-4. Do not retry immediately; the counter needs time to decay.
+When a rate limit error is returned, the `suggestion` field contains the specific limit that was hit and concrete advice. Parse it and adapt:
 
-## Multi-Command Budget Planning
+```bash
+RESULT=$(kraken balance -o json 2>/dev/null)
+if [ $? -ne 0 ]; then
+  CATEGORY=$(echo "$RESULT" | jq -r '.error // "unknown"')
+  if [ "$CATEGORY" = "rate_limit" ]; then
+    SUGGESTION=$(echo "$RESULT" | jq -r '.suggestion // "Wait and retry"')
+    DOCS=$(echo "$RESULT" | jq -r '.docs_url // ""')
+    echo "Rate limited. $SUGGESTION"
+    echo "Read more: $DOCS"
+  fi
+fi
+```
+
+### Multi-command budget planning
 
 Before executing a sequence, estimate total cost:
 
 ```bash
-# This sequence costs ~5 points:
+# This sequence costs ~5 points on the Spot REST counter:
 kraken ticker BTCUSD -o json 2>/dev/null       # 1 point
 kraken balance -o json 2>/dev/null             # 1 point
 kraken open-orders -o json 2>/dev/null         # 1 point

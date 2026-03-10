@@ -66,7 +66,6 @@ pub async fn setup(verbose: bool) -> Result<CommandOutput> {
         settings: SettingsConfig {
             default_pair: Some(default_pair),
             output: Some("table".to_string()),
-            rate_tier: None,
         },
     };
 

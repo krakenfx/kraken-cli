@@ -46,7 +46,7 @@ kraken futures positions -o json 2>/dev/null
 ## Failure Handling
 
 - `network`: exponential backoff retry
-- `rate_limit`: wait and retry with lower call frequency
+- `rate_limit`: read `suggestion` and `docs_url` fields, reduce call frequency or switch to WebSocket
 - `auth`: stop and refresh credentials
 - `validation` or `api`: stop, fix request, do not blind retry
 

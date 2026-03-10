@@ -518,11 +518,10 @@ fn jval(v: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::SpotTier;
 
     #[tokio::test]
     async fn orderbook_l3_returns_error_not_panic() {
-        let client = SpotClient::new(Some("https://api.kraken.com"), SpotTier::Starter).unwrap();
+        let client = SpotClient::new(Some("https://api.kraken.com")).unwrap();
         let cmd = MarketCommand::OrderbookL3 {
             pair: "BTCUSD".into(),
             depth: "100".into(),

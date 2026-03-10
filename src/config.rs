@@ -39,8 +39,6 @@ pub struct SettingsConfig {
     pub default_pair: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rate_tier: Option<String>,
 }
 
 impl std::fmt::Debug for AuthConfig {

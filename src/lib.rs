@@ -17,7 +17,7 @@ pub mod telemetry;
 
 use clap::{Parser, Subcommand};
 
-use client::{FuturesClient, SpotClient, SpotTier};
+use client::{FuturesClient, SpotClient};
 use commands::account::{self as account, AccountCommand};
 use commands::auth::{self as auth_cmds, AuthCommand};
 use commands::earn::{self as earn, EarnCommand};
@@ -1485,13 +1485,7 @@ pub async fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
 }
 
 pub fn build_spot_client(ctx: &AppContext) -> Result<SpotClient> {
-    let tier = config::load()
-        .ok()
-        .and_then(|c| c.settings.rate_tier)
-        .and_then(|t| t.parse::<SpotTier>().ok())
-        .unwrap_or(SpotTier::Starter);
-
-    SpotClient::new(ctx.api_url.as_deref(), tier)
+    SpotClient::new(ctx.api_url.as_deref())
 }
 
 fn build_spot_authed(ctx: &AppContext) -> Result<(SpotClient, config::SpotCredentials)> {

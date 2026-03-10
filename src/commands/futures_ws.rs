@@ -1,13 +1,15 @@
 /// Futures WebSocket v1 streaming commands.
 ///
 /// Implements challenge-based authentication for private feeds, keepalive ping
-/// every 45 seconds, and bounded reconnect with exponential backoff.
+/// every 45 seconds, and bounded reconnect with exponential backoff plus
+/// reconnect safety budgets.
 ///
 /// Public feeds: ticker, trade, book
 /// Private feeds: fills, open-orders, open-positions, balances, notifications, account-log
+use std::collections::VecDeque;
 use std::env;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::Subcommand;
 use futures_util::{SinkExt, StreamExt};
@@ -30,8 +32,14 @@ use crate::errors::{KrakenError, Result};
 use crate::output::{self, CommandOutput};
 
 const DEFAULT_FUTURES_WS_URL: &str = "wss://futures.kraken.com/ws/v1";
-const MAX_RECONNECTS: u32 = 3;
+const MAX_RECONNECTS: u32 = 12;
 const RECONNECT_BASE_MS: u64 = 1000;
+const FAST_RECONNECT_ATTEMPTS: u32 = 2;
+const RECONNECT_MIN_DELAY_MS: u64 = 5000;
+const RECONNECT_MAX_DELAY_MS: u64 = 30000;
+const RECONNECT_JITTER_MAX_MS: u64 = 750;
+const RECONNECT_WINDOW_SECS: u64 = 600;
+const MAX_RECONNECTS_PER_WINDOW: usize = 120;
 const STABLE_SESSION_SECS: u64 = 30;
 const PING_INTERVAL_SECS: u64 = 45;
 
@@ -202,8 +210,55 @@ async fn ws_connect(url: &str) -> Result<WsConnection> {
     connect.map_err(|e| KrakenError::WebSocket(format!("Connection failed: {e}")))
 }
 
+fn reconnect_jitter_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| (d.subsec_nanos() as u64) % (RECONNECT_JITTER_MAX_MS + 1))
+        .unwrap_or(0)
+}
+
+fn reconnect_backoff_ms(reconnect_count: u32) -> u64 {
+    let exponent = reconnect_count.saturating_sub(1);
+    let exp_backoff = RECONNECT_BASE_MS.saturating_mul(2u64.pow(exponent));
+    let base = if reconnect_count <= FAST_RECONNECT_ATTEMPTS {
+        exp_backoff.min(RECONNECT_MIN_DELAY_MS)
+    } else {
+        exp_backoff.clamp(RECONNECT_MIN_DELAY_MS, RECONNECT_MAX_DELAY_MS)
+    };
+    base.saturating_add(reconnect_jitter_ms())
+}
+
+fn prune_reconnect_window(reconnect_history: &mut VecDeque<Instant>) {
+    let window = Duration::from_secs(RECONNECT_WINDOW_SECS);
+    while reconnect_history
+        .front()
+        .is_some_and(|ts| ts.elapsed() >= window)
+    {
+        reconnect_history.pop_front();
+    }
+}
+
+async fn enforce_reconnect_budget(reconnect_history: &mut VecDeque<Instant>, label: &str) {
+    prune_reconnect_window(reconnect_history);
+    if reconnect_history.len() >= MAX_RECONNECTS_PER_WINDOW {
+        if let Some(oldest) = reconnect_history.front() {
+            let remaining =
+                Duration::from_secs(RECONNECT_WINDOW_SECS).saturating_sub(oldest.elapsed());
+            let wait_for = remaining.saturating_add(Duration::from_millis(reconnect_jitter_ms()));
+            output::warn(&format!(
+                "{label}: reconnect safety budget reached ({MAX_RECONNECTS_PER_WINDOW}/{RECONNECT_WINDOW_SECS}s), waiting {}ms",
+                wait_for.as_millis()
+            ));
+            tokio::time::sleep(wait_for).await;
+        }
+        prune_reconnect_window(reconnect_history);
+    }
+    reconnect_history.push_back(Instant::now());
+}
+
 async fn stream_public(feed: &str, product_ids: &[String], verbose: bool, url: &str) -> Result<()> {
     let mut reconnect_count = 0u32;
+    let mut reconnect_history = VecDeque::new();
 
     loop {
         if verbose {
@@ -226,7 +281,8 @@ async fn stream_public(feed: &str, product_ids: &[String], verbose: bool, url: &
                     )));
                 }
                 reconnect_count += 1;
-                let backoff = RECONNECT_BASE_MS * 2u64.pow(reconnect_count - 1);
+                enforce_reconnect_budget(&mut reconnect_history, "futures-ws-public").await;
+                let backoff = reconnect_backoff_ms(reconnect_count);
                 output::warn(&format!(
                     "Futures WS connection failed: {e}, retrying in {backoff}ms"
                 ));
@@ -309,7 +365,8 @@ async fn stream_public(feed: &str, product_ids: &[String], verbose: bool, url: &
                     "Futures WS connection lost after {MAX_RECONNECTS} reconnect attempts"
                 )));
             }
-            let backoff = RECONNECT_BASE_MS * 2u64.pow(reconnect_count - 1);
+            enforce_reconnect_budget(&mut reconnect_history, "futures-ws-public").await;
+            let backoff = reconnect_backoff_ms(reconnect_count);
             output::warn(&format!(
                 "Futures WS disconnected, reconnecting in {backoff}ms ({reconnect_count}/{MAX_RECONNECTS})"
             ));
@@ -325,6 +382,7 @@ async fn stream_private(
     url: &str,
 ) -> Result<()> {
     let mut reconnect_count = 0u32;
+    let mut reconnect_history = VecDeque::new();
 
     loop {
         if verbose {
@@ -347,7 +405,8 @@ async fn stream_private(
                     )));
                 }
                 reconnect_count += 1;
-                let backoff = RECONNECT_BASE_MS * 2u64.pow(reconnect_count - 1);
+                enforce_reconnect_budget(&mut reconnect_history, "futures-ws-private").await;
+                let backoff = reconnect_backoff_ms(reconnect_count);
                 output::warn(&format!(
                     "Futures WS connection failed: {e}, retrying in {backoff}ms"
                 ));
@@ -461,7 +520,8 @@ async fn stream_private(
                     "Futures WS connection lost after {MAX_RECONNECTS} reconnect attempts"
                 )));
             }
-            let backoff = RECONNECT_BASE_MS * 2u64.pow(reconnect_count - 1);
+            enforce_reconnect_budget(&mut reconnect_history, "futures-ws-private").await;
+            let backoff = reconnect_backoff_ms(reconnect_count);
             output::warn(&format!(
                 "Futures WS disconnected, reconnecting in {backoff}ms ({reconnect_count}/{MAX_RECONNECTS})"
             ));

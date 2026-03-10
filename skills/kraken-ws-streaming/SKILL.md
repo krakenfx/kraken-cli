@@ -189,4 +189,4 @@ For multi-feed agents, run each stream in a background process and merge events.
 
 - WebSocket order mutations are flagged as dangerous. Require human approval.
 - Never treat NDJSON stream output as a single JSON document.
-- Handle stream disconnects gracefully; the CLI reconnects automatically with exponential backoff (3 attempts).
+- Handle stream disconnects gracefully; the CLI reconnects automatically with paced exponential backoff and reconnect safety budgeting (up to 12 attempts per stream lifecycle).

@@ -51,4 +51,4 @@ Use this skill for:
 
 - Never execute live order commands without explicit user approval.
 - Route failures by `.error` category.
-- On `rate_limit`, wait and retry.
+- On `rate_limit`, read `suggestion` and `docs_url` fields, then adapt strategy.

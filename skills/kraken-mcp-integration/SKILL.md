@@ -13,6 +13,8 @@ metadata:
 
 Use this skill to connect any MCP-compatible client to `kraken-cli` for structured tool calling over stdio.
 
+MCP tool calls execute through the same command path as CLI commands, so error handling and rate-limit behavior is identical between MCP and CLI.
+
 ## Supported Clients
 
 Claude Desktop, ChatGPT, Codex, Gemini CLI, Cursor, VS Code, Windsurf, and any client that supports the MCP `mcpServers` configuration block.

@@ -47,7 +47,7 @@ Public market data and paper trading require no credentials.
 
 Route on `.error`:
 - `auth`: re-authenticate
-- `rate_limit`: back off and retry
+- `rate_limit`: read `suggestion` and `docs_url` fields, adapt strategy
 - `network`: retry with exponential backoff
 - `validation`: fix inputs, do not retry unchanged request
 - `api`: inspect request parameters

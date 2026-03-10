@@ -163,14 +163,7 @@ pub async fn execute(cmd: &AuthCommand, ctx: &AppContext) -> Result<CommandOutpu
                 ctx.api_key.as_deref(),
                 ctx.api_secret.as_deref(),
             )?;
-            let client = crate::client::SpotClient::new(
-                ctx.api_url.as_deref(),
-                config::load()
-                    .ok()
-                    .and_then(|c| c.settings.rate_tier)
-                    .and_then(|t| t.parse::<crate::client::SpotTier>().ok())
-                    .unwrap_or(crate::client::SpotTier::Starter),
-            )?;
+            let client = crate::client::SpotClient::new(ctx.api_url.as_deref())?;
             let result = client
                 .private_post(
                     "Balance",

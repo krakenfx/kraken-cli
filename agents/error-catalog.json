@@ -7,7 +7,14 @@
       "error": "Error category string (matches a category below)",
       "message": "Human-readable error detail (not stable, do not parse)"
     },
-    "example": {"error": "auth", "message": "Authentication failed: EAPI:Invalid key"}
+    "extended_fields": {
+      "applies_to": "rate_limit",
+      "suggestion": "Actionable guidance: tier limits, per-endpoint costs, recommended alternatives",
+      "retryable": "Boolean indicating the agent may retry after adjusting behavior",
+      "docs_url": "Link to the relevant Kraken rate limit documentation page"
+    },
+    "example": {"error": "auth", "message": "Authentication failed: EAPI:Invalid key"},
+    "example_rate_limit": {"error": "rate_limit", "message": "Spot REST API rate limit exceeded (EAPI:Rate limit exceeded).", "suggestion": "Wait 5-15 seconds...", "retryable": true, "docs_url": "https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/"}
   },
   "categories": [
     {
@@ -25,7 +32,7 @@
       "retryable": false,
       "agent_action": "Re-authenticate. Verify KRAKEN_API_KEY and KRAKEN_API_SECRET.",
       "backoff_strategy": null,
-      "common_causes": ["Invalid API key", "Wrong secret", "Key lacks endpoint permission", "OTP required"],
+      "common_causes": ["Invalid API key", "Wrong secret", "Key lacks endpoint permission", "OTP required", "Futures authenticationError", "Futures insufficientPrivileges"],
       "example_envelope": {"error": "auth", "message": "Authentication failed: EAPI:Invalid key"}
     },
     {
@@ -39,12 +46,12 @@
     },
     {
       "category": "rate_limit",
-      "description": "Throttled by Kraken's rate limiter. Spot uses counter/decay; Futures uses token bucket.",
+      "description": "Throttled by Kraken's server-side rate limiter. The CLI returns this error immediately with no internal retry. The error includes a suggestion field with specific guidance and a docs_url linking to the relevant Kraken documentation.",
       "retryable": true,
-      "agent_action": "Wait 5-15 seconds, then retry. Reduce request frequency.",
-      "backoff_strategy": {"type": "fixed_then_exponential", "initial_delay_ms": 5000, "max_delay_ms": 60000, "max_retries": 3},
-      "common_causes": ["Too many requests", "Burst of order operations", "Polling too frequently"],
-      "example_envelope": {"error": "rate_limit", "message": "Rate limit exceeded: EAPI:Rate limit exceeded"}
+      "agent_action": "Read the suggestion field for tier-specific limits and recommended changes. Read docs_url for full documentation. Decide whether to retry, reduce request frequency, or switch to WebSocket streaming.",
+      "backoff_strategy": {"type": "agent_controlled", "note": "CLI does not retry rate limit errors. The agent decides retry timing based on the suggestion and docs_url fields."},
+      "common_causes": ["Too many requests (Spot REST counter)", "Short-lived orders triggering trading engine penalty", "Futures endpoint cost budget exhausted", "Too many concurrent requests (throttle)"],
+      "example_envelope": {"error": "rate_limit", "message": "Spot REST API rate limit exceeded (EAPI:Rate limit exceeded).", "suggestion": "Wait 5-15 seconds before retrying. Reduce request frequency. Use WebSocket streaming instead of REST polling for real-time data.", "retryable": true, "docs_url": "https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/"}
     },
     {
       "category": "validation",
@@ -61,15 +68,15 @@
       "retryable": false,
       "agent_action": "Check config file. For agents, prefer environment variables.",
       "backoff_strategy": null,
-      "common_causes": ["Invalid TOML syntax", "Missing config fields", "Invalid rate_tier"],
+      "common_causes": ["Invalid TOML syntax", "Missing config fields", "Missing or invalid credential values"],
       "example_envelope": {"error": "config", "message": "Configuration error: TOML parse error"}
     },
     {
       "category": "websocket",
       "description": "WebSocket connection or protocol error.",
       "retryable": true,
-      "agent_action": "Reconnect with backoff. CLI retries 3 times internally.",
-      "backoff_strategy": {"type": "exponential", "initial_delay_ms": 2000, "max_delay_ms": 60000, "max_retries": 3},
+      "agent_action": "Reconnect with backoff. CLI retries up to 12 times per stream lifecycle with paced exponential backoff and reconnect safety budgeting.",
+      "backoff_strategy": {"type": "exponential", "initial_delay_ms": 1000, "max_delay_ms": 30000, "max_retries": 12},
       "common_causes": ["Connection dropped", "Server closed connection", "Invalid subscription", "Auth failed on private feed"],
       "example_envelope": {"error": "websocket", "message": "WebSocket error: Connection closed unexpectedly"}
     },

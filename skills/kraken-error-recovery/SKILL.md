@@ -25,7 +25,7 @@ Parse the `.error` field from the JSON response:
 | Category | Meaning | Recovery |
 |----------|---------|----------|
 | `auth` | Credentials invalid or expired | Re-authenticate, do not retry |
-| `rate_limit` | Too many requests | Back off 5-15s, then retry |
+| `rate_limit` | Too many requests | Read `suggestion` and `docs_url` fields, adapt strategy |
 | `network` | Connection failed | Retry with exponential backoff |
 | `validation` | Invalid request parameters | Fix inputs, do not retry unchanged |
 | `api` | Exchange-side rejection | Inspect error message, adjust request |
@@ -82,14 +82,17 @@ kraken order cancel --cl-ord-id "dca-2024-01-15-001" -o json 2>/dev/null
 
 ## Rate Limit Recovery
 
+The CLI returns rate limit errors immediately with no internal retry. The error includes actionable fields for the agent to decide next steps.
+
 On `rate_limit` error:
 
-1. Stop all requests.
-2. Wait at least 5 seconds (starter) or 3 seconds (pro).
-3. Reduce polling frequency going forward.
+1. Read the `suggestion` field for specific guidance on what limit was hit and how to adapt.
+2. Read the `docs_url` field for the relevant Kraken documentation.
+3. Decide whether to retry (and when), reduce request frequency, or switch to WebSocket streaming for real-time data.
 4. Resume with a single test call before continuing the loop.
 
 ```bash
+# { "error": "rate_limit", "suggestion": "...", "docs_url": "...", "retryable": true }
 kraken status -o json 2>/dev/null
 ```
 
