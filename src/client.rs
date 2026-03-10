@@ -1,16 +1,20 @@
 /// HTTP clients for Kraken Spot and Futures APIs.
 ///
 /// Each client enforces TLS-only transport (via rustls), handles request
-/// signing, rate limiting, and transient-error retry with exponential backoff.
+/// signing, and transient-error retry with exponential backoff for network
+/// and 5xx errors.
+///
+/// Rate limiting is server-authoritative: requests are sent immediately with
+/// no client-side pre-throttling. When the Kraken API returns a rate limit
+/// error, it is surfaced immediately as an enriched `KrakenError::RateLimit`
+/// with `suggestion`, `docs_url`, and `retryable` fields so the caller
+/// (agent or human) can decide how to proceed.
 use std::collections::HashMap;
 use std::env;
-use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::Value;
-use tokio::sync::Mutex;
-use tokio::time::Instant;
 
 use crate::auth;
 use crate::config::{FuturesCredentials, SpotCredentials};
@@ -23,156 +27,16 @@ const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 500;
 const DANGER_ALLOW_ANY_URL_HOST_ENV: &str = "KRAKEN_DANGER_ALLOW_ANY_URL_HOST";
 
-/// Spot API client with built-in rate limiting and retry.
+/// Spot API client with transient-error retry and server-authoritative rate limiting.
 pub struct SpotClient {
     http: reqwest::Client,
     base_url: String,
-    rate_limiter: Arc<Mutex<SpotRateLimiter>>,
 }
 
-/// Futures API client with independent rate limiting.
+/// Futures API client with transient-error retry and server-authoritative rate limiting.
 pub struct FuturesClient {
     http: reqwest::Client,
     base_url: String,
-    rate_limiter: Arc<Mutex<FuturesRateLimiter>>,
-}
-
-/// Spot rate-limit tier profiles.
-#[derive(Debug, Clone, Copy)]
-pub enum SpotTier {
-    Starter,
-    Intermediate,
-    Pro,
-}
-
-impl SpotTier {
-    fn max_counter(&self) -> f64 {
-        match self {
-            Self::Starter => 15.0,
-            Self::Intermediate => 20.0,
-            Self::Pro => 20.0,
-        }
-    }
-
-    fn decay_per_second(&self) -> f64 {
-        match self {
-            Self::Starter => 0.33,
-            Self::Intermediate => 0.5,
-            Self::Pro => 1.0,
-        }
-    }
-}
-
-impl std::str::FromStr for SpotTier {
-    type Err = KrakenError;
-
-    fn from_str(s: &str) -> Result<Self> {
-        match s.to_lowercase().as_str() {
-            "starter" => Ok(Self::Starter),
-            "intermediate" => Ok(Self::Intermediate),
-            "pro" => Ok(Self::Pro),
-            _ => Err(KrakenError::Validation(format!("Unknown rate tier: {s}"))),
-        }
-    }
-}
-
-/// Tracks the Spot call-counter with tier-based decay.
-struct SpotRateLimiter {
-    tier: SpotTier,
-    counter: f64,
-    last_update: Instant,
-}
-
-impl SpotRateLimiter {
-    fn new(tier: SpotTier) -> Self {
-        Self {
-            tier,
-            counter: 0.0,
-            last_update: Instant::now(),
-        }
-    }
-
-    fn decay(&mut self) {
-        let elapsed = self.last_update.elapsed().as_secs_f64();
-        self.counter = (self.counter - elapsed * self.tier.decay_per_second()).max(0.0);
-        self.last_update = Instant::now();
-    }
-
-    fn cost_for_endpoint(endpoint: &str) -> f64 {
-        if endpoint.contains("Ledgers")
-            || endpoint.contains("TradesHistory")
-            || endpoint.contains("Trades")
-            || endpoint.contains("QueryLedgers")
-        {
-            2.0
-        } else {
-            1.0
-        }
-    }
-
-    async fn wait_if_needed(&mut self, endpoint: &str) {
-        self.decay();
-        let cost = Self::cost_for_endpoint(endpoint);
-        while self.counter + cost > self.tier.max_counter() {
-            let wait = (cost / self.tier.decay_per_second()).max(0.1);
-            tokio::time::sleep(Duration::from_secs_f64(wait)).await;
-            self.decay();
-        }
-        self.counter += cost;
-    }
-}
-
-/// Tracks Futures token-bucket rate limits.
-struct FuturesRateLimiter {
-    derivatives_tokens: f64,
-    derivatives_last: Instant,
-    history_tokens: f64,
-    history_last: Instant,
-}
-
-impl FuturesRateLimiter {
-    fn new() -> Self {
-        Self {
-            derivatives_tokens: 500.0,
-            derivatives_last: Instant::now(),
-            history_tokens: 100.0,
-            history_last: Instant::now(),
-        }
-    }
-
-    fn is_history_endpoint(path: &str) -> bool {
-        path.contains("history")
-    }
-
-    async fn wait_if_needed(&mut self, path: &str, cost: f64) {
-        if Self::is_history_endpoint(path) {
-            let elapsed = self.history_last.elapsed().as_secs_f64();
-            let replenished = elapsed * (100.0 / 600.0);
-            self.history_tokens = (self.history_tokens + replenished).min(100.0);
-            self.history_last = Instant::now();
-            while self.history_tokens < cost {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                let elapsed = self.history_last.elapsed().as_secs_f64();
-                let replenished = elapsed * (100.0 / 600.0);
-                self.history_tokens = (self.history_tokens + replenished).min(100.0);
-                self.history_last = Instant::now();
-            }
-            self.history_tokens -= cost;
-        } else {
-            let elapsed = self.derivatives_last.elapsed().as_secs_f64();
-            let replenished = elapsed * (500.0 / 10.0);
-            self.derivatives_tokens = (self.derivatives_tokens + replenished).min(500.0);
-            self.derivatives_last = Instant::now();
-            while self.derivatives_tokens < cost {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                let elapsed = self.derivatives_last.elapsed().as_secs_f64();
-                let replenished = elapsed * (500.0 / 10.0);
-                self.derivatives_tokens = (self.derivatives_tokens + replenished).min(500.0);
-                self.derivatives_last = Instant::now();
-            }
-            self.derivatives_tokens -= cost;
-        }
-    }
 }
 
 fn build_default_headers() -> Result<HeaderMap> {
@@ -227,11 +91,10 @@ fn build_http_client() -> Result<reqwest::Client> {
 
 impl SpotClient {
     /// Create a new Spot client.
-    pub fn new(base_url: Option<&str>, tier: SpotTier) -> Result<Self> {
+    pub fn new(base_url: Option<&str>) -> Result<Self> {
         Ok(Self {
             http: build_http_client()?,
             base_url: base_url.unwrap_or(DEFAULT_SPOT_URL).to_string(),
-            rate_limiter: Arc::new(Mutex::new(SpotRateLimiter::new(tier))),
         })
     }
 
@@ -295,11 +158,6 @@ impl SpotClient {
     ) -> Result<Value> {
         let uri_path = format!("/0/private/{}", endpoint);
         let url = format!("{}{}", self.base_url, uri_path);
-
-        {
-            let mut limiter = self.rate_limiter.lock().await;
-            limiter.wait_if_needed(endpoint).await;
-        }
 
         let mut attempt = 0u32;
         loop {
@@ -389,11 +247,6 @@ impl SpotClient {
         let uri_path = format!("/0/private/{}", endpoint);
         let url = format!("{}{}", self.base_url, uri_path);
 
-        {
-            let mut limiter = self.rate_limiter.lock().await;
-            limiter.wait_if_needed(endpoint).await;
-        }
-
         let mut attempt = 0u32;
         loop {
             let nonce = auth::generate_nonce()?;
@@ -466,7 +319,7 @@ impl SpotClient {
     }
 
     /// Execute a private POST that returns raw bytes (for export retrieval).
-    /// Supports OTP, rate limiting, retry, and error-envelope detection.
+    /// Supports OTP, retry on transient errors, and error-envelope detection.
     ///
     /// See `private_post` for the `idempotent` parameter semantics.
     pub async fn private_post_raw(
@@ -480,11 +333,6 @@ impl SpotClient {
     ) -> Result<Vec<u8>> {
         let uri_path = format!("/0/private/{}", endpoint);
         let url = format!("{}{}", self.base_url, uri_path);
-
-        {
-            let mut limiter = self.rate_limiter.lock().await;
-            limiter.wait_if_needed(endpoint).await;
-        }
 
         let mut attempt = 0u32;
         loop {
@@ -539,26 +387,17 @@ impl SpotClient {
                         tokio::time::sleep(Duration::from_millis(backoff)).await;
                         continue;
                     }
+                    let bytes = r.bytes().await?;
+
+                    if let Some(err) = parse_spot_error_from_body_bytes(&bytes) {
+                        return Err(err);
+                    }
+
                     if !status.is_success() {
                         return Err(KrakenError::Api {
                             category: crate::errors::ErrorCategory::Api,
                             message: format!("HTTP {status}"),
                         });
-                    }
-
-                    let bytes = r.bytes().await?;
-
-                    // Sniff for JSON error envelopes even on HTTP 200
-                    if bytes.starts_with(b"{") {
-                        if let Ok(parsed) = serde_json::from_slice::<Value>(&bytes) {
-                            if let Some(errors) = parsed.get("error").and_then(|e| e.as_array()) {
-                                let errs: Vec<&str> =
-                                    errors.iter().filter_map(|e| e.as_str()).collect();
-                                if !errs.is_empty() {
-                                    return Err(KrakenError::from_kraken_error(errs[0]));
-                                }
-                            }
-                        }
                     }
 
                     return Ok(bytes.to_vec());
@@ -628,7 +467,6 @@ impl FuturesClient {
         Ok(Self {
             http: build_http_client()?,
             base_url: base_url.unwrap_or(DEFAULT_FUTURES_URL).to_string(),
-            rate_limiter: Arc::new(Mutex::new(FuturesRateLimiter::new())),
         })
     }
 
@@ -643,11 +481,6 @@ impl FuturesClient {
         let url = format!("{}/{}", self.base_url, endpoint);
         if verbose {
             crate::output::verbose(&format!("GET {url}"));
-        }
-
-        {
-            let mut limiter = self.rate_limiter.lock().await;
-            limiter.wait_if_needed(endpoint, 1.0).await;
         }
 
         let mut attempt = 0u32;
@@ -692,11 +525,6 @@ impl FuturesClient {
     ) -> Result<Value> {
         let url = format!("{}/{}", self.base_url, endpoint);
         let endpoint_path = format!("/api/v3/{}", endpoint);
-
-        {
-            let mut limiter = self.rate_limiter.lock().await;
-            limiter.wait_if_needed(endpoint, 1.0).await;
-        }
 
         let mut attempt = 0u32;
         loop {
@@ -745,7 +573,7 @@ impl FuturesClient {
         }
     }
 
-    /// Execute a private POST on the Futures API with auth headers and retry.
+    /// Execute a private POST on the Futures API with auth headers.
     pub async fn private_post(
         &self,
         endpoint: &str,
@@ -755,11 +583,6 @@ impl FuturesClient {
     ) -> Result<Value> {
         let url = format!("{}/{}", self.base_url, endpoint);
         let endpoint_path = format!("/api/v3/{}", endpoint);
-
-        {
-            let mut limiter = self.rate_limiter.lock().await;
-            limiter.wait_if_needed(endpoint, 2.0).await;
-        }
 
         let mut attempt = 0u32;
         loop {
@@ -837,11 +660,6 @@ impl FuturesClient {
         let url = format!("{}/{}", self.base_url, endpoint);
         let endpoint_path = format!("/api/v3/{}", endpoint);
 
-        {
-            let mut limiter = self.rate_limiter.lock().await;
-            limiter.wait_if_needed(endpoint, 2.0).await;
-        }
-
         let mut attempt = 0u32;
         loop {
             let post_data = url::form_urlencoded::Serializer::new(String::new())
@@ -899,11 +717,6 @@ impl FuturesClient {
         let url = format!("{}/{}", self.base_url, endpoint);
         let endpoint_path = format!("/api/v3/{}", endpoint);
 
-        {
-            let mut limiter = self.rate_limiter.lock().await;
-            limiter.wait_if_needed(endpoint, 1.0).await;
-        }
-
         let mut attempt = 0u32;
         loop {
             let nonce = auth::generate_nonce()?.to_string();
@@ -944,6 +757,9 @@ impl FuturesClient {
                             truncate(&body, 500)
                         ));
                     }
+                    if let Some(err) = parse_futures_error_from_body(&body) {
+                        return Err(err);
+                    }
                     if !status.is_success() {
                         return Err(KrakenError::Network(format!(
                             "HTTP {status}: {}",
@@ -980,15 +796,8 @@ impl FuturesClient {
         }
 
         if !status.is_success() {
-            if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
-                if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
-                    if !err.is_empty() {
-                        return Err(KrakenError::Api {
-                            category: crate::errors::ErrorCategory::Api,
-                            message: err.to_string(),
-                        });
-                    }
-                }
+            if let Some(err) = parse_futures_error_from_body(&body) {
+                return Err(err);
             }
             return Err(KrakenError::Network(format!(
                 "HTTP {status}: {}",
@@ -999,19 +808,32 @@ impl FuturesClient {
         let parsed: Value = serde_json::from_str(&body)?;
 
         if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
-            if err == "apiLimitExceeded" {
-                return Err(KrakenError::RateLimit(err.to_string()));
-            }
             if !err.is_empty() && err != "success" {
-                return Err(KrakenError::Api {
-                    category: crate::errors::ErrorCategory::Api,
-                    message: err.to_string(),
-                });
+                return Err(KrakenError::from_kraken_error(err));
             }
         }
 
         Ok(parsed)
     }
+}
+
+fn parse_spot_error_from_body_bytes(bytes: &[u8]) -> Option<KrakenError> {
+    let parsed: Value = serde_json::from_slice(bytes).ok()?;
+    let errors = parsed.get("error")?.as_array()?;
+    let first = errors.iter().find_map(|e| e.as_str())?;
+    if first.is_empty() {
+        return None;
+    }
+    Some(KrakenError::from_kraken_error(first))
+}
+
+fn parse_futures_error_from_body(body: &str) -> Option<KrakenError> {
+    let parsed: Value = serde_json::from_str(body).ok()?;
+    let err = parsed.get("error").and_then(|e| e.as_str())?;
+    if err.is_empty() || err == "success" {
+        return None;
+    }
+    Some(KrakenError::from_kraken_error(err))
 }
 
 fn is_transient(err: &reqwest::Error) -> bool {

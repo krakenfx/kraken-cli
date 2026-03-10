@@ -124,7 +124,7 @@ Most CLIs are built for humans at a terminal. This one is built for LLM-based ag
 - **Paper trading for safe iteration.** Test strategies against live prices with `kraken paper` commands. No API keys, no real money, same interface.
 - **Full API surface.** 134 commands covering Spot, Futures, xStocks, Forex, Funding, Earn, Subaccounts, and WebSocket streaming.
 - **Built-in MCP server.** Native Model Context Protocol support over stdio. No subprocess wrappers needed.
-- **Rate-limit aware.** Built-in Spot counter/decay and Futures token-bucket rate limiting.
+- **Rate-limit aware.** No client-side throttling. When the Kraken API rejects a request due to rate limits, the CLI returns an enriched error with `suggestion`, `retryable`, and `docs_url` fields so agents can read the documentation and adapt their strategy.
 
 Humans benefit from the same design: `--output table` renders clean tables, `kraken shell` provides a REPL, and `kraken setup` walks through configuration.
 
@@ -212,7 +212,6 @@ api_secret = "your-api-secret"
 [settings]
 default_pair = "BTCUSD"
 output = "table"
-rate_tier = "starter"  # starter, intermediate, or pro
 ```
 
 Or use the interactive wizard: `kraken setup`.
@@ -251,6 +250,8 @@ Resolution: CLI flag > environment variable > default. Only `https://` and `wss:
 ## MCP Server
 
 `kraken-cli` includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio. No subprocess wrappers needed.
+
+MCP tool calls run through the same command path as CLI commands and inherit the same error handling and rate-limit behavior.
 
 > [!WARNING]
 > MCP is local-first and designed for your own machine. Any agent connected to this MCP server uses the same configured Kraken account and API key permissions. Do not expose, tunnel, or share this server outside systems you control. Always use `https://` and `wss://` endpoints. Treat this integration as alpha and use least-privilege API keys.
@@ -334,12 +335,12 @@ Route on `error`, not on `message`. The `message` field is human-readable and no
 | Category | Retryable | Action |
 |----------|-----------|--------|
 | `auth` | No | Check API key and secret |
-| `rate_limit` | Yes | Wait 5-15s, reduce frequency |
+| `rate_limit` | Yes | Error includes `suggestion` with tier-specific limits, `docs_url` pointing to Kraken documentation, and `retryable` flag. Read `suggestion` and adapt strategy. |
 | `network` | Yes | Exponential backoff, max 5 retries |
 | `validation` | No | Fix input parameters |
 | `api` | No | Inspect request and parameters |
 | `config` | No | Check config file or env vars |
-| `websocket` | Yes | Reconnect with backoff (CLI retries 3x) |
+| `websocket` | Yes | Reconnect with paced backoff and safety budget (up to 12 reconnect attempts per stream lifecycle) |
 | `io` | No | Check file paths and permissions |
 | `parse` | No | Log raw response, possible API maintenance |
 
@@ -669,7 +670,7 @@ Check that `KRAKEN_API_KEY` and `KRAKEN_API_SECRET` are set correctly. Keys are 
 
 **Rate limit errors**
 
-Kraken uses counter-based rate limiting for Spot (15-20 counter with 0.33-1.0/s decay depending on tier) and token-bucket for Futures. Wait 5-15 seconds and retry. For real-time data, use WebSocket streaming instead of polling.
+The CLI does not pre-throttle or retry rate-limited requests. The Kraken API server enforces rate limits, and the CLI returns the error immediately with a `suggestion` field containing tier-specific limits and a `docs_url` pointing to the relevant Kraken documentation. Read the suggestion and adjust request frequency. For sustained high-frequency use, prefer WebSocket streaming over REST polling.
 
 **"No tools found" in MCP client**
 
@@ -690,7 +691,7 @@ src/
   lib.rs           -- AppContext, shared dispatcher, module re-exports
   auth.rs          -- HMAC-SHA512 signing (Spot + Futures), nonce management
   config.rs        -- Config file I/O, credential resolution, secret wrappers
-  client.rs        -- HTTP clients with rate limiting and retry
+  client.rs        -- HTTP clients with transient-error retry and enriched rate-limit errors
   errors.rs        -- Unified error types with category-based JSON envelopes
   paper.rs         -- Paper trading state engine (local simulation)
   shell.rs         -- Interactive REPL with rustyline

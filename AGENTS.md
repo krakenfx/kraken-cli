@@ -184,10 +184,10 @@ Route on the `error` field, not on message strings.
 | `api` | No | Fix parameters. Do not retry same request. |
 | `auth` | No | Re-authenticate. Check KRAKEN_API_KEY and KRAKEN_API_SECRET. |
 | `network` | Yes | Exponential backoff, max 5 retries, starting at 1s. |
-| `rate_limit` | Yes | Wait 5-15s then retry. Reduce request frequency. |
+| `rate_limit` | Yes | Error returned immediately (no CLI retry). Includes `suggestion` (tier-specific guidance), `docs_url` (Kraken documentation link), and `retryable` flag. Read `suggestion` and `docs_url` to understand the limit and adapt your strategy. |
 | `validation` | No | Fix input. Check types, required fields, allowed values. |
 | `config` | No | Check config file or environment variables. |
-| `websocket` | Yes | Reconnect with exponential backoff. CLI retries 3x internally. |
+| `websocket` | Yes | Reconnect with paced exponential backoff and reconnect safety budget. CLI retries up to 12 times per stream lifecycle. |
 | `io` | No | Check file paths and permissions. |
 | `parse` | No | Log raw response. Possible API maintenance. |
 
@@ -203,7 +203,12 @@ else
   CATEGORY=$(echo "$RESULT" | jq -r '.error // "unknown"')
   case "$CATEGORY" in
     auth)       echo "Re-authenticate" ;;
-    rate_limit) sleep 10; echo "Retry" ;;
+    rate_limit)
+      SUGGESTION=$(echo "$RESULT" | jq -r '.suggestion // "Wait and retry"')
+      DOCS=$(echo "$RESULT" | jq -r '.docs_url // ""')
+      echo "Rate limited. $SUGGESTION"
+      echo "Docs: $DOCS"
+      ;;
     network)    sleep 5; echo "Retry" ;;
     *)          echo "Failed: $CATEGORY" ;;
   esac
@@ -214,30 +219,26 @@ For the full error catalog with backoff strategies and example envelopes, see `a
 
 ## Rate Limiting
 
-Kraken uses two independent rate limiting systems.
+The CLI does not pre-throttle or retry rate-limited requests. The Kraken API server enforces rate limits, and the CLI returns the error immediately with structured fields that agents should read:
 
-### Spot API
+- `suggestion`: specific guidance including tier limits, per-endpoint costs, and recommended alternatives
+- `docs_url`: link to the relevant Kraken rate limit documentation
+- `retryable`: `true` for all rate limit errors (the agent decides whether and when to retry)
 
-Counter-based with decay. Each endpoint has a cost. The counter decays over time.
+### Kraken rate limit systems
 
-| Tier | Max counter | Decay rate |
-|------|-------------|------------|
-| Starter | 15 | 0.33/s |
-| Intermediate | 20 | 0.5/s |
-| Pro | 20 | 1.0/s |
+Kraken enforces multiple independent rate limit systems. The `suggestion` field in rate limit errors describes which system was triggered and its parameters. For full documentation:
 
-Order operations cost more (0-2 depending on operation). Market data costs 1.
-
-### Futures API
-
-Token bucket. Refills at a fixed rate. Each request consumes one token.
+- **Spot REST counter**: [docs.kraken.com/api/docs/guides/spot-rest-ratelimits](https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/)
+- **Spot trading engine (per-pair)**: [docs.kraken.com/api/docs/guides/spot-ratelimits](https://docs.kraken.com/api/docs/guides/spot-ratelimits)
+- **Futures cost-based budget**: [docs.kraken.com/api/docs/guides/futures-rate-limits](https://docs.kraken.com/api/docs/guides/futures-rate-limits/)
 
 ### Agent recommendations
 
-- Poll no faster than every 3 seconds for Starter tier.
-- Batch order operations where possible (up to 15 per batch).
-- Use WebSocket streaming instead of polling for real-time data.
-- If you get a `rate_limit` error, wait 5-15 seconds before retrying.
+- Use WebSocket streaming instead of REST polling for real-time data (no rate limit cost).
+- Batch order operations where possible (up to 15 per batch; lower per-order cost on both Spot and Futures).
+- Let orders rest before cancelling; cancelling within 5 seconds costs +8 on the trading engine limiter.
+- When a `rate_limit` error is returned, read the `suggestion` field and adapt your strategy accordingly.
 
 ## Paper Trading
 
@@ -402,6 +403,7 @@ Configure your MCP client:
 
 **Behavior:**
 - Streaming groups (`websocket`, `futures-ws`) are excluded in MCP v1 (REST-only tools).
+- MCP tool execution uses the same command dispatch path as CLI, so error handling and rate-limit behavior is identical.
 - `utility` (interactive setup/shell) is not available as an MCP service.
 - Dangerous tools are annotated with `destructive_hint: true` and include `[DANGEROUS: requires human confirmation]` in the description.
 - In guarded mode (default), dangerous calls must include `acknowledged=true`.

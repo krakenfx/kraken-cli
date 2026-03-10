@@ -1,7 +1,7 @@
 /// Wiremock-based HTTP integration tests.
 ///
 /// Exercises the HTTP client against a mock server to verify signing, error
-/// parsing, retry behavior, and output contracts.
+/// parsing, transient-error retry, and output contracts.
 use std::collections::HashMap;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -10,7 +10,7 @@ use serde_json::json;
 use wiremock::matchers::{header, header_exists, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use kraken_cli::client::{FuturesClient, SpotClient, SpotTier};
+use kraken_cli::client::{FuturesClient, SpotClient};
 use kraken_cli::config::{CredentialSource, FuturesCredentials, SecretValue, SpotCredentials};
 
 fn test_credentials() -> SpotCredentials {
@@ -38,7 +38,7 @@ async fn spot_public_get_returns_result() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let result = client.public_get("SystemStatus", &[], false).await.unwrap();
 
     assert_eq!(result.get("status").unwrap().as_str().unwrap(), "online");
@@ -64,7 +64,7 @@ async fn spot_private_post_sends_auth_headers() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let result = client
         .private_post("Balance", HashMap::new(), &creds, None, true, false)
         .await
@@ -89,7 +89,7 @@ async fn spot_private_post_includes_otp_when_provided() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let result = client
         .private_post(
             "Balance",
@@ -106,7 +106,7 @@ async fn spot_private_post_includes_otp_when_provided() {
 }
 
 #[tokio::test]
-async fn spot_api_error_parsed_from_envelope() {
+async fn spot_rate_limit_returned_immediately() {
     let server = MockServer::start().await;
 
     Mock::given(method("POST"))
@@ -120,17 +120,26 @@ async fn spot_api_error_parsed_from_envelope() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let err = client
         .private_post("Balance", HashMap::new(), &creds, None, true, false)
         .await
         .unwrap_err();
 
-    let msg = err.to_string();
-    assert!(
-        msg.contains("Rate limit"),
-        "Expected rate limit error, got: {msg}"
-    );
+    assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::RateLimit);
+    if let kraken_cli::errors::KrakenError::RateLimit {
+        suggestion,
+        docs_url,
+        retryable,
+        ..
+    } = &err
+    {
+        assert!(retryable);
+        assert!(docs_url.contains("spot-rest-ratelimits"));
+        assert!(suggestion.contains("WebSocket"));
+    } else {
+        panic!("Expected RateLimit variant, got {err:?}");
+    }
 }
 
 #[tokio::test]
@@ -148,7 +157,7 @@ async fn spot_auth_error_parsed_from_envelope() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let err = client
         .private_post("Balance", HashMap::new(), &creds, None, true, false)
         .await
@@ -177,7 +186,7 @@ async fn spot_public_get_retries_on_transport_error() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let result = client.public_get("Time", &[], false).await.unwrap();
     assert!(result.get("unixtime").is_some());
 }
@@ -206,7 +215,7 @@ async fn spot_5xx_retry_uses_fresh_nonce() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let result = client
         .private_post("Balance", HashMap::new(), &creds, None, true, false)
         .await
@@ -230,7 +239,7 @@ async fn private_post_raw_detects_json_error_on_200() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let err = client
         .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true, false)
         .await
@@ -260,7 +269,7 @@ async fn private_post_raw_returns_binary_on_success() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let result = client
         .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true, false)
         .await
@@ -268,6 +277,30 @@ async fn private_post_raw_returns_binary_on_success() {
 
     assert!(result.starts_with(b"PK"));
     assert_eq!(result.len(), zip_bytes.len());
+}
+
+#[tokio::test]
+async fn private_post_raw_rate_limit_returned_immediately() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/0/private/RetrieveExport"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "error": ["EAPI:Rate limit exceeded"],
+            "result": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let creds = test_credentials();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let err = client
+        .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true, false)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::RateLimit);
 }
 
 #[tokio::test]
@@ -286,7 +319,7 @@ async fn spot_json_output_table_output_match() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let result = client.public_get("SystemStatus", &[], false).await.unwrap();
 
     assert!(result.is_object());
@@ -304,7 +337,7 @@ async fn spot_non_2xx_returns_network_error() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let err = client.public_get("Assets", &[], false).await.unwrap_err();
 
     let category = err.category();
@@ -326,7 +359,7 @@ async fn spot_user_agent_header_present() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let _ = client.public_get("Time", &[], false).await.unwrap();
 }
 
@@ -345,7 +378,7 @@ async fn spot_korigin_header_present() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let _ = client.public_get("Time", &[], false).await.unwrap();
 }
 
@@ -371,7 +404,7 @@ async fn spot_public_get_retries_on_5xx_then_succeeds() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let result = client
         .public_get("Ticker", &[("pair", "XBTUSD")], false)
         .await
@@ -390,7 +423,7 @@ async fn spot_public_get_5xx_exhausts_retries() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let err = client.public_get("Ticker", &[], false).await.unwrap_err();
     assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::Network);
 }
@@ -406,7 +439,7 @@ async fn spot_5xx_returns_network_error_not_parse_error() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri()), SpotTier::Starter).unwrap();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
     let err = client.public_get("Assets", &[], false).await.unwrap_err();
     assert_eq!(
         err.category(),
@@ -483,4 +516,155 @@ async fn futures_private_get_retries_on_5xx_then_succeeds() {
         .await
         .unwrap();
     assert!(result.get("accounts").is_some());
+}
+
+#[tokio::test]
+async fn spot_eservice_throttled_returned_immediately() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/0/private/Balance"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "error": ["EService:Throttled"],
+            "result": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let creds = test_credentials();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let err = client
+        .private_post("Balance", HashMap::new(), &creds, None, true, false)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::RateLimit);
+    if let kraken_cli::errors::KrakenError::RateLimit { suggestion, .. } = &err {
+        assert!(suggestion.contains("concurrency"));
+    } else {
+        panic!("Expected RateLimit variant, got {err:?}");
+    }
+}
+
+#[tokio::test]
+async fn spot_eorder_rate_limit_returned_immediately() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/0/private/AddOrder"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "error": ["EOrder:Rate limit exceeded"],
+            "result": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let creds = test_credentials();
+    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let err = client
+        .private_post("AddOrder", HashMap::new(), &creds, None, true, false)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::RateLimit);
+    if let kraken_cli::errors::KrakenError::RateLimit {
+        suggestion,
+        docs_url,
+        ..
+    } = &err
+    {
+        assert!(suggestion.contains("per-pair"));
+        assert!(docs_url.contains("spot-ratelimits"));
+    } else {
+        panic!("Expected RateLimit variant, got {err:?}");
+    }
+}
+
+#[tokio::test]
+async fn futures_api_limit_exceeded_returned_immediately() {
+    let server = MockServer::start().await;
+    let base_url = format!("{}/api/v3", server.uri());
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/tickers"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "error",
+            "error": "apiLimitExceeded"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = FuturesClient::new(Some(&base_url)).unwrap();
+    let err = client.public_get("tickers", &[], false).await.unwrap_err();
+
+    assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::RateLimit);
+    if let kraken_cli::errors::KrakenError::RateLimit {
+        docs_url,
+        suggestion,
+        ..
+    } = &err
+    {
+        assert!(docs_url.contains("futures-rate-limits"));
+        assert!(suggestion.contains("Futures"));
+    } else {
+        panic!("Expected RateLimit variant, got {err:?}");
+    }
+}
+
+#[tokio::test]
+async fn futures_auth_error_not_retried() {
+    let server = MockServer::start().await;
+    let base_url = format!("{}/api/v3", server.uri());
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/accounts"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "error",
+            "error": "authenticationError"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let creds = test_futures_credentials();
+    let client = FuturesClient::new(Some(&base_url)).unwrap();
+    let err = client
+        .private_get("accounts", &[], &creds, false)
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        err.category(),
+        kraken_cli::errors::ErrorCategory::Auth,
+        "Futures authenticationError should be classified as auth, got {:?}",
+        err.category()
+    );
+}
+
+#[tokio::test]
+async fn futures_private_get_rate_limit_from_non_2xx_returned_immediately() {
+    let server = MockServer::start().await;
+    let base_url = format!("{}/api/v3", server.uri());
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/accounts"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(json!({
+            "result": "error",
+            "error": "apiLimitExceeded"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let creds = test_futures_credentials();
+    let client = FuturesClient::new(Some(&base_url)).unwrap();
+    let err = client
+        .private_get("accounts", &[], &creds, false)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::RateLimit);
 }

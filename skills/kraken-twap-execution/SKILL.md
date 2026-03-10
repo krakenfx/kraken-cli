@@ -89,7 +89,7 @@ Sum (price * volume) for each fill, divide by total volume filled.
 
 ## Rate Limit Awareness
 
-At starter tier, one call per 3 seconds is safe. A 60-second interval between slices uses 1 point per minute (well within budget). For shorter intervals, check the `kraken-rate-limits` skill.
+The CLI does not pre-throttle requests. If a slice submission hits a rate limit, the error includes a `suggestion` field with tier-specific limits and a `docs_url` pointing to Kraken's documentation. On `rate_limit` error, pause the loop, read the suggestion, and adjust the interval before resuming. A 60-second interval between slices is well within budget for all tiers. For shorter intervals, consult the `kraken-rate-limits` skill for per-tier counter costs and decay rates.
 
 ## Hard Rules
 

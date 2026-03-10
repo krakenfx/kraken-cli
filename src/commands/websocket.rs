@@ -1,13 +1,13 @@
 /// WebSocket streaming commands for real-time market and private data.
 ///
-/// Implements bounded reconnection (up to 3 attempts with exponential backoff)
-/// and signal-driven graceful shutdown. The reconnect counter is only reset
+/// Implements bounded reconnection with exponential backoff, reconnect safety
+/// budgets, and signal-driven graceful shutdown. The reconnect counter is only reset
 /// after a connection has been stable for `STABLE_SESSION_SECS`, preventing
 /// unbounded reconnects on flapping connections.
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::Subcommand;
 use futures_util::{SinkExt, StreamExt};
@@ -32,7 +32,7 @@ use crate::output::{self, OutputFormat};
 const DEFAULT_WS_PUBLIC_URL: &str = "wss://ws.kraken.com/v2";
 const DEFAULT_WS_AUTH_URL: &str = "wss://ws-auth.kraken.com/v2";
 const DEFAULT_WS_L3_URL: &str = "wss://ws-l3.kraken.com/v2";
-const MAX_RECONNECTS: u32 = 3;
+const MAX_RECONNECTS: u32 = 12;
 
 pub struct WsUrls<'a> {
     pub public: Option<&'a str>,
@@ -40,6 +40,12 @@ pub struct WsUrls<'a> {
     pub l3: Option<&'a str>,
 }
 const RECONNECT_BASE_MS: u64 = 1000;
+const FAST_RECONNECT_ATTEMPTS: u32 = 2;
+const RECONNECT_MIN_DELAY_MS: u64 = 5000;
+const RECONNECT_MAX_DELAY_MS: u64 = 30000;
+const RECONNECT_JITTER_MAX_MS: u64 = 750;
+const RECONNECT_WINDOW_SECS: u64 = 600;
+const MAX_RECONNECTS_PER_WINDOW: usize = 120;
 /// Seconds a connection must stay up before the reconnect counter resets.
 const STABLE_SESSION_SECS: u64 = 30;
 
@@ -1440,6 +1446,52 @@ impl ServerCertVerifier for NoVerify {
     }
 }
 
+fn reconnect_jitter_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| (d.subsec_nanos() as u64) % (RECONNECT_JITTER_MAX_MS + 1))
+        .unwrap_or(0)
+}
+
+fn reconnect_backoff_ms(reconnect_count: u32) -> u64 {
+    let exponent = reconnect_count.saturating_sub(1);
+    let exp_backoff = RECONNECT_BASE_MS.saturating_mul(2u64.pow(exponent));
+    let base = if reconnect_count <= FAST_RECONNECT_ATTEMPTS {
+        exp_backoff.min(RECONNECT_MIN_DELAY_MS)
+    } else {
+        exp_backoff.clamp(RECONNECT_MIN_DELAY_MS, RECONNECT_MAX_DELAY_MS)
+    };
+    base.saturating_add(reconnect_jitter_ms())
+}
+
+fn prune_reconnect_window(reconnect_history: &mut VecDeque<Instant>) {
+    let window = Duration::from_secs(RECONNECT_WINDOW_SECS);
+    while reconnect_history
+        .front()
+        .is_some_and(|ts| ts.elapsed() >= window)
+    {
+        reconnect_history.pop_front();
+    }
+}
+
+async fn enforce_reconnect_budget(reconnect_history: &mut VecDeque<Instant>, label: &str) {
+    prune_reconnect_window(reconnect_history);
+    if reconnect_history.len() >= MAX_RECONNECTS_PER_WINDOW {
+        if let Some(oldest) = reconnect_history.front() {
+            let remaining =
+                Duration::from_secs(RECONNECT_WINDOW_SECS).saturating_sub(oldest.elapsed());
+            let wait_for = remaining.saturating_add(Duration::from_millis(reconnect_jitter_ms()));
+            output::warn(&format!(
+                "{label}: reconnect safety budget reached ({MAX_RECONNECTS_PER_WINDOW}/{RECONNECT_WINDOW_SECS}s), waiting {}ms",
+                wait_for.as_millis()
+            ));
+            tokio::time::sleep(wait_for).await;
+        }
+        prune_reconnect_window(reconnect_history);
+    }
+    reconnect_history.push_back(Instant::now());
+}
+
 async fn stream_public(
     channel: &str,
     pairs: &[String],
@@ -1449,6 +1501,7 @@ async fn stream_public(
     url: &str,
 ) -> Result<()> {
     let mut reconnect_count = 0u32;
+    let mut reconnect_history: VecDeque<Instant> = VecDeque::new();
 
     loop {
         if verbose {
@@ -1471,7 +1524,8 @@ async fn stream_public(
                     )));
                 }
                 reconnect_count += 1;
-                let backoff = RECONNECT_BASE_MS * 2u64.pow(reconnect_count - 1);
+                enforce_reconnect_budget(&mut reconnect_history, "spot-ws-public").await;
+                let backoff = reconnect_backoff_ms(reconnect_count);
                 output::warn(&format!(
                     "WebSocket connection failed: {e}, retrying in {backoff}ms"
                 ));
@@ -1541,7 +1595,8 @@ async fn stream_public(
                     "Connection lost after {MAX_RECONNECTS} reconnect attempts"
                 )));
             }
-            let backoff = RECONNECT_BASE_MS * 2u64.pow(reconnect_count - 1);
+            enforce_reconnect_budget(&mut reconnect_history, "spot-ws-public").await;
+            let backoff = reconnect_backoff_ms(reconnect_count);
             output::warn(&format!(
                 "WebSocket disconnected, reconnecting in {backoff}ms ({reconnect_count}/{MAX_RECONNECTS})"
             ));
@@ -1562,23 +1617,51 @@ async fn stream_private_with_params(
     extra_params: serde_json::Map<String, Value>,
 ) -> Result<()> {
     let mut reconnect_count = 0u32;
+    let mut reconnect_history: VecDeque<Instant> = VecDeque::new();
+    let mut cached_token: Option<String> = None;
 
     loop {
-        let token_resp = client
-            .private_post(
-                "GetWebSocketsToken",
-                HashMap::new(),
-                creds,
-                otp,
-                true,
-                verbose,
-            )
-            .await?;
+        let token = match cached_token.take() {
+            Some(t) => t,
+            None => {
+                let token_result = client
+                    .private_post(
+                        "GetWebSocketsToken",
+                        HashMap::new(),
+                        creds,
+                        otp,
+                        true,
+                        verbose,
+                    )
+                    .await;
 
-        let token = token_resp
-            .get("token")
-            .and_then(|t| t.as_str())
-            .ok_or_else(|| KrakenError::Auth("Failed to obtain WebSocket token".into()))?;
+                match token_result {
+                    Ok(resp) => resp
+                        .get("token")
+                        .and_then(|t| t.as_str())
+                        .ok_or_else(|| {
+                            KrakenError::Auth("Failed to obtain WebSocket token".into())
+                        })?
+                        .to_string(),
+                    Err(KrakenError::RateLimit { ref message, .. }) => {
+                        if reconnect_count >= MAX_RECONNECTS {
+                            return Err(KrakenError::WebSocket(format!(
+                                "Token refresh rate-limited after {MAX_RECONNECTS} attempts: {message}"
+                            )));
+                        }
+                        reconnect_count += 1;
+                        enforce_reconnect_budget(&mut reconnect_history, "spot-ws-token").await;
+                        let backoff = reconnect_backoff_ms(reconnect_count);
+                        output::warn(&format!(
+                            "Token refresh rate-limited ({message}), retrying in {backoff}ms"
+                        ));
+                        tokio::time::sleep(Duration::from_millis(backoff)).await;
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        };
 
         if verbose {
             if reconnect_count > 0 {
@@ -1600,7 +1683,8 @@ async fn stream_private_with_params(
                     )));
                 }
                 reconnect_count += 1;
-                let backoff = RECONNECT_BASE_MS * 2u64.pow(reconnect_count - 1);
+                enforce_reconnect_budget(&mut reconnect_history, "spot-ws-private").await;
+                let backoff = reconnect_backoff_ms(reconnect_count);
                 output::warn(&format!(
                     "WebSocket connection failed: {e}, retrying in {backoff}ms"
                 ));
@@ -1636,7 +1720,7 @@ async fn stream_private_with_params(
         let msg =
             serde_json::to_string(&subscribe).map_err(|e| KrakenError::Parse(e.to_string()))?;
         if verbose {
-            let redacted = redact_token_in_payload(&msg, token);
+            let redacted = redact_token_in_payload(&msg, &token);
             output::verbose(&format!("Subscribing: {redacted}"));
         }
         ws.send(Message::Text(msg))
@@ -1689,7 +1773,8 @@ async fn stream_private_with_params(
                     "Connection lost after {MAX_RECONNECTS} reconnect attempts"
                 )));
             }
-            let backoff = RECONNECT_BASE_MS * 2u64.pow(reconnect_count - 1);
+            enforce_reconnect_budget(&mut reconnect_history, "spot-ws-private").await;
+            let backoff = reconnect_backoff_ms(reconnect_count);
             output::warn(&format!(
                 "WebSocket disconnected, reconnecting in {backoff}ms ({reconnect_count}/{MAX_RECONNECTS})"
             ));
