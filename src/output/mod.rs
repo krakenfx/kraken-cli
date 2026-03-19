@@ -4,8 +4,8 @@
 /// module based on the chosen output format (table or json). Diagnostics
 /// and verbose output always go to stderr, keeping stdout clean for
 /// machine consumption in JSON mode.
-pub mod json;
-pub mod table;
+pub(crate) mod json;
+pub(crate) mod table;
 
 use crate::errors::KrakenError;
 
@@ -19,18 +19,22 @@ pub enum OutputFormat {
 
 /// A uniform result from any command, ready for rendering.
 #[derive(Debug)]
-pub struct CommandOutput {
+pub(crate) struct CommandOutput {
     /// JSON value representing the successful payload.
-    pub data: serde_json::Value,
+    pub(crate) data: serde_json::Value,
     /// Column headers for table rendering (in display order).
-    pub headers: Vec<String>,
+    pub(crate) headers: Vec<String>,
     /// Row data for table rendering. Each row is a vec of cell strings.
-    pub rows: Vec<Vec<String>>,
+    pub(crate) rows: Vec<Vec<String>>,
 }
 
 impl CommandOutput {
     /// Create output from a JSON value with explicit table structure.
-    pub fn new(data: serde_json::Value, headers: Vec<String>, rows: Vec<Vec<String>>) -> Self {
+    pub(crate) fn new(
+        data: serde_json::Value,
+        headers: Vec<String>,
+        rows: Vec<Vec<String>>,
+    ) -> Self {
         Self {
             data,
             headers,
@@ -39,7 +43,7 @@ impl CommandOutput {
     }
 
     /// Create a simple key-value output (rendered as two-column table).
-    pub fn key_value(pairs: Vec<(String, String)>, json_data: serde_json::Value) -> Self {
+    pub(crate) fn key_value(pairs: Vec<(String, String)>, json_data: serde_json::Value) -> Self {
         let headers = vec!["Field".to_string(), "Value".to_string()];
         let rows: Vec<Vec<String>> = pairs.into_iter().map(|(k, v)| vec![k, v]).collect();
         Self {
@@ -50,7 +54,7 @@ impl CommandOutput {
     }
 
     /// Create output with a single message.
-    pub fn message(msg: &str) -> Self {
+    pub(crate) fn message(msg: &str) -> Self {
         Self {
             data: serde_json::json!({ "message": msg }),
             headers: vec!["Message".to_string()],
@@ -60,7 +64,7 @@ impl CommandOutput {
 }
 
 /// Render a successful command result to the appropriate output stream.
-pub fn render(format: OutputFormat, output: &CommandOutput) {
+pub(crate) fn render(format: OutputFormat, output: &CommandOutput) {
     match format {
         OutputFormat::Table => table::render(output),
         OutputFormat::Json => json::render_success(&output.data),
@@ -78,7 +82,7 @@ pub fn render_error(format: OutputFormat, err: &KrakenError) {
 }
 
 /// Write a verbose diagnostic message to stderr (never contaminates stdout).
-pub fn verbose(msg: &str) {
+pub(crate) fn verbose(msg: &str) {
     eprintln!("[verbose] {msg}");
 }
 

@@ -19,7 +19,7 @@ use super::registry::ToolRegistry;
 use crate::errors::KrakenError;
 use crate::AppContext;
 
-pub struct KrakenMcpServer {
+pub(crate) struct KrakenMcpServer {
     registry: ToolRegistry,
     ctx: Arc<AppContext>,
     allow_dangerous: bool,
@@ -27,7 +27,7 @@ pub struct KrakenMcpServer {
 }
 
 impl KrakenMcpServer {
-    pub fn new(
+    pub(crate) fn new(
         registry: ToolRegistry,
         ctx: AppContext,
         allow_dangerous: bool,
@@ -400,7 +400,7 @@ fn emit_flag_values(flags: &mut Vec<String>, flag: &str, value: &serde_json::Val
     }
 }
 
-pub async fn run_server(services: &str, allow_dangerous: bool) -> crate::errors::Result<()> {
+pub(crate) async fn run_server(services: &str, allow_dangerous: bool) -> crate::errors::Result<()> {
     let parsed_services = super::parse_services(services)?;
     let active_services = super::apply_exclusions(&parsed_services);
 

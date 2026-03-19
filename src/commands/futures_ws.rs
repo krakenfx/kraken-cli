@@ -44,24 +44,25 @@ const STABLE_SESSION_SECS: u64 = 30;
 const PING_INTERVAL_SECS: u64 = 45;
 
 #[derive(Debug, Subcommand)]
-pub enum FuturesWsCommand {
+pub(crate) enum FuturesWsCommand {
     /// Stream futures ticker updates (public).
     Ticker {
-        /// Product IDs (e.g. PI_XBTUSD).
-        #[arg(num_args = 1..)]
-        product_ids: Vec<String>,
+        /// Market symbols (e.g. PF_XBTUSD).
+        #[arg(required = true, num_args = 1..)]
+        markets: Vec<String>,
     },
-    /// Stream futures trade updates (public).
-    Trade {
-        /// Product IDs.
-        #[arg(num_args = 1..)]
-        product_ids: Vec<String>,
+    /// Stream futures trades (public).
+    #[command(alias = "trade")]
+    Trades {
+        /// Market symbols.
+        #[arg(required = true, num_args = 1..)]
+        markets: Vec<String>,
     },
     /// Stream futures order book updates (public).
     Book {
-        /// Product IDs.
-        #[arg(num_args = 1..)]
-        product_ids: Vec<String>,
+        /// Market symbols.
+        #[arg(required = true, num_args = 1..)]
+        markets: Vec<String>,
     },
     /// Stream fills (private, auth required).
     Fills,
@@ -77,7 +78,7 @@ pub enum FuturesWsCommand {
     AccountLog,
 }
 
-pub fn requires_auth(cmd: &FuturesWsCommand) -> bool {
+pub(crate) fn requires_auth(cmd: &FuturesWsCommand) -> bool {
     matches!(
         cmd,
         FuturesWsCommand::Fills
@@ -92,7 +93,7 @@ pub fn requires_auth(cmd: &FuturesWsCommand) -> bool {
 fn command_to_feed(cmd: &FuturesWsCommand) -> &'static str {
     match cmd {
         FuturesWsCommand::Ticker { .. } => "ticker",
-        FuturesWsCommand::Trade { .. } => "trade",
+        FuturesWsCommand::Trades { .. } => "trade",
         FuturesWsCommand::Book { .. } => "book",
         FuturesWsCommand::Fills => "fills",
         FuturesWsCommand::OpenOrders => "open_orders",
@@ -103,11 +104,11 @@ fn command_to_feed(cmd: &FuturesWsCommand) -> &'static str {
     }
 }
 
-fn product_ids(cmd: &FuturesWsCommand) -> Option<&[String]> {
+fn markets(cmd: &FuturesWsCommand) -> Option<&[String]> {
     match cmd {
-        FuturesWsCommand::Ticker { product_ids } => Some(product_ids),
-        FuturesWsCommand::Trade { product_ids } => Some(product_ids),
-        FuturesWsCommand::Book { product_ids } => Some(product_ids),
+        FuturesWsCommand::Ticker { markets } => Some(markets),
+        FuturesWsCommand::Trades { markets } => Some(markets),
+        FuturesWsCommand::Book { markets } => Some(markets),
         _ => None,
     }
 }
@@ -116,7 +117,7 @@ fn resolve_futures_ws_url() -> String {
     env::var("KRAKEN_FUTURES_WS_URL").unwrap_or_else(|_| DEFAULT_FUTURES_WS_URL.to_string())
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &FuturesWsCommand,
     _client: &FuturesClient,
     creds: Option<&FuturesCredentials>,
@@ -133,20 +134,20 @@ pub async fn execute(
         })?;
         stream_private(feed, creds, verbose, &url).await?;
     } else {
-        let pids = product_ids(cmd).unwrap_or(&[]);
-        stream_public(feed, pids, verbose, &url).await?;
+        let markets = markets(cmd).unwrap_or(&[]);
+        stream_public(feed, markets, verbose, &url).await?;
     }
 
     Ok(CommandOutput::message("WebSocket stream ended"))
 }
 
-fn build_public_subscribe(feed: &str, product_ids: &[String]) -> Value {
+fn build_public_subscribe(feed: &str, markets: &[String]) -> Value {
     let mut msg = serde_json::json!({
         "event": "subscribe",
         "feed": feed,
     });
-    if !product_ids.is_empty() {
-        msg["product_ids"] = serde_json::json!(product_ids);
+    if !markets.is_empty() {
+        msg["product_ids"] = serde_json::json!(markets);
     }
     msg
 }
@@ -256,7 +257,7 @@ async fn enforce_reconnect_budget(reconnect_history: &mut VecDeque<Instant>, lab
     reconnect_history.push_back(Instant::now());
 }
 
-async fn stream_public(feed: &str, product_ids: &[String], verbose: bool, url: &str) -> Result<()> {
+async fn stream_public(feed: &str, markets: &[String], verbose: bool, url: &str) -> Result<()> {
     let mut reconnect_count = 0u32;
     let mut reconnect_history = VecDeque::new();
 
@@ -293,7 +294,7 @@ async fn stream_public(feed: &str, product_ids: &[String], verbose: bool, url: &
 
         let connected_at = Instant::now();
 
-        let subscribe = build_public_subscribe(feed, product_ids);
+        let subscribe = build_public_subscribe(feed, markets);
         let msg =
             serde_json::to_string(&subscribe).map_err(|e| KrakenError::Parse(e.to_string()))?;
 
@@ -586,7 +587,10 @@ async fn receive_challenge(
 ///
 /// Algorithm: HMAC-SHA512(SHA256(challenge), base64_decode(api_secret))
 /// Result is base64-encoded.
-pub fn sign_challenge(challenge: &str, api_secret: &crate::config::SecretValue) -> Result<String> {
+pub(crate) fn sign_challenge(
+    challenge: &str,
+    api_secret: &crate::config::SecretValue,
+) -> Result<String> {
     use base64::engine::general_purpose::STANDARD as BASE64;
     use base64::Engine;
     use hmac::{Hmac, Mac};
@@ -744,14 +748,12 @@ mod tests {
     #[test]
     fn requires_auth_public_feeds() {
         assert!(!requires_auth(&FuturesWsCommand::Ticker {
-            product_ids: vec![]
+            markets: vec![]
         }));
-        assert!(!requires_auth(&FuturesWsCommand::Trade {
-            product_ids: vec![]
+        assert!(!requires_auth(&FuturesWsCommand::Trades {
+            markets: vec![]
         }));
-        assert!(!requires_auth(&FuturesWsCommand::Book {
-            product_ids: vec![]
-        }));
+        assert!(!requires_auth(&FuturesWsCommand::Book { markets: vec![] }));
     }
 
     #[test]

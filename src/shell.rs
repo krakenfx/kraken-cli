@@ -12,7 +12,7 @@ use crate::errors::{KrakenError, Result};
 use crate::{client, dispatch, AppContext};
 
 /// Run the interactive shell session.
-pub async fn run(ctx: &AppContext) -> Result<()> {
+pub(crate) async fn run(ctx: &AppContext) -> Result<()> {
     let history_path = history_file()?;
     let mut rl = DefaultEditor::new()
         .map_err(|e| KrakenError::Config(format!("Failed to initialize shell: {e}")))?;

@@ -105,12 +105,57 @@ fn futures_ws_help_shows_channels() {
 }
 
 #[test]
-fn futures_ws_ticker_help_shows_product_ids() {
+fn futures_ws_ticker_help_shows_markets() {
     kraken()
         .args(["futures", "ws", "ticker", "--help"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("PRODUCT_IDS").or(predicate::str::contains("product")));
+        .stdout(predicate::str::contains("MARKETS").or(predicate::str::contains("Market symbols")));
+}
+
+#[test]
+fn futures_ws_trades_help_shows_markets() {
+    kraken()
+        .args(["futures", "ws", "trades", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("MARKETS").or(predicate::str::contains("Market symbols")));
+}
+
+#[test]
+fn futures_ws_trade_alias_still_works() {
+    kraken()
+        .args(["futures", "ws", "trade", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Stream futures trades"));
+}
+
+#[test]
+fn futures_ws_trades_requires_markets() {
+    kraken()
+        .args(["futures", "ws", "trades"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("MARKETS").and(predicate::str::contains("required")));
+}
+
+#[test]
+fn futures_ws_ticker_requires_markets() {
+    kraken()
+        .args(["futures", "ws", "ticker"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("MARKETS").and(predicate::str::contains("required")));
+}
+
+#[test]
+fn futures_ws_book_requires_markets() {
+    kraken()
+        .args(["futures", "ws", "book"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("MARKETS").and(predicate::str::contains("required")));
 }
 
 #[test]

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::config;
 use crate::errors::{KrakenError, Result};
 
-pub const DEFAULT_FEE_RATE: f64 = 0.0026;
+pub(crate) const DEFAULT_FEE_RATE: f64 = 0.0026;
 
 const KNOWN_QUOTES: &[&str] = &[
     "USDT", "USDC", "USD", "EUR", "GBP", "CAD", "AUD", "JPY", "CHF", "ETH", "BTC", "DAI",
@@ -28,23 +28,23 @@ const CANON_MAP: &[(&str, &str)] = &[
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaperState {
-    pub balances: HashMap<String, f64>,
-    pub reserved: HashMap<String, f64>,
-    pub open_orders: Vec<PaperOrder>,
-    pub filled_trades: Vec<PaperTrade>,
+pub(crate) struct PaperState {
+    pub(crate) balances: HashMap<String, f64>,
+    pub(crate) reserved: HashMap<String, f64>,
+    pub(crate) open_orders: Vec<PaperOrder>,
+    pub(crate) filled_trades: Vec<PaperTrade>,
     #[serde(default = "default_starting_balance")]
-    pub starting_balance: f64,
+    pub(crate) starting_balance: f64,
     #[serde(default = "default_starting_currency")]
-    pub starting_currency: String,
+    pub(crate) starting_currency: String,
     #[serde(default = "default_fee_rate")]
-    pub fee_rate: f64,
-    pub created_at: String,
-    pub updated_at: String,
+    pub(crate) fee_rate: f64,
+    pub(crate) created_at: String,
+    pub(crate) updated_at: String,
     #[serde(default = "default_next_order_id")]
     next_order_id: u64,
     #[serde(default)]
-    pub cancelled_orders: Vec<PaperOrder>,
+    pub(crate) cancelled_orders: Vec<PaperOrder>,
 }
 
 fn default_next_order_id() -> u64 {
@@ -64,37 +64,37 @@ fn default_starting_currency() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaperOrder {
-    pub id: String,
-    pub pair: String,
-    pub base: String,
-    pub quote: String,
-    pub side: OrderSide,
-    pub volume: f64,
-    pub price: f64,
-    pub order_type: PaperOrderType,
-    pub reserved_asset: String,
-    pub reserved_amount: f64,
-    pub created_at: String,
+pub(crate) struct PaperOrder {
+    pub(crate) id: String,
+    pub(crate) pair: String,
+    pub(crate) base: String,
+    pub(crate) quote: String,
+    pub(crate) side: OrderSide,
+    pub(crate) volume: f64,
+    pub(crate) price: f64,
+    pub(crate) order_type: PaperOrderType,
+    pub(crate) reserved_asset: String,
+    pub(crate) reserved_amount: f64,
+    pub(crate) created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PaperTrade {
-    pub id: String,
-    pub order_id: String,
-    pub pair: String,
-    pub base: String,
-    pub quote: String,
-    pub side: OrderSide,
-    pub volume: f64,
-    pub price: f64,
-    pub fee: f64,
-    pub cost: f64,
-    pub filled_at: String,
+pub(crate) struct PaperTrade {
+    pub(crate) id: String,
+    pub(crate) order_id: String,
+    pub(crate) pair: String,
+    pub(crate) base: String,
+    pub(crate) quote: String,
+    pub(crate) side: OrderSide,
+    pub(crate) volume: f64,
+    pub(crate) price: f64,
+    pub(crate) fee: f64,
+    pub(crate) cost: f64,
+    pub(crate) filled_at: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum OrderSide {
+pub(crate) enum OrderSide {
     Buy,
     Sell,
 }
@@ -109,7 +109,7 @@ impl std::fmt::Display for OrderSide {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PaperOrderType {
+pub(crate) enum PaperOrderType {
     Market,
     Limit,
 }
@@ -130,11 +130,11 @@ impl Default for PaperState {
 }
 
 impl PaperState {
-    pub fn new(balance: f64, currency: &str) -> Self {
+    pub(crate) fn new(balance: f64, currency: &str) -> Self {
         Self::with_fee_rate(balance, currency, DEFAULT_FEE_RATE)
     }
 
-    pub fn with_fee_rate(balance: f64, currency: &str, fee_rate: f64) -> Self {
+    pub(crate) fn with_fee_rate(balance: f64, currency: &str, fee_rate: f64) -> Self {
         let now = Utc::now().to_rfc3339();
         let cur = currency.to_uppercase();
         let mut balances = HashMap::new();
@@ -154,14 +154,15 @@ impl PaperState {
         }
     }
 
-    pub fn reset(&mut self) {
+    #[cfg(test)]
+    pub(crate) fn reset(&mut self) {
         let balance = self.starting_balance;
         let currency = self.starting_currency.clone();
         let fee_rate = self.fee_rate;
         *self = Self::with_fee_rate(balance, &currency, fee_rate);
     }
 
-    pub fn reset_with(
+    pub(crate) fn reset_with(
         &mut self,
         balance: Option<f64>,
         currency: Option<&str>,
@@ -175,7 +176,7 @@ impl PaperState {
         *self = Self::with_fee_rate(bal, &cur, fee);
     }
 
-    pub fn available_balance(&self, asset: &str) -> f64 {
+    pub(crate) fn available_balance(&self, asset: &str) -> f64 {
         let total = self.balances.get(asset).copied().unwrap_or(0.0);
         let reserved = self.reserved.get(asset).copied().unwrap_or(0.0);
         (total - reserved).max(0.0)
@@ -187,7 +188,7 @@ impl PaperState {
         id
     }
 
-    pub fn place_market_order(
+    pub(crate) fn place_market_order(
         &mut self,
         side: OrderSide,
         pair: &str,
@@ -274,7 +275,7 @@ impl PaperState {
         }
     }
 
-    pub fn place_limit_order(
+    pub(crate) fn place_limit_order(
         &mut self,
         side: OrderSide,
         pair: &str,
@@ -330,7 +331,7 @@ impl PaperState {
         Ok(id)
     }
 
-    pub fn cancel_order(&mut self, order_id: &str) -> Result<PaperOrder> {
+    pub(crate) fn cancel_order(&mut self, order_id: &str) -> Result<PaperOrder> {
         let pos = self
             .open_orders
             .iter()
@@ -346,7 +347,7 @@ impl PaperState {
         Ok(order)
     }
 
-    pub fn cancel_all_orders(&mut self) -> Vec<PaperOrder> {
+    pub(crate) fn cancel_all_orders(&mut self) -> Vec<PaperOrder> {
         let orders: Vec<PaperOrder> = self.open_orders.drain(..).collect();
         for order in &orders {
             self.release_reservation(order);
@@ -356,7 +357,7 @@ impl PaperState {
         orders
     }
 
-    pub fn check_pending_orders(
+    pub(crate) fn check_pending_orders(
         &mut self,
         prices: &HashMap<String, (f64, f64)>,
     ) -> Vec<PaperTrade> {
@@ -434,7 +435,10 @@ impl PaperState {
         fills
     }
 
-    pub fn compute_portfolio_value(&self, prices: &HashMap<String, (f64, f64)>) -> (f64, bool) {
+    pub(crate) fn compute_portfolio_value(
+        &self,
+        prices: &HashMap<String, (f64, f64)>,
+    ) -> (f64, bool) {
         let mut total = 0.0;
         let mut complete = true;
         let sc = &self.starting_currency;
@@ -491,7 +495,7 @@ fn normalize_kraken_pair(s: &str) -> String {
     s.to_string()
 }
 
-pub fn parse_pair(pair: &str) -> Result<(String, String, String)> {
+pub(crate) fn parse_pair(pair: &str) -> Result<(String, String, String)> {
     let upper = pair.to_uppercase();
     let api_pair = upper.replace('/', "");
     let extraction = normalize_kraken_pair(&api_pair);
@@ -508,15 +512,15 @@ pub fn parse_pair(pair: &str) -> Result<(String, String, String)> {
     )))
 }
 
-pub fn paper_state_path() -> Result<PathBuf> {
+pub(crate) fn paper_state_path() -> Result<PathBuf> {
     Ok(config::config_dir()?.join("paper").join("state.json"))
 }
 
-pub fn legacy_state_path() -> Result<PathBuf> {
+pub(crate) fn legacy_state_path() -> Result<PathBuf> {
     Ok(config::config_dir()?.join("paper.json"))
 }
 
-pub fn migrate_legacy_state() -> Result<bool> {
+pub(crate) fn migrate_legacy_state() -> Result<bool> {
     let new_path = paper_state_path()?;
     if new_path.exists() {
         return Ok(false);
@@ -532,7 +536,7 @@ pub fn migrate_legacy_state() -> Result<bool> {
     Ok(true)
 }
 
-pub fn load_state() -> Result<PaperState> {
+pub(crate) fn load_state() -> Result<PaperState> {
     migrate_legacy_state()?;
     let path = paper_state_path()?;
     if !path.exists() {
@@ -545,7 +549,7 @@ pub fn load_state() -> Result<PaperState> {
     Ok(state)
 }
 
-pub fn save_state(state: &PaperState) -> Result<()> {
+pub(crate) fn save_state(state: &PaperState) -> Result<()> {
     let path = paper_state_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;

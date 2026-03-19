@@ -15,7 +15,7 @@ use crate::{build_spot_client, AppContext};
 const DUST_THRESHOLD: f64 = 1e-12;
 
 #[derive(Debug, Subcommand)]
-pub enum PaperCommand {
+pub(crate) enum PaperCommand {
     /// Initialize paper trading account.
     Init {
         /// Starting balance (default: 10000).
@@ -83,7 +83,11 @@ pub enum PaperCommand {
     Status,
 }
 
-pub async fn execute(cmd: &PaperCommand, ctx: &AppContext, verbose: bool) -> Result<CommandOutput> {
+pub(crate) async fn execute(
+    cmd: &PaperCommand,
+    ctx: &AppContext,
+    verbose: bool,
+) -> Result<CommandOutput> {
     match cmd {
         PaperCommand::Init {
             balance,

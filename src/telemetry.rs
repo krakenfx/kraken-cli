@@ -4,12 +4,12 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const CLIENT_NAME: &str = "kraken-cli";
-pub const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub(crate) const CLIENT_NAME: &str = "kraken-cli";
+pub(crate) const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const BASE_USER_AGENT: &str = concat!("kraken-cli/", env!("CARGO_PKG_VERSION"));
 
-pub const KORIGIN_REST: &str = "u003";
-pub const KORIGIN_WS: &str = "u004";
+pub(crate) const KORIGIN_REST: &str = "u003";
+pub(crate) const KORIGIN_WS: &str = "u004";
 
 const AGENT_CLIENT_ENV: &str = "KRAKEN_AGENT_CLIENT";
 const INSTANCE_ID_ENV: &str = "KRAKEN_INSTANCE_ID";
@@ -19,18 +19,18 @@ static AGENT_CLIENT: OnceLock<String> = OnceLock::new();
 static INSTANCE_ID: OnceLock<String> = OnceLock::new();
 static USER_AGENT: OnceLock<String> = OnceLock::new();
 
-pub fn agent_client() -> &'static str {
+pub(crate) fn agent_client() -> &'static str {
     AGENT_CLIENT.get_or_init(resolve_agent_client).as_str()
 }
 
-pub fn instance_id() -> &'static str {
+pub(crate) fn instance_id() -> &'static str {
     INSTANCE_ID.get_or_init(resolve_instance_id).as_str()
 }
 
 /// Structured User-Agent: `kraken-cli/0.2.0 (cursor)`.
 /// Includes the base product token and the resolved agent client in parentheses,
 /// following RFC 9110 product/comment convention.
-pub fn user_agent() -> &'static str {
+pub(crate) fn user_agent() -> &'static str {
     USER_AGENT
         .get_or_init(|| build_structured_user_agent(agent_client()))
         .as_str()

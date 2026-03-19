@@ -21,7 +21,7 @@ static NONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// Nanosecond precision avoids `EAPI:Invalid nonce` errors when requests
 /// fire in rapid succession (milliseconds can collide under high concurrency).
 /// Uses an atomic counter to guarantee monotonicity within a process.
-pub fn generate_nonce() -> Result<u64> {
+pub(crate) fn generate_nonce() -> Result<u64> {
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| KrakenError::Auth("system clock is before Unix epoch".into()))?
@@ -45,7 +45,7 @@ pub fn generate_nonce() -> Result<u64> {
 /// `nonce` — the nonce used in the POST body
 /// `post_data` — the URL-encoded POST body (including the nonce field)
 /// `api_secret` — base64-encoded secret from Kraken
-pub fn spot_sign(
+pub(crate) fn spot_sign(
     uri_path: &str,
     nonce: u64,
     post_data: &str,
@@ -77,7 +77,7 @@ pub fn spot_sign(
 /// `nonce` — the Nonce header value
 /// `endpoint_path` — e.g. `/api/v3/accounts`
 /// `api_secret` — base64-encoded secret from Kraken
-pub fn futures_sign(
+pub(crate) fn futures_sign(
     post_data: &str,
     nonce: &str,
     endpoint_path: &str,

@@ -12,7 +12,7 @@ use crate::output::CommandOutput;
 
 /// Boolean-like value for CLI args (accepts true/false, yes/no, 1/0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-pub enum BoolValue {
+pub(crate) enum BoolValue {
     #[value(aliases = ["yes", "1"])]
     True,
     #[value(aliases = ["no", "0"])]
@@ -21,7 +21,7 @@ pub enum BoolValue {
 
 impl BoolValue {
     /// Returns "true" or "false" for API request bodies.
-    pub fn as_api_value(self) -> &'static str {
+    pub(crate) fn as_api_value(self) -> &'static str {
         match self {
             BoolValue::True => "true",
             BoolValue::False => "false",
@@ -30,7 +30,7 @@ impl BoolValue {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum FuturesCommand {
+pub(crate) enum FuturesCommand {
     /// List all futures instruments/contracts.
     Instruments,
     /// Get all futures tickers.
@@ -260,7 +260,7 @@ pub enum FuturesCommand {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum FuturesOrderDirection {
+pub(crate) enum FuturesOrderDirection {
     /// Place a buy order.
     Buy {
         /// Futures symbol.
@@ -325,7 +325,7 @@ pub enum FuturesOrderDirection {
     },
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &FuturesCommand,
     client: &FuturesClient,
     creds: Option<&FuturesCredentials>,
@@ -771,7 +771,7 @@ pub async fn execute(
 }
 
 /// Returns true for commands that require authentication.
-pub fn requires_auth(cmd: &FuturesCommand) -> bool {
+pub(crate) fn requires_auth(cmd: &FuturesCommand) -> bool {
     matches!(
         cmd,
         FuturesCommand::Accounts
@@ -808,7 +808,7 @@ pub fn requires_auth(cmd: &FuturesCommand) -> bool {
 }
 
 /// Returns true for WS commands that require authentication.
-pub fn ws_requires_auth(cmd: &FuturesCommand) -> bool {
+pub(crate) fn ws_requires_auth(cmd: &FuturesCommand) -> bool {
     if let FuturesCommand::Ws { cmd } = cmd {
         super::futures_ws::requires_auth(cmd)
     } else {

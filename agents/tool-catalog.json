@@ -2847,54 +2847,54 @@
     },
     {
       "name": "futures-ws-ticker",
-      "command": "kraken futures ws ticker <PRODUCT_ID...>",
+      "command": "kraken futures ws ticker <MARKET...>",
       "group": "futures-ws",
       "description": "Stream futures tickers.",
       "auth_required": false,
       "dangerous": false,
       "parameters": [
         {
-          "name": "product_id",
+          "name": "market",
           "type": "string[]",
           "required": true,
           "positional": true,
-          "description": "One or more product IDs to stream"
+          "description": "One or more market symbols to stream"
         }
       ],
       "example": "kraken futures ws ticker PF_XBTUSD PF_ETHUSD"
     },
     {
-      "name": "futures-ws-trade",
-      "command": "kraken futures ws trade <PRODUCT_ID...>",
+      "name": "futures-ws-trades",
+      "command": "kraken futures ws trades <MARKET...>",
       "group": "futures-ws",
       "description": "Stream futures trades.",
       "auth_required": false,
       "dangerous": false,
       "parameters": [
         {
-          "name": "product_id",
+          "name": "market",
           "type": "string[]",
           "required": true,
           "positional": true,
-          "description": "One or more product IDs to stream"
+          "description": "One or more market symbols to stream"
         }
       ],
-      "example": "kraken futures ws trade PF_XBTUSD"
+      "example": "kraken futures ws trades PF_XBTUSD"
     },
     {
       "name": "futures-ws-book",
-      "command": "kraken futures ws book <PRODUCT_ID...>",
+      "command": "kraken futures ws book <MARKET...>",
       "group": "futures-ws",
       "description": "Stream futures order book.",
       "auth_required": false,
       "dangerous": false,
       "parameters": [
         {
-          "name": "product_id",
+          "name": "market",
           "type": "string[]",
           "required": true,
           "positional": true,
-          "description": "One or more product IDs to stream"
+          "description": "One or more market symbols to stream"
         }
       ],
       "example": "kraken futures ws book PF_XBTUSD"

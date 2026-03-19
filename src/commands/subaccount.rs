@@ -10,7 +10,7 @@ use crate::errors::Result;
 use crate::output::CommandOutput;
 
 #[derive(Debug, Subcommand)]
-pub enum SubaccountCommand {
+pub(crate) enum SubaccountCommand {
     /// Create a new subaccount.
     Create {
         /// Username for the subaccount.
@@ -36,7 +36,7 @@ pub enum SubaccountCommand {
     },
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &SubaccountCommand,
     client: &SpotClient,
     creds: &SpotCredentials,

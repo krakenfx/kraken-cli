@@ -4,7 +4,7 @@ use crate::errors::Result;
 use crate::output::CommandOutput;
 
 /// Run the interactive setup wizard.
-pub async fn setup(verbose: bool) -> Result<CommandOutput> {
+pub(crate) async fn setup(verbose: bool) -> Result<CommandOutput> {
     if verbose {
         crate::output::verbose("Starting setup wizard");
     }

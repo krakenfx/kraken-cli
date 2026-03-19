@@ -12,7 +12,7 @@ use crate::errors::Result;
 use crate::output::CommandOutput;
 
 #[derive(Debug, Subcommand)]
-pub enum AccountCommand {
+pub(crate) enum AccountCommand {
     /// Get all cash balances.
     Balance {
         /// Rebase multiplier for xstocks data (rebased or base).
@@ -246,7 +246,7 @@ pub enum AccountCommand {
     },
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &AccountCommand,
     client: &SpotClient,
     creds: &SpotCredentials,

@@ -5,7 +5,7 @@
 use crate::errors::KrakenError;
 
 /// Render a success payload as JSON to stdout.
-pub fn render_success(data: &serde_json::Value) {
+pub(crate) fn render_success(data: &serde_json::Value) {
     match serde_json::to_string(data) {
         Ok(s) => println!("{s}"),
         Err(e) => {
@@ -16,7 +16,7 @@ pub fn render_success(data: &serde_json::Value) {
 }
 
 /// Render an error envelope as JSON to stdout (per spec: errors go to stdout in JSON mode).
-pub fn render_error(err: &KrakenError) {
+pub(crate) fn render_error(err: &KrakenError) {
     let envelope = err.to_json_envelope();
     match serde_json::to_string(&envelope) {
         Ok(s) => println!("{s}"),
@@ -28,7 +28,7 @@ pub fn render_error(err: &KrakenError) {
 }
 
 /// Render a single NDJSON line to stdout (for WebSocket streaming).
-pub fn render_ndjson(data: &serde_json::Value) {
+pub(crate) fn render_ndjson(data: &serde_json::Value) {
     match serde_json::to_string(data) {
         Ok(s) => println!("{s}"),
         Err(e) => {

@@ -10,37 +10,42 @@ use super::schema::clap_command_to_schema;
 use crate::errors::{KrakenError, Result};
 
 #[derive(Debug, Clone)]
-pub struct ArgMeta {
-    pub id: String,
+pub(crate) struct ArgMeta {
+    pub(crate) id: String,
     /// Long flag name (e.g., "count", "asset-class"). None for positional args.
-    pub long: Option<String>,
+    pub(crate) long: Option<String>,
     /// True for SetTrue/SetFalse/Count actions that emit as presence flags.
-    pub is_bool_flag: bool,
+    pub(crate) is_bool_flag: bool,
     /// 0-based position index for positional args. None for flag args.
-    pub positional_index: Option<usize>,
+    pub(crate) positional_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ToolEntry {
-    pub tool: Tool,
-    pub canonical_key: String,
-    pub group: String,
-    pub dangerous: bool,
-    pub clap_args: Vec<ArgMeta>,
+pub(crate) struct ToolEntry {
+    pub(crate) tool: Tool,
+    pub(crate) canonical_key: String,
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub(crate) group: String,
+    pub(crate) dangerous: bool,
+    pub(crate) clap_args: Vec<ArgMeta>,
 }
 
 #[derive(Debug)]
-pub struct ToolRegistry {
+pub(crate) struct ToolRegistry {
     tools: Vec<ToolEntry>,
     by_name: HashMap<String, usize>,
 }
 
 impl ToolRegistry {
-    pub fn build(active_services: &[String]) -> Result<Self> {
+    #[cfg(test)]
+    pub(crate) fn build(active_services: &[String]) -> Result<Self> {
         Self::build_with_options(active_services, false)
     }
 
-    pub fn build_with_options(active_services: &[String], allow_dangerous: bool) -> Result<Self> {
+    pub(crate) fn build_with_options(
+        active_services: &[String],
+        allow_dangerous: bool,
+    ) -> Result<Self> {
         let catalog = load_catalog()?;
         let clap_root = crate::Cli::command();
 
@@ -72,15 +77,15 @@ impl ToolRegistry {
         Ok(Self { tools, by_name })
     }
 
-    pub fn tools(&self) -> &[ToolEntry] {
+    pub(crate) fn tools(&self) -> &[ToolEntry] {
         &self.tools
     }
 
-    pub fn get_by_name(&self, name: &str) -> Option<&ToolEntry> {
+    pub(crate) fn get_by_name(&self, name: &str) -> Option<&ToolEntry> {
         self.by_name.get(name).map(|&i| &self.tools[i])
     }
 
-    pub fn tool_definitions(&self) -> Vec<Tool> {
+    pub(crate) fn tool_definitions(&self) -> Vec<Tool> {
         self.tools.iter().map(|e| e.tool.clone()).collect()
     }
 }

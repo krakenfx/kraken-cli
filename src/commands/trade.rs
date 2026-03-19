@@ -13,7 +13,7 @@ use crate::errors::{KrakenError, Result};
 use crate::output::CommandOutput;
 
 #[derive(Debug, Subcommand)]
-pub enum OrderCommand {
+pub(crate) enum OrderCommand {
     /// Place a buy order.
     Buy {
         /// Trading pair (e.g. XBTUSD).
@@ -240,7 +240,7 @@ pub enum OrderCommand {
     },
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &OrderCommand,
     client: &SpotClient,
     creds: &SpotCredentials,
