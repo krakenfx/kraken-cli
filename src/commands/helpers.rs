@@ -5,7 +5,7 @@ use crate::errors::{KrakenError, Result};
 use crate::output::CommandOutput;
 
 /// Extract a string value from a JSON object by key, returning "-" on miss.
-pub fn jstr(val: &Value, key: &str) -> String {
+pub(crate) fn jstr(val: &Value, key: &str) -> String {
     val.get(key)
         .map(|v| match v {
             Value::String(s) => s.clone(),
@@ -15,7 +15,7 @@ pub fn jstr(val: &Value, key: &str) -> String {
 }
 
 /// Parse a generic JSON value into key-value pairs for rendering.
-pub fn parse_generic(data: &Value) -> CommandOutput {
+pub(crate) fn parse_generic(data: &Value) -> CommandOutput {
     let pairs: Vec<(String, String)> = if let Some(obj) = data.as_object() {
         obj.iter()
             .map(|(k, v)| {
@@ -38,7 +38,7 @@ pub fn parse_generic(data: &Value) -> CommandOutput {
 }
 
 /// Prompt user to confirm a destructive operation; abort on decline.
-pub fn confirm_destructive(prompt: &str) -> Result<()> {
+pub(crate) fn confirm_destructive(prompt: &str) -> Result<()> {
     let confirmed = dialoguer::Confirm::new()
         .with_prompt(prompt)
         .default(false)

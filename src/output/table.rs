@@ -4,7 +4,7 @@ use comfy_table::{presets::UTF8_FULL_CONDENSED, ContentArrangement, Table};
 use super::CommandOutput;
 
 /// Render a `CommandOutput` as a human-readable table to stdout.
-pub fn render(output: &CommandOutput) {
+pub(crate) fn render(output: &CommandOutput) {
     if output.rows.is_empty() {
         println!("No results.");
         return;
@@ -24,7 +24,7 @@ pub fn render(output: &CommandOutput) {
 }
 
 /// Render a single append-only line for WebSocket streaming in table mode.
-pub fn render_stream_line(fields: &[(&str, &str)]) {
+pub(crate) fn render_stream_line(fields: &[(&str, &str)]) {
     let parts: Vec<String> = fields.iter().map(|(k, v)| format!("{k}: {v}")).collect();
     println!("{}", parts.join("  |  "));
 }

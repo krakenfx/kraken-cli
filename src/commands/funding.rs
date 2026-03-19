@@ -10,7 +10,7 @@ use crate::errors::Result;
 use crate::output::CommandOutput;
 
 #[derive(Debug, Subcommand)]
-pub enum FundingCommand {
+pub(crate) enum FundingCommand {
     /// Get available deposit methods for an asset.
     DepositMethods {
         /// Asset being deposited (e.g. BTC, ETH).
@@ -177,7 +177,7 @@ pub enum FundingCommand {
     },
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &FundingCommand,
     client: &SpotClient,
     creds: &SpotCredentials,

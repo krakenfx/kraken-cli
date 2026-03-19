@@ -10,7 +10,7 @@ use crate::errors::Result;
 use crate::output::CommandOutput;
 
 #[derive(Debug, Subcommand)]
-pub enum EarnCommand {
+pub(crate) enum EarnCommand {
     /// Allocate funds to an earn strategy.
     Allocate {
         /// Strategy ID.
@@ -67,7 +67,7 @@ pub enum EarnCommand {
     },
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &EarnCommand,
     client: &SpotClient,
     creds: &SpotCredentials,

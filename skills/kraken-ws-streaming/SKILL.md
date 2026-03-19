@@ -98,7 +98,7 @@ kraken futures ws ticker PF_XBTUSD -o json 2>/dev/null
 Futures trades:
 
 ```bash
-kraken futures ws trade PF_XBTUSD -o json 2>/dev/null
+kraken futures ws trades PF_XBTUSD -o json 2>/dev/null
 ```
 
 Futures order book:

@@ -96,7 +96,7 @@ impl KrakenError {
     }
 
     /// Constructs an API error from a Kraken error string (e.g. "EAPI:Invalid key").
-    pub fn from_kraken_error(msg: &str) -> Self {
+    pub(crate) fn from_kraken_error(msg: &str) -> Self {
         if msg.starts_with("EAPI:Rate limit") {
             return Self::RateLimit {
                 message: format!("Spot REST API rate limit exceeded ({msg})."),
@@ -175,7 +175,7 @@ impl KrakenError {
     ///
     /// Rate limit errors include additional fields that LLM agents can use
     /// to adapt their strategy: `suggestion`, `retryable`, and `docs_url`.
-    pub fn to_json_envelope(&self) -> serde_json::Value {
+    pub(crate) fn to_json_envelope(&self) -> serde_json::Value {
         match self {
             Self::RateLimit {
                 message,

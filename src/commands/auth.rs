@@ -9,7 +9,7 @@ use crate::output::CommandOutput;
 use crate::AppContext;
 
 #[derive(Debug, Subcommand)]
-pub enum AuthCommand {
+pub(crate) enum AuthCommand {
     /// Save API credentials to the config file.
     ///
     /// The API secret is resolved via the global `--api-secret-stdin`,
@@ -44,7 +44,7 @@ pub enum AuthCommand {
     Reset,
 }
 
-pub async fn execute(cmd: &AuthCommand, ctx: &AppContext) -> Result<CommandOutput> {
+pub(crate) async fn execute(cmd: &AuthCommand, ctx: &AppContext) -> Result<CommandOutput> {
     match cmd {
         AuthCommand::Set {
             api_key,

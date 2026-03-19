@@ -34,10 +34,10 @@ const DEFAULT_WS_AUTH_URL: &str = "wss://ws-auth.kraken.com/v2";
 const DEFAULT_WS_L3_URL: &str = "wss://ws-l3.kraken.com/v2";
 const MAX_RECONNECTS: u32 = 12;
 
-pub struct WsUrls<'a> {
-    pub public: Option<&'a str>,
-    pub auth: Option<&'a str>,
-    pub l3: Option<&'a str>,
+pub(crate) struct WsUrls<'a> {
+    pub(crate) public: Option<&'a str>,
+    pub(crate) auth: Option<&'a str>,
+    pub(crate) l3: Option<&'a str>,
 }
 const RECONNECT_BASE_MS: u64 = 1000;
 const FAST_RECONNECT_ATTEMPTS: u32 = 2;
@@ -51,7 +51,7 @@ const STABLE_SESSION_SECS: u64 = 30;
 
 #[derive(Debug, Subcommand)]
 #[allow(clippy::large_enum_variant)]
-pub enum WsCommand {
+pub(crate) enum WsCommand {
     /// Stream live ticker updates.
     Ticker {
         /// Trading pairs.
@@ -356,7 +356,7 @@ pub enum WsCommand {
     },
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &WsCommand,
     format: OutputFormat,
     spot_client: Option<(&SpotClient, &SpotCredentials)>,

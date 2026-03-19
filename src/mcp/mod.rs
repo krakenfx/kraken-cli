@@ -2,9 +2,9 @@
 ///
 /// Exposes CLI commands as MCP tools over stdio, enabling direct integration
 /// with MCP clients without subprocess wrappers.
-pub mod registry;
-pub mod schema;
-pub mod server;
+pub(crate) mod registry;
+pub(crate) mod schema;
+pub(crate) mod server;
 
 use crate::errors::{KrakenError, Result};
 
@@ -26,7 +26,7 @@ const VALID_SERVICES: &[&str] = &[
 // explicit post-filter exclusion here.
 const STREAMING_GROUPS: &[&str] = &["websocket"];
 
-pub fn parse_services(input: &str) -> Result<Vec<String>> {
+pub(crate) fn parse_services(input: &str) -> Result<Vec<String>> {
     let trimmed = input.trim();
     if trimmed.eq_ignore_ascii_case("all") {
         return Ok(VALID_SERVICES.iter().map(|s| s.to_string()).collect());
@@ -61,7 +61,7 @@ pub fn parse_services(input: &str) -> Result<Vec<String>> {
     Ok(tokens)
 }
 
-pub fn apply_exclusions(services: &[String]) -> Vec<String> {
+pub(crate) fn apply_exclusions(services: &[String]) -> Vec<String> {
     services
         .iter()
         .filter(|s| !STREAMING_GROUPS.contains(&s.as_str()))

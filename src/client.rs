@@ -235,7 +235,7 @@ impl SpotClient {
     /// Some newer Kraken endpoints (e.g. Level3) expect `application/json`
     /// instead of form-encoded bodies. The signing formula is the same:
     /// `API-Sign = base64(HMAC_SHA512(uri_path + SHA256(nonce + json_body), secret))`.
-    pub async fn private_post_json(
+    pub(crate) async fn private_post_json(
         &self,
         endpoint: &str,
         body: serde_json::Map<String, Value>,
@@ -574,7 +574,7 @@ impl FuturesClient {
     }
 
     /// Execute a private POST on the Futures API with auth headers.
-    pub async fn private_post(
+    pub(crate) async fn private_post(
         &self,
         endpoint: &str,
         params: HashMap<String, String>,
@@ -635,7 +635,7 @@ impl FuturesClient {
     /// The Kraken Futures API expects form-urlencoded bodies, even for
     /// endpoints that accept complex JSON payloads (e.g. batchorder).
     /// The JSON is passed as `json=<serialized_value>` in the form body.
-    pub async fn private_post_json(
+    pub(crate) async fn private_post_json(
         &self,
         endpoint: &str,
         body: serde_json::Value,
@@ -650,7 +650,7 @@ impl FuturesClient {
     }
 
     /// Execute a private PUT on the Futures API with form-urlencoded body.
-    pub async fn private_put(
+    pub(crate) async fn private_put(
         &self,
         endpoint: &str,
         params: HashMap<String, String>,
@@ -707,7 +707,7 @@ impl FuturesClient {
     }
 
     /// Execute a private GET that returns raw text (for CSV endpoints).
-    pub async fn private_get_raw(
+    pub(crate) async fn private_get_raw(
         &self,
         endpoint: &str,
         params: &[(&str, &str)],
@@ -841,7 +841,7 @@ fn is_transient(err: &reqwest::Error) -> bool {
 }
 
 /// UTF-8-safe string truncation by character count.
-pub fn truncate(s: &str, max_chars: usize) -> &str {
+pub(crate) fn truncate(s: &str, max_chars: usize) -> &str {
     match s.char_indices().nth(max_chars) {
         Some((idx, _)) => &s[..idx],
         None => s,
@@ -881,7 +881,7 @@ fn danger_allow_any_url_host() -> bool {
 ///
 /// Rejects `http`, `ws`, and all other schemes. Error messages redact
 /// any embedded credentials from the URL authority.
-pub fn validate_url_scheme(url: &str) -> Result<()> {
+pub(crate) fn validate_url_scheme(url: &str) -> Result<()> {
     let parsed = url::Url::parse(url).map_err(|_| {
         KrakenError::Validation(format!("Invalid URL: {}", redact_url_authority(url)))
     })?;

@@ -12,33 +12,33 @@ use crate::errors::{KrakenError, Result};
 
 /// On-disk configuration format.
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct KrakenConfig {
+pub(crate) struct KrakenConfig {
     #[serde(default)]
-    pub auth: AuthConfig,
+    pub(crate) auth: AuthConfig,
     #[serde(default)]
-    pub settings: SettingsConfig,
+    pub(crate) settings: SettingsConfig,
 }
 
 /// Authentication section of the config file.
 #[derive(Default, Serialize, Deserialize)]
-pub struct AuthConfig {
+pub(crate) struct AuthConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub api_key: Option<String>,
+    pub(crate) api_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub api_secret: Option<String>,
+    pub(crate) api_secret: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub futures_api_key: Option<String>,
+    pub(crate) futures_api_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub futures_api_secret: Option<String>,
+    pub(crate) futures_api_secret: Option<String>,
 }
 
 /// General settings section.
 #[derive(Debug, Default, Serialize, Deserialize)]
-pub struct SettingsConfig {
+pub(crate) struct SettingsConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_pair: Option<String>,
+    pub(crate) default_pair: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output: Option<String>,
+    pub(crate) output: Option<String>,
 }
 
 impl std::fmt::Debug for AuthConfig {
@@ -125,19 +125,19 @@ impl std::fmt::Display for CredentialSource {
 }
 
 /// Returns the config directory path: `~/.config/kraken/`.
-pub fn config_dir() -> Result<PathBuf> {
+pub(crate) fn config_dir() -> Result<PathBuf> {
     let base = dirs::config_dir()
         .ok_or_else(|| KrakenError::Config("Cannot determine config directory".into()))?;
     Ok(base.join("kraken"))
 }
 
 /// Returns the full path to the config file.
-pub fn config_path() -> Result<PathBuf> {
+pub(crate) fn config_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("config.toml"))
 }
 
 /// Load configuration from disk. Returns default if file does not exist.
-pub fn load() -> Result<KrakenConfig> {
+pub(crate) fn load() -> Result<KrakenConfig> {
     let path = config_path()?;
     if !path.exists() {
         return Ok(KrakenConfig::default());
@@ -148,7 +148,7 @@ pub fn load() -> Result<KrakenConfig> {
 }
 
 /// Save configuration to disk with 0600 permissions.
-pub fn save(cfg: &KrakenConfig) -> Result<()> {
+pub(crate) fn save(cfg: &KrakenConfig) -> Result<()> {
     let dir = config_dir()?;
     fs::create_dir_all(&dir)?;
     let path = dir.join("config.toml");
@@ -160,7 +160,7 @@ pub fn save(cfg: &KrakenConfig) -> Result<()> {
 }
 
 /// Clear stored credentials while preserving the `[settings]` section.
-pub fn reset_auth() -> Result<()> {
+pub(crate) fn reset_auth() -> Result<()> {
     let path = config_path()?;
     if !path.exists() {
         return Ok(());
@@ -175,7 +175,7 @@ pub fn reset_auth() -> Result<()> {
 ///
 /// At each tier, both key and secret must be present. If only one is provided,
 /// a warning is emitted and resolution falls through to the next tier.
-pub fn resolve_spot_credentials(
+pub(crate) fn resolve_spot_credentials(
     flag_key: Option<&str>,
     flag_secret: Option<&str>,
 ) -> Result<SpotCredentials> {
@@ -247,7 +247,7 @@ pub fn resolve_spot_credentials(
 ///
 /// At each tier, both key and secret must be present. If only one is provided,
 /// a warning is emitted and resolution falls through to the next tier.
-pub fn resolve_futures_credentials(
+pub(crate) fn resolve_futures_credentials(
     flag_key: Option<&str>,
     flag_secret: Option<&str>,
 ) -> Result<FuturesCredentials> {
@@ -341,7 +341,7 @@ pub fn read_secret_from_file(path: &Path) -> Result<SecretValue> {
 }
 
 /// Mask a string for display, showing only the first 4 and last 4 characters.
-pub fn mask_string(s: &str) -> String {
+pub(crate) fn mask_string(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= 8 {
         return "****".to_string();

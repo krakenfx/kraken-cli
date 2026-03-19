@@ -526,9 +526,9 @@ kraken balance -o json -v 2>/dev/null | jq .
 
 | Command | Description |
 |---------|-------------|
-| `kraken futures ws ticker <PRODUCT_ID...>` | Stream futures tickers (public) |
-| `kraken futures ws trade <PRODUCT_ID...>` | Stream futures trades (public) |
-| `kraken futures ws book <PRODUCT_ID...>` | Stream futures order book (public) |
+| `kraken futures ws ticker <MARKET...>` | Stream futures tickers (public) |
+| `kraken futures ws trades <MARKET...>` | Stream futures trades (public) |
+| `kraken futures ws book <MARKET...>` | Stream futures order book (public) |
 | `kraken futures ws fills` | Stream fills (private, challenge auth) |
 | `kraken futures ws open-orders` | Stream open orders (private) |
 | `kraken futures ws open-positions` | Stream open positions (private) |

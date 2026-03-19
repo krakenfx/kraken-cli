@@ -4,16 +4,16 @@
 /// intentional deviation from the spec layout ensures the exact same execution
 /// path is used by CLI invocations, integration tests, and the interactive
 /// REPL.
-pub mod auth;
+pub(crate) mod auth;
 pub mod client;
-pub mod commands;
+pub(crate) mod commands;
 pub mod config;
 pub mod errors;
-pub mod mcp;
+pub(crate) mod mcp;
 pub mod output;
-pub mod paper;
-pub mod shell;
-pub mod telemetry;
+pub(crate) mod paper;
+pub(crate) mod shell;
+pub(crate) mod telemetry;
 
 use clap::{Parser, Subcommand};
 
@@ -99,13 +99,9 @@ pub struct Cli {
     pub command: Option<Command>,
 }
 
+#[expect(private_interfaces)]
 #[derive(Subcommand)]
 pub enum Command {
-    // === Market Data (public) ===
-    /// Get system status and trading mode.
-    Status,
-    /// Get server time.
-    ServerTime,
     /// Get asset info.
     Assets {
         /// Comma-separated asset list.
@@ -115,132 +111,13 @@ pub enum Command {
         #[arg(long)]
         aclass: Option<String>,
     },
-    /// Get tradable asset pairs.
-    Pairs {
-        /// Comma-separated pairs.
-        #[arg(long)]
-        pair: Option<String>,
-        /// Info level.
-        #[arg(long)]
-        info: Option<String>,
-        /// Asset class filter.
-        #[arg(long)]
-        aclass: Option<String>,
+    /// Manage API credentials.
+    Auth {
+        #[command(subcommand)]
+        cmd: AuthCommand,
     },
-    /// Get ticker information.
-    Ticker {
-        /// Trading pairs.
-        #[arg(num_args = 1..)]
-        pairs: Vec<String>,
-        /// Asset class filter.
-        #[arg(long, value_parser = ["tokenized_asset", "forex"])]
-        asset_class: Option<String>,
-    },
-    /// Get OHLC candle data.
-    Ohlc {
-        /// Trading pair.
-        pair: String,
-        /// Interval in minutes.
-        #[arg(long, default_value = "60")]
-        interval: u32,
-        /// Fetch since timestamp.
-        #[arg(long)]
-        since: Option<String>,
-        /// Asset class filter.
-        #[arg(long, value_parser = ["tokenized_asset", "forex"])]
-        asset_class: Option<String>,
-    },
-    /// Get L2 order book.
-    Orderbook {
-        /// Trading pair.
-        pair: String,
-        /// Number of price levels.
-        #[arg(long, default_value = "25")]
-        count: u32,
-        /// Asset class filter.
-        #[arg(long, value_parser = ["tokenized_asset"])]
-        asset_class: Option<String>,
-    },
-    /// Get L3 order book (authenticated).
-    OrderbookL3 {
-        /// Trading pair.
-        pair: String,
-        /// Number of price levels per side (0 for full book).
-        #[arg(long, default_value = "100", value_parser = ["0", "10", "25", "100", "250", "1000"])]
-        depth: String,
-    },
-    /// Get grouped order book.
-    OrderbookGrouped {
-        /// Trading pair.
-        pair: String,
-        /// Number of price levels per side.
-        #[arg(long, default_value = "10", value_parser = ["10", "25", "100", "250", "1000"])]
-        depth: String,
-        /// Tick levels within each price level (bids rounded down, asks up).
-        #[arg(long, default_value = "1", value_parser = ["1", "5", "10", "25", "50", "100", "250", "500", "1000"])]
-        grouping: String,
-    },
-    /// Get recent trades.
-    Trades {
-        /// Trading pair.
-        pair: String,
-        /// Fetch since timestamp.
-        #[arg(long)]
-        since: Option<String>,
-        /// Max trades.
-        #[arg(long, default_value = "1000")]
-        count: u32,
-        /// Asset class filter.
-        #[arg(long, value_parser = ["tokenized_asset"])]
-        asset_class: Option<String>,
-    },
-    /// Get recent spreads.
-    Spreads {
-        /// Trading pair.
-        pair: String,
-        /// Fetch since timestamp.
-        #[arg(long)]
-        since: Option<String>,
-        /// Asset class filter.
-        #[arg(long, value_parser = ["tokenized_asset"])]
-        asset_class: Option<String>,
-    },
-
-    // === Account Data (private) ===
     /// Get all cash balances.
     Balance {
-        /// Rebase multiplier for xstocks data (rebased or base).
-        #[arg(long)]
-        rebase_multiplier: Option<String>,
-    },
-    /// Get extended balances (balance, credit, credit_used, hold_trade).
-    ExtendedBalance,
-    /// Get credit line details (VIP only).
-    CreditLines {
-        /// Rebase multiplier for xstocks data (rebased or base).
-        #[arg(long)]
-        rebase_multiplier: Option<String>,
-    },
-    /// Get margin/equity trade balance.
-    TradeBalance {
-        /// Base asset (default: ZUSD).
-        #[arg(long)]
-        asset: Option<String>,
-        /// Rebase multiplier for xstocks data (rebased or base).
-        #[arg(long)]
-        rebase_multiplier: Option<String>,
-    },
-    /// Get open orders.
-    OpenOrders {
-        /// Include trades.
-        #[arg(long)]
-        trades: bool,
-        /// User reference filter.
-        #[arg(long)]
-        userref: Option<String>,
-        /// Filter by client order ID.
-        #[arg(long)]
-        cl_ord_id: Option<String>,
         /// Rebase multiplier for xstocks data (rebased or base).
         #[arg(long)]
         rebase_multiplier: Option<String>,
@@ -278,6 +155,219 @@ pub enum Command {
         #[arg(long)]
         rebase_multiplier: Option<String>,
     },
+    /// Get credit line details (VIP only).
+    CreditLines {
+        /// Rebase multiplier for xstocks data (rebased or base).
+        #[arg(long)]
+        rebase_multiplier: Option<String>,
+    },
+    /// Deposit methods and addresses.
+    #[command(name = "deposit")]
+    Deposit {
+        #[command(subcommand)]
+        cmd: DepositSubcommand,
+    },
+    /// Earn/staking commands.
+    Earn {
+        #[command(subcommand)]
+        cmd: EarnCommand,
+    },
+    /// Delete export report.
+    ExportDelete {
+        /// Report ID.
+        report_id: String,
+    },
+    /// Request an export report.
+    ExportReport {
+        /// Type of data to export (trades or ledgers).
+        #[arg(long)]
+        report: String,
+        /// Description for the export.
+        #[arg(long)]
+        description: String,
+        /// File format (CSV or TSV).
+        #[arg(long, default_value = "CSV")]
+        format: String,
+        /// Comma-delimited list of fields to include (default: all).
+        #[arg(long)]
+        fields: Option<String>,
+        /// UNIX timestamp for report start time (default: 1st of current month).
+        #[arg(long)]
+        starttm: Option<String>,
+        /// UNIX timestamp for report end time (default: now).
+        #[arg(long)]
+        endtm: Option<String>,
+    },
+    /// Download export report.
+    ExportRetrieve {
+        /// Report ID.
+        report_id: String,
+        /// Output file path.
+        #[arg(long)]
+        output_file: Option<std::path::PathBuf>,
+    },
+    /// Check export report status.
+    ExportStatus {
+        /// Report type (trades or ledgers).
+        #[arg(long)]
+        report: String,
+    },
+    /// Get extended balances (balance, credit, credit_used, hold_trade).
+    ExtendedBalance,
+    /// Futures trading and market data.
+    Futures {
+        #[command(subcommand)]
+        cmd: FuturesCommand,
+    },
+    /// Get ledger entries.
+    Ledgers {
+        /// Filter by asset or comma-delimited list of assets.
+        #[arg(long)]
+        asset: Option<String>,
+        /// Type of ledger to retrieve.
+        #[arg(long = "type")]
+        ledger_type: Option<String>,
+        /// Starting unix timestamp or ledger ID (exclusive).
+        #[arg(long)]
+        start: Option<String>,
+        /// Ending unix timestamp or ledger ID (inclusive).
+        #[arg(long)]
+        end: Option<String>,
+        /// Filter by asset class.
+        #[arg(long)]
+        aclass: Option<String>,
+        /// Result offset for pagination.
+        #[arg(long)]
+        offset: Option<u64>,
+        /// Omit count from result (faster for large ledgers).
+        #[arg(long)]
+        without_count: bool,
+        /// Rebase multiplier for xstocks data (rebased or base).
+        #[arg(long)]
+        rebase_multiplier: Option<String>,
+    },
+    /// Start a built-in MCP (Model Context Protocol) server over stdio.
+    ///
+    /// Default exposes read-only services (market, account, paper).
+    /// Use `-s all` to include trade, funding, futures, earn, subaccount, and auth.
+    Mcp {
+        /// Comma-separated service groups, or "all". Default: market,account,paper.
+        #[arg(short, long, default_value = "market,account,paper")]
+        services: String,
+
+        /// Skip per-call confirmation for dangerous tools. Use only when the
+        /// calling agent is trusted and has been validated through paper trading.
+        #[arg(long)]
+        allow_dangerous: bool,
+    },
+    /// Get OHLC candle data.
+    Ohlc {
+        /// Trading pair.
+        pair: String,
+        /// Interval in minutes.
+        #[arg(long, default_value = "60")]
+        interval: u32,
+        /// Fetch since timestamp.
+        #[arg(long)]
+        since: Option<String>,
+        /// Asset class filter.
+        #[arg(long, value_parser = ["tokenized_asset", "forex"])]
+        asset_class: Option<String>,
+    },
+    /// Get open orders.
+    OpenOrders {
+        /// Include trades.
+        #[arg(long)]
+        trades: bool,
+        /// User reference filter.
+        #[arg(long)]
+        userref: Option<String>,
+        /// Filter by client order ID.
+        #[arg(long)]
+        cl_ord_id: Option<String>,
+        /// Rebase multiplier for xstocks data (rebased or base).
+        #[arg(long)]
+        rebase_multiplier: Option<String>,
+    },
+    /// Place and manage spot orders.
+    Order {
+        #[command(subcommand)]
+        cmd: OrderCommand,
+    },
+    /// Get grouped order book.
+    OrderbookGrouped {
+        /// Trading pair.
+        pair: String,
+        /// Number of price levels per side.
+        #[arg(long, default_value = "10", value_parser = ["10", "25", "100", "250", "1000"])]
+        depth: String,
+        /// Tick levels within each price level (bids rounded down, asks up).
+        #[arg(long, default_value = "1", value_parser = ["1", "5", "10", "25", "50", "100", "250", "500", "1000"])]
+        grouping: String,
+    },
+    /// Get L2 order book.
+    Orderbook {
+        /// Trading pair.
+        pair: String,
+        /// Number of price levels.
+        #[arg(long, default_value = "25")]
+        count: u32,
+        /// Asset class filter.
+        #[arg(long, value_parser = ["tokenized_asset"])]
+        asset_class: Option<String>,
+    },
+    /// Get L3 order book (authenticated).
+    OrderbookL3 {
+        /// Trading pair.
+        pair: String,
+        /// Number of price levels per side (0 for full book).
+        #[arg(long, default_value = "100", value_parser = ["0", "10", "25", "100", "250", "1000"])]
+        depth: String,
+    },
+    /// Get tradable asset pairs.
+    Pairs {
+        /// Comma-separated pairs.
+        #[arg(long)]
+        pair: Option<String>,
+        /// Info level.
+        #[arg(long)]
+        info: Option<String>,
+        /// Asset class filter.
+        #[arg(long)]
+        aclass: Option<String>,
+    },
+    /// Paper trading (simulated, no real money).
+    Paper {
+        #[command(subcommand)]
+        cmd: PaperCommand,
+    },
+    /// Get open margin positions.
+    Positions {
+        /// Filter by TXIDs.
+        #[arg(long)]
+        txid: Vec<String>,
+        /// Include P&L calculations.
+        #[arg(long)]
+        show_pnl: bool,
+        /// Consolidate positions by market/pair.
+        #[arg(long)]
+        consolidation: Option<String>,
+        /// Rebase multiplier for xstocks data (rebased or base).
+        #[arg(long)]
+        rebase_multiplier: Option<String>,
+    },
+    /// Query specific ledger entries.
+    QueryLedgers {
+        /// Ledger IDs (comma-delimited, up to 20).
+        #[arg(num_args = 1..)]
+        ids: Vec<String>,
+        /// Include trades related to position in output.
+        #[arg(long)]
+        trades: bool,
+        /// Rebase multiplier for xstocks data (rebased or base).
+        #[arg(long)]
+        rebase_multiplier: Option<String>,
+    },
     /// Query specific orders.
     QueryOrders {
         /// Transaction IDs (comma-delimited, up to 50).
@@ -295,6 +385,74 @@ pub enum Command {
         /// Rebase multiplier for xstocks data (rebased or base).
         #[arg(long)]
         rebase_multiplier: Option<String>,
+    },
+    /// Query specific trades.
+    QueryTrades {
+        /// Transaction IDs (comma-delimited, up to 20).
+        #[arg(num_args = 1..)]
+        txids: Vec<String>,
+        /// Include trades related to position in output.
+        #[arg(long)]
+        trades: bool,
+        /// Rebase multiplier for xstocks data (rebased or base).
+        #[arg(long)]
+        rebase_multiplier: Option<String>,
+    },
+    /// Get server time.
+    ServerTime,
+    /// Guided first-time setup wizard.
+    Setup,
+    /// Interactive REPL shell.
+    Shell,
+    /// Get recent spreads.
+    Spreads {
+        /// Trading pair.
+        pair: String,
+        /// Fetch since timestamp.
+        #[arg(long)]
+        since: Option<String>,
+        /// Asset class filter.
+        #[arg(long, value_parser = ["tokenized_asset"])]
+        asset_class: Option<String>,
+    },
+    /// Get system status and trading mode.
+    Status,
+    /// Subaccount management.
+    Subaccount {
+        #[command(subcommand)]
+        cmd: SubaccountCommand,
+    },
+    /// Get ticker information.
+    Ticker {
+        /// Trading pairs.
+        #[arg(num_args = 1..)]
+        pairs: Vec<String>,
+        /// Asset class filter.
+        #[arg(long, value_parser = ["tokenized_asset", "forex"])]
+        asset_class: Option<String>,
+    },
+    /// Get margin/equity trade balance.
+    TradeBalance {
+        /// Base asset (default: ZUSD).
+        #[arg(long)]
+        asset: Option<String>,
+        /// Rebase multiplier for xstocks data (rebased or base).
+        #[arg(long)]
+        rebase_multiplier: Option<String>,
+    },
+    /// Get recent trades.
+    Trades {
+        /// Trading pair.
+        pair: String,
+        /// Fetch since timestamp.
+        #[arg(long)]
+        since: Option<String>,
+        /// Max trades.
+        #[arg(long, default_value = "1000")]
+        count: u32,
+        /// Asset class filter.
+        #[arg(long, value_parser = ["tokenized_asset"])]
+        asset_class: Option<String>,
     },
     /// Get trade history.
     TradesHistory {
@@ -326,72 +484,6 @@ pub enum Command {
         #[arg(long)]
         rebase_multiplier: Option<String>,
     },
-    /// Query specific trades.
-    QueryTrades {
-        /// Transaction IDs (comma-delimited, up to 20).
-        #[arg(num_args = 1..)]
-        txids: Vec<String>,
-        /// Include trades related to position in output.
-        #[arg(long)]
-        trades: bool,
-        /// Rebase multiplier for xstocks data (rebased or base).
-        #[arg(long)]
-        rebase_multiplier: Option<String>,
-    },
-    /// Get open margin positions.
-    Positions {
-        /// Filter by TXIDs.
-        #[arg(long)]
-        txid: Vec<String>,
-        /// Include P&L calculations.
-        #[arg(long)]
-        show_pnl: bool,
-        /// Consolidate positions by market/pair.
-        #[arg(long)]
-        consolidation: Option<String>,
-        /// Rebase multiplier for xstocks data (rebased or base).
-        #[arg(long)]
-        rebase_multiplier: Option<String>,
-    },
-    /// Get ledger entries.
-    Ledgers {
-        /// Filter by asset or comma-delimited list of assets.
-        #[arg(long)]
-        asset: Option<String>,
-        /// Type of ledger to retrieve.
-        #[arg(long = "type")]
-        ledger_type: Option<String>,
-        /// Starting unix timestamp or ledger ID (exclusive).
-        #[arg(long)]
-        start: Option<String>,
-        /// Ending unix timestamp or ledger ID (inclusive).
-        #[arg(long)]
-        end: Option<String>,
-        /// Filter by asset class.
-        #[arg(long)]
-        aclass: Option<String>,
-        /// Result offset for pagination.
-        #[arg(long)]
-        offset: Option<u64>,
-        /// Omit count from result (faster for large ledgers).
-        #[arg(long)]
-        without_count: bool,
-        /// Rebase multiplier for xstocks data (rebased or base).
-        #[arg(long)]
-        rebase_multiplier: Option<String>,
-    },
-    /// Query specific ledger entries.
-    QueryLedgers {
-        /// Ledger IDs (comma-delimited, up to 20).
-        #[arg(num_args = 1..)]
-        ids: Vec<String>,
-        /// Include trades related to position in output.
-        #[arg(long)]
-        trades: bool,
-        /// Rebase multiplier for xstocks data (rebased or base).
-        #[arg(long)]
-        rebase_multiplier: Option<String>,
-    },
     /// Get trade volume and fees.
     Volume {
         /// Comma-delimited list of asset pairs for fee info.
@@ -401,60 +493,18 @@ pub enum Command {
         #[arg(long)]
         rebase_multiplier: Option<String>,
     },
-    /// Request an export report.
-    ExportReport {
-        /// Type of data to export (trades or ledgers).
+    /// Transfer between wallets.
+    WalletTransfer {
+        /// Asset.
+        asset: String,
+        /// Amount.
+        amount: String,
+        /// Source wallet.
         #[arg(long)]
-        report: String,
-        /// Description for the export.
+        from: String,
+        /// Destination wallet.
         #[arg(long)]
-        description: String,
-        /// File format (CSV or TSV).
-        #[arg(long, default_value = "CSV")]
-        format: String,
-        /// Comma-delimited list of fields to include (default: all).
-        #[arg(long)]
-        fields: Option<String>,
-        /// UNIX timestamp for report start time (default: 1st of current month).
-        #[arg(long)]
-        starttm: Option<String>,
-        /// UNIX timestamp for report end time (default: now).
-        #[arg(long)]
-        endtm: Option<String>,
-    },
-    /// Check export report status.
-    ExportStatus {
-        /// Report type (trades or ledgers).
-        #[arg(long)]
-        report: String,
-    },
-    /// Download export report.
-    ExportRetrieve {
-        /// Report ID.
-        report_id: String,
-        /// Output file path.
-        #[arg(long)]
-        output_file: Option<std::path::PathBuf>,
-    },
-    /// Delete export report.
-    ExportDelete {
-        /// Report ID.
-        report_id: String,
-    },
-
-    // === Trading ===
-    /// Place and manage spot orders.
-    Order {
-        #[command(subcommand)]
-        cmd: OrderCommand,
-    },
-
-    // === Funding ===
-    /// Deposit methods and addresses.
-    #[command(name = "deposit")]
-    Deposit {
-        #[command(subcommand)]
-        cmd: DepositSubcommand,
+        to: String,
     },
     /// Make a withdrawal.
     Withdraw {
@@ -483,87 +533,15 @@ pub enum Command {
         #[command(subcommand)]
         cmd: WithdrawalSubcommand,
     },
-    /// Transfer between wallets.
-    WalletTransfer {
-        /// Asset.
-        asset: String,
-        /// Amount.
-        amount: String,
-        /// Source wallet.
-        #[arg(long)]
-        from: String,
-        /// Destination wallet.
-        #[arg(long)]
-        to: String,
-    },
-
-    // === Earn ===
-    /// Earn/staking commands.
-    Earn {
-        #[command(subcommand)]
-        cmd: EarnCommand,
-    },
-
-    // === Subaccount ===
-    /// Subaccount management.
-    Subaccount {
-        #[command(subcommand)]
-        cmd: SubaccountCommand,
-    },
-
-    // === Futures ===
-    /// Futures trading and market data.
-    Futures {
-        #[command(subcommand)]
-        cmd: FuturesCommand,
-    },
-
-    // === WebSocket ===
     /// WebSocket streaming commands.
     Ws {
         #[command(subcommand)]
         cmd: WsCommand,
     },
-
-    // === Auth ===
-    /// Manage API credentials.
-    Auth {
-        #[command(subcommand)]
-        cmd: AuthCommand,
-    },
-
-    // === Paper Trading ===
-    /// Paper trading (simulated, no real money).
-    Paper {
-        #[command(subcommand)]
-        cmd: PaperCommand,
-    },
-
-    // === Utility ===
-    /// Guided first-time setup wizard.
-    Setup,
-    /// Interactive REPL shell.
-    Shell,
-
-    // === MCP ===
-    /// Start a built-in MCP (Model Context Protocol) server over stdio.
-    ///
-    /// Default exposes read-only services (market, account, paper).
-    /// Use `-s all` to include trade, funding, futures, earn, subaccount, and auth.
-    Mcp {
-        /// Comma-separated service groups, or "all". Default: market,account,paper.
-        #[arg(short, long, default_value = "market,account,paper")]
-        services: String,
-
-        /// Skip per-call confirmation for dangerous tools. Use only when the
-        /// calling agent is trusted and has been validated through paper trading.
-        #[arg(long)]
-        allow_dangerous: bool,
-    },
 }
 
 #[derive(Debug, Subcommand)]
-pub enum DepositSubcommand {
+pub(crate) enum DepositSubcommand {
     /// Get deposit methods for an asset.
     Methods {
         asset: String,
@@ -615,7 +593,7 @@ pub enum DepositSubcommand {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum WithdrawalSubcommand {
+pub(crate) enum WithdrawalSubcommand {
     /// Get withdrawal methods.
     Methods {
         #[arg(long)]
@@ -691,7 +669,7 @@ pub enum WithdrawalSubcommand {
 /// Shared render-free executor: routes a parsed command to its handler and
 /// returns the structured output without rendering. Used by both CLI dispatch
 /// and MCP tool execution.
-pub async fn execute_command(ctx: &AppContext, command: Command) -> Result<CommandOutput> {
+pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Result<CommandOutput> {
     match command {
         // === Public market commands ===
         Command::Status => {
@@ -1484,7 +1462,7 @@ pub async fn dispatch(ctx: &AppContext, command: Command) -> Result<()> {
     Ok(())
 }
 
-pub fn build_spot_client(ctx: &AppContext) -> Result<SpotClient> {
+pub(crate) fn build_spot_client(ctx: &AppContext) -> Result<SpotClient> {
     SpotClient::new(ctx.api_url.as_deref())
 }
 

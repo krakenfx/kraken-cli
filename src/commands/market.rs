@@ -8,7 +8,7 @@ use crate::errors::{KrakenError, Result};
 use crate::output::CommandOutput;
 
 #[derive(Debug, Subcommand)]
-pub enum MarketCommand {
+pub(crate) enum MarketCommand {
     /// Get system status and trading mode.
     Status,
     /// Get server time.
@@ -113,7 +113,7 @@ pub enum MarketCommand {
     },
 }
 
-pub async fn execute(
+pub(crate) async fn execute(
     cmd: &MarketCommand,
     client: &SpotClient,
     verbose: bool,

@@ -5,7 +5,7 @@
 /// to string type.
 use serde_json::{json, Value};
 
-pub fn clap_command_to_schema(cmd: &clap::Command) -> Value {
+pub(crate) fn clap_command_to_schema(cmd: &clap::Command) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
 
@@ -86,7 +86,7 @@ pub fn clap_command_to_schema(cmd: &clap::Command) -> Value {
 
 /// Injects a required `acknowledged` boolean into the schema for dangerous tools.
 /// The caller must set this to `true` to confirm intent.
-pub fn inject_dangerous_confirmation(schema: &mut Value) {
+pub(crate) fn inject_dangerous_confirmation(schema: &mut Value) {
     if let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) {
         let mut prop = serde_json::Map::new();
         prop.insert("type".into(), json!("boolean"));
@@ -109,7 +109,7 @@ pub fn inject_dangerous_confirmation(schema: &mut Value) {
 ///
 /// Covers global CLI flags (handled by the MCP execution context) and
 /// stdin-consuming flags that would corrupt the JSON-RPC transport.
-pub fn is_mcp_excluded_arg(id: &str) -> bool {
+pub(crate) fn is_mcp_excluded_arg(id: &str) -> bool {
     matches!(
         id,
         "output"
@@ -137,7 +137,7 @@ pub fn is_mcp_excluded_arg(id: &str) -> bool {
 ///
 /// `auth reset`: deletes stored credentials, a local-only destructive
 /// operation with no meaningful use from an MCP client.
-pub fn is_mcp_excluded_command(canonical_key: &str) -> bool {
+pub(crate) fn is_mcp_excluded_command(canonical_key: &str) -> bool {
     matches!(canonical_key, "auth set" | "auth reset")
 }
 
