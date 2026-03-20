@@ -16,8 +16,8 @@ pub(crate) enum FundingCommand {
         /// Asset being deposited (e.g. BTC, ETH).
         asset: String,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Rebase multiplier for xstocks data (rebased or base).
         #[arg(long)]
         rebase_multiplier: Option<String>,
@@ -32,8 +32,8 @@ pub(crate) enum FundingCommand {
         #[arg(long)]
         new: bool,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Amount to deposit (required for Bitcoin Lightning).
         #[arg(long)]
         amount: Option<String>,
@@ -44,8 +44,8 @@ pub(crate) enum FundingCommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Filter by deposit method name.
         #[arg(long)]
         method: Option<String>,
@@ -71,8 +71,8 @@ pub(crate) enum FundingCommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Filter by network.
         #[arg(long)]
         network: Option<String>,
@@ -86,8 +86,8 @@ pub(crate) enum FundingCommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Filter by withdrawal method.
         #[arg(long)]
         method: Option<String>,
@@ -116,8 +116,8 @@ pub(crate) enum FundingCommand {
         /// Amount to withdraw.
         amount: String,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Crypto address to confirm it matches the key (returns error if different).
         #[arg(long)]
         address: Option<String>,
@@ -134,8 +134,8 @@ pub(crate) enum FundingCommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Filter by withdrawal method name.
         #[arg(long)]
         method: Option<String>,
@@ -188,12 +188,12 @@ pub(crate) async fn execute(
     match cmd {
         FundingCommand::DepositMethods {
             asset,
-            aclass,
+            asset_class,
             rebase_multiplier,
         } => {
             let mut params = HashMap::new();
             params.insert("asset".into(), asset.clone());
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.insert("aclass".into(), ac.clone());
             }
             if let Some(rm) = rebase_multiplier {
@@ -208,7 +208,7 @@ pub(crate) async fn execute(
             asset,
             method,
             new,
-            aclass,
+            asset_class,
             amount,
         } => {
             let mut params = HashMap::new();
@@ -217,7 +217,7 @@ pub(crate) async fn execute(
             if *new {
                 params.insert("new".into(), "true".into());
             }
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.insert("aclass".into(), ac.clone());
             }
             if let Some(amt) = amount {
@@ -231,7 +231,7 @@ pub(crate) async fn execute(
         }
         FundingCommand::DepositStatus {
             asset,
-            aclass,
+            asset_class,
             method,
             start,
             end,
@@ -243,7 +243,7 @@ pub(crate) async fn execute(
             if let Some(a) = asset {
                 params.insert("asset".into(), a.clone());
             }
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.insert("aclass".into(), ac.clone());
             }
             if let Some(m) = method {
@@ -271,7 +271,7 @@ pub(crate) async fn execute(
         }
         FundingCommand::WithdrawalMethods {
             asset,
-            aclass,
+            asset_class,
             network,
             rebase_multiplier,
         } => {
@@ -279,7 +279,7 @@ pub(crate) async fn execute(
             if let Some(a) = asset {
                 params.insert("asset".into(), a.clone());
             }
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.insert("aclass".into(), ac.clone());
             }
             if let Some(n) = network {
@@ -295,7 +295,7 @@ pub(crate) async fn execute(
         }
         FundingCommand::WithdrawalAddresses {
             asset,
-            aclass,
+            asset_class,
             method,
             key,
             verified,
@@ -304,7 +304,7 @@ pub(crate) async fn execute(
             if let Some(a) = asset {
                 params.insert("asset".into(), a.clone());
             }
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.insert("aclass".into(), ac.clone());
             }
             if let Some(m) = method {
@@ -335,7 +335,7 @@ pub(crate) async fn execute(
             asset,
             key,
             amount,
-            aclass,
+            asset_class,
             address,
             max_fee,
             rebase_multiplier,
@@ -347,7 +347,7 @@ pub(crate) async fn execute(
             params.insert("asset".into(), asset.clone());
             params.insert("key".into(), key.clone());
             params.insert("amount".into(), amount.clone());
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.insert("aclass".into(), ac.clone());
             }
             if let Some(addr) = address {
@@ -366,7 +366,7 @@ pub(crate) async fn execute(
         }
         FundingCommand::WithdrawalStatus {
             asset,
-            aclass,
+            asset_class,
             method,
             start,
             end,
@@ -378,7 +378,7 @@ pub(crate) async fn execute(
             if let Some(a) = asset {
                 params.insert("asset".into(), a.clone());
             }
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.insert("aclass".into(), ac.clone());
             }
             if let Some(m) = method {

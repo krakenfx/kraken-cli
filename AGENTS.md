@@ -117,7 +117,7 @@ kraken order buy AAPLx/USD 0.1 --type limit --price 200 --asset-class tokenized_
 kraken order buy TSLAx/USD 0.5 --type limit --price 250 --asset-class tokenized_asset --leverage 3 -o json
 ```
 
-To list all xStocks assets: `kraken assets --aclass tokenized_asset -o json`
+To list all xStocks assets: `kraken assets --asset-class tokenized_asset -o json`
 
 ### Forex
 

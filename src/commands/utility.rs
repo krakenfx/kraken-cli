@@ -13,7 +13,10 @@ pub(crate) async fn setup(verbose: bool) -> Result<CommandOutput> {
     println!("================");
     println!();
     println!("This wizard will configure your Kraken API credentials.");
-    println!("Your API secret will be stored in ~/.config/kraken/config.toml (mode 0600).");
+    let config_path_display = config::config_path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "the kraken config file".into());
+    println!("Your API secret will be stored in {config_path_display} (mode 0600).");
     println!();
     println!("SECURITY NOTE: Never share your API secret. For automation, consider using");
     println!("environment variables (KRAKEN_API_KEY, KRAKEN_API_SECRET) instead of storing");
@@ -70,7 +73,8 @@ pub(crate) async fn setup(verbose: bool) -> Result<CommandOutput> {
     };
 
     config::save(&cfg)?;
-    Ok(CommandOutput::message(
-        "Setup complete! Credentials saved to ~/.config/kraken/config.toml",
-    ))
+    let msg = config::config_path()
+        .map(|p| format!("Setup complete! Credentials saved to {}", p.display()))
+        .unwrap_or_else(|_| "Setup complete! Credentials saved.".into());
+    Ok(CommandOutput::message(&msg))
 }
