@@ -386,8 +386,8 @@ kraken balance -o json -v 2>/dev/null | jq .
 |---------|-------------|
 | `kraken status` | System status |
 | `kraken server-time` | Server time |
-| `kraken assets [--asset BTC,ETH] [--aclass CLASS]` | Asset info |
-| `kraken pairs [--pair BTCUSD] [--aclass CLASS]` | Tradable pairs |
+| `kraken assets [--asset BTC,ETH] [--asset-class CLASS]` | Asset info |
+| `kraken pairs [--pair BTCUSD] [--asset-class CLASS]` | Tradable pairs |
 | `kraken ticker <PAIR...> [--asset-class tokenized_asset\|forex]` | Ticker data |
 | `kraken ohlc <PAIR> [--interval 60] [--asset-class tokenized_asset\|forex]` | OHLC candles |
 | `kraken orderbook <PAIR> [--count 25] [--asset-class tokenized_asset]` | L2 order book |
@@ -410,7 +410,7 @@ kraken balance -o json -v 2>/dev/null | jq .
 | `kraken trades-history [--type TYPE] [--trades] [--offset N] [--consolidate-taker] [--without-count] [--ledgers] [--rebase-multiplier rebased\|base]` | Trade history |
 | `kraken query-trades <TXID...> [--trades] [--rebase-multiplier rebased\|base]` | Query specific trades |
 | `kraken positions [--txid ID] [--show-pnl] [--consolidation market] [--rebase-multiplier rebased\|base]` | Open positions |
-| `kraken ledgers [--asset BTC --type trade] [--aclass CLASS] [--start TS] [--end TS] [--offset N] [--without-count] [--rebase-multiplier rebased\|base]` | Ledger entries |
+| `kraken ledgers [--asset BTC --type trade] [--asset-class CLASS] [--start TS] [--end TS] [--offset N] [--without-count] [--rebase-multiplier rebased\|base]` | Ledger entries |
 | `kraken query-ledgers <ID...> [--trades] [--rebase-multiplier rebased\|base]` | Query specific ledger entries |
 | `kraken volume [--pair BTCUSD] [--rebase-multiplier rebased\|base]` | Trade volume & fees |
 | `kraken export-report --report trades --description "desc" [--format CSV\|TSV] [--fields F] [--starttm TS] [--endtm TS]` | Request export |
@@ -438,14 +438,14 @@ kraken balance -o json -v 2>/dev/null | jq .
 
 | Command | Description |
 |---------|-------------|
-| `kraken deposit methods <ASSET> [--aclass currency\|tokenized_asset] [--rebase-multiplier rebased\|base]` | Deposit methods |
-| `kraken deposit addresses <ASSET> <METHOD> [--new] [--aclass CLASS] [--amount AMT]` | Deposit addresses |
-| `kraken deposit status [--asset A] [--aclass CLASS] [--method M] [--start TS] [--end TS] [--cursor C] [--limit N] [--rebase-multiplier rebased\|base]` | Deposit status |
-| `kraken withdraw <ASSET> <KEY> <AMOUNT> [--aclass CLASS] [--address ADDR] [--max-fee F] [--rebase-multiplier rebased\|base]` | Withdraw funds |
-| `kraken withdrawal methods [--asset A] [--aclass CLASS] [--network N] [--rebase-multiplier rebased\|base]` | Withdrawal methods |
-| `kraken withdrawal addresses [--asset A] [--aclass CLASS] [--method M] [--key K] [--verified true\|false]` | Withdrawal addresses |
+| `kraken deposit methods <ASSET> [--asset-class currency\|tokenized_asset] [--rebase-multiplier rebased\|base]` | Deposit methods |
+| `kraken deposit addresses <ASSET> <METHOD> [--new] [--asset-class CLASS] [--amount AMT]` | Deposit addresses |
+| `kraken deposit status [--asset A] [--asset-class CLASS] [--method M] [--start TS] [--end TS] [--cursor C] [--limit N] [--rebase-multiplier rebased\|base]` | Deposit status |
+| `kraken withdraw <ASSET> <KEY> <AMOUNT> [--asset-class CLASS] [--address ADDR] [--max-fee F] [--rebase-multiplier rebased\|base]` | Withdraw funds |
+| `kraken withdrawal methods [--asset A] [--asset-class CLASS] [--network N] [--rebase-multiplier rebased\|base]` | Withdrawal methods |
+| `kraken withdrawal addresses [--asset A] [--asset-class CLASS] [--method M] [--key K] [--verified true\|false]` | Withdrawal addresses |
 | `kraken withdrawal info <ASSET> <KEY> <AMOUNT>` | Withdrawal fee info |
-| `kraken withdrawal status [--asset A] [--aclass CLASS] [--method M] [--start TS] [--end TS] [--cursor C] [--limit N] [--rebase-multiplier rebased\|base]` | Withdrawal status |
+| `kraken withdrawal status [--asset A] [--asset-class CLASS] [--method M] [--start TS] [--end TS] [--cursor C] [--limit N] [--rebase-multiplier rebased\|base]` | Withdrawal status |
 | `kraken withdrawal cancel <ASSET> <REFID>` | Cancel pending withdrawal |
 | `kraken wallet-transfer <ASSET> <AMT> --from IIBAN --to IIBAN` | Wallet transfer |
 
