@@ -172,8 +172,8 @@ pub(crate) enum AccountCommand {
         #[arg(long)]
         end: Option<String>,
         /// Filter by asset class.
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Result offset for pagination.
         #[arg(long)]
         offset: Option<u64>,
@@ -495,7 +495,7 @@ pub(crate) async fn execute(
             ledger_type,
             start,
             end,
-            aclass,
+            asset_class,
             offset,
             without_count,
             rebase_multiplier,
@@ -513,7 +513,7 @@ pub(crate) async fn execute(
             if let Some(e) = end {
                 params.insert("end".into(), e.clone());
             }
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.insert("aclass".into(), ac.clone());
             }
             if let Some(o) = offset {

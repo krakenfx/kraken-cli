@@ -60,7 +60,7 @@
           "description": "Comma-delimited list of assets to query"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -83,7 +83,7 @@
           "description": "Comma-delimited list of pairs to query"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -643,7 +643,7 @@
           "description": "Ledger entry type filter"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -1390,7 +1390,7 @@
           "description": "Asset name"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -1433,7 +1433,7 @@
           "description": "Generate new address"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -1462,7 +1462,7 @@
           "description": "Filter by asset"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -1536,7 +1536,7 @@
           "description": "Amount to withdraw"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -1577,7 +1577,7 @@
           "description": "Filter by asset"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -1612,7 +1612,7 @@
           "description": "Filter by asset"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"
@@ -1685,7 +1685,7 @@
           "description": "Filter by asset"
         },
         {
-          "name": "--aclass",
+          "name": "--asset-class",
           "type": "string",
           "required": false,
           "description": "Asset class filter"

@@ -108,8 +108,8 @@ pub enum Command {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class filter.
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
     },
     /// Manage API credentials.
     Auth {
@@ -234,8 +234,8 @@ pub enum Command {
         #[arg(long)]
         end: Option<String>,
         /// Filter by asset class.
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Result offset for pagination.
         #[arg(long)]
         offset: Option<u64>,
@@ -333,8 +333,8 @@ pub enum Command {
         #[arg(long)]
         info: Option<String>,
         /// Asset class filter.
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
     },
     /// Paper trading (simulated, no real money).
     Paper {
@@ -515,8 +515,8 @@ pub enum Command {
         /// Amount to withdraw.
         amount: String,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Crypto address to confirm it matches the key.
         #[arg(long)]
         address: Option<String>,
@@ -546,8 +546,8 @@ pub(crate) enum DepositSubcommand {
     Methods {
         asset: String,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Rebase multiplier for xstocks data (rebased or base).
         #[arg(long)]
         rebase_multiplier: Option<String>,
@@ -559,8 +559,8 @@ pub(crate) enum DepositSubcommand {
         #[arg(long)]
         new: bool,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Amount to deposit (required for Bitcoin Lightning).
         #[arg(long)]
         amount: Option<String>,
@@ -570,8 +570,8 @@ pub(crate) enum DepositSubcommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         #[arg(long)]
         method: Option<String>,
         /// Start timestamp (deposits before this are excluded).
@@ -599,8 +599,8 @@ pub(crate) enum WithdrawalSubcommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Filter by network.
         #[arg(long)]
         network: Option<String>,
@@ -613,8 +613,8 @@ pub(crate) enum WithdrawalSubcommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Filter by withdrawal method.
         #[arg(long)]
         method: Option<String>,
@@ -636,8 +636,8 @@ pub(crate) enum WithdrawalSubcommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class (currency or tokenized_asset for xstocks).
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
         /// Filter by withdrawal method name.
         #[arg(long)]
         method: Option<String>,
@@ -680,19 +680,27 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
             let client = build_spot_client(ctx)?;
             market::execute(&MarketCommand::ServerTime, &client, ctx.verbose).await
         }
-        Command::Assets { asset, aclass } => {
+        Command::Assets { asset, asset_class } => {
             let client = build_spot_client(ctx)?;
             market::execute(
-                &MarketCommand::Assets { asset, aclass },
+                &MarketCommand::Assets { asset, asset_class },
                 &client,
                 ctx.verbose,
             )
             .await
         }
-        Command::Pairs { pair, info, aclass } => {
+        Command::Pairs {
+            pair,
+            info,
+            asset_class,
+        } => {
             let client = build_spot_client(ctx)?;
             market::execute(
-                &MarketCommand::Pairs { pair, info, aclass },
+                &MarketCommand::Pairs {
+                    pair,
+                    info,
+                    asset_class,
+                },
                 &client,
                 ctx.verbose,
             )
@@ -1025,7 +1033,7 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
             ledger_type,
             start,
             end,
-            aclass,
+            asset_class,
             offset,
             without_count,
             rebase_multiplier,
@@ -1037,7 +1045,7 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
                     ledger_type,
                     start,
                     end,
-                    aclass,
+                    asset_class,
                     offset,
                     without_count,
                     rebase_multiplier,
@@ -1170,29 +1178,29 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
             let funding_cmd = match cmd {
                 DepositSubcommand::Methods {
                     asset,
-                    aclass,
+                    asset_class,
                     rebase_multiplier,
                 } => FundingCommand::DepositMethods {
                     asset,
-                    aclass,
+                    asset_class,
                     rebase_multiplier,
                 },
                 DepositSubcommand::Addresses {
                     asset,
                     method,
                     new,
-                    aclass,
+                    asset_class,
                     amount,
                 } => FundingCommand::DepositAddresses {
                     asset,
                     method,
                     new,
-                    aclass,
+                    asset_class,
                     amount,
                 },
                 DepositSubcommand::Status {
                     asset,
-                    aclass,
+                    asset_class,
                     method,
                     start,
                     end,
@@ -1201,7 +1209,7 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
                     rebase_multiplier,
                 } => FundingCommand::DepositStatus {
                     asset,
-                    aclass,
+                    asset_class,
                     method,
                     start,
                     end,
@@ -1224,7 +1232,7 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
             asset,
             key,
             amount,
-            aclass,
+            asset_class,
             address,
             max_fee,
             rebase_multiplier,
@@ -1235,7 +1243,7 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
                     asset,
                     key,
                     amount,
-                    aclass,
+                    asset_class,
                     address,
                     max_fee,
                     rebase_multiplier,
@@ -1253,24 +1261,24 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
             let funding_cmd = match cmd {
                 WithdrawalSubcommand::Methods {
                     asset,
-                    aclass,
+                    asset_class,
                     network,
                     rebase_multiplier,
                 } => FundingCommand::WithdrawalMethods {
                     asset,
-                    aclass,
+                    asset_class,
                     network,
                     rebase_multiplier,
                 },
                 WithdrawalSubcommand::Addresses {
                     asset,
-                    aclass,
+                    asset_class,
                     method,
                     key,
                     verified,
                 } => FundingCommand::WithdrawalAddresses {
                     asset,
-                    aclass,
+                    asset_class,
                     method,
                     key,
                     verified,
@@ -1280,7 +1288,7 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
                 }
                 WithdrawalSubcommand::Status {
                     asset,
-                    aclass,
+                    asset_class,
                     method,
                     start,
                     end,
@@ -1289,7 +1297,7 @@ pub(crate) async fn execute_command(ctx: &AppContext, command: Command) -> Resul
                     rebase_multiplier,
                 } => FundingCommand::WithdrawalStatus {
                     asset,
-                    aclass,
+                    asset_class,
                     method,
                     start,
                     end,

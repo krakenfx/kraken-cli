@@ -19,8 +19,8 @@ pub(crate) enum MarketCommand {
         #[arg(long)]
         asset: Option<String>,
         /// Asset class filter.
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
     },
     /// Get tradable asset pairs.
     Pairs {
@@ -31,8 +31,8 @@ pub(crate) enum MarketCommand {
         #[arg(long)]
         info: Option<String>,
         /// Asset class filter.
-        #[arg(long)]
-        aclass: Option<String>,
+        #[arg(long, alias = "aclass")]
+        asset_class: Option<String>,
     },
     /// Get ticker information for one or more pairs.
     Ticker {
@@ -146,19 +146,23 @@ pub(crate) async fn execute(
                 data,
             ))
         }
-        MarketCommand::Assets { asset, aclass } => {
+        MarketCommand::Assets { asset, asset_class } => {
             let mut params = Vec::new();
             if let Some(a) = asset {
                 params.push(("asset", a.as_str()));
             }
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.push(("aclass", ac.as_str()));
             }
             let data = client.public_get("Assets", &params, verbose).await?;
             let (headers, rows) = parse_asset_table(&data);
             Ok(CommandOutput::new(data, headers, rows))
         }
-        MarketCommand::Pairs { pair, info, aclass } => {
+        MarketCommand::Pairs {
+            pair,
+            info,
+            asset_class,
+        } => {
             let mut params = Vec::new();
             if let Some(p) = pair {
                 params.push(("pair", p.as_str()));
@@ -166,7 +170,7 @@ pub(crate) async fn execute(
             if let Some(i) = info {
                 params.push(("info", i.as_str()));
             }
-            if let Some(ac) = aclass {
+            if let Some(ac) = asset_class {
                 params.push(("aclass", ac.as_str()));
             }
             let data = client.public_get("AssetPairs", &params, verbose).await?;
