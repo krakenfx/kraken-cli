@@ -14,9 +14,9 @@ Try these with your AI agent:
 
 > *"Install kraken-cli (https://github.com/krakenfx/kraken-cli) and build me a morning market brief."*
 
-> *"Watch ETH, SOL, and BTC for 30 seconds. Tell me which one you'd buy and why."*
+> *"Watch ETH, SOL, and BTC for 30 seconds. What are the pros and cons of buying each right now?"*
 
-> *"Look up AAPLx, TSLAx, and SPYx on xStocks. Which one is the better value right now?"*
+> *"Look up AAPLx, TSLAx, and SPYx on xStocks. Summarize how each is performing today."*
 
 > *"You are a Wall Street veteran with 20 years of experience. You have 1 minute. Paper trade BTC and show me your P&L."*
 
