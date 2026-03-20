@@ -429,6 +429,34 @@ mod tests {
     }
 
     #[test]
+    fn config_path_resolves_to_config_toml() {
+        let path = config_path().expect("config_path() should succeed on any desktop OS");
+        assert!(
+            path.ends_with("config.toml"),
+            "config path should end with config.toml, got: {}",
+            path.display()
+        );
+        let parent = path.parent().expect("config path should have a parent dir");
+        assert!(
+            parent.ends_with("kraken"),
+            "config dir should end with 'kraken', got: {}",
+            parent.display()
+        );
+    }
+
+    #[test]
+    fn config_path_display_is_valid_string() {
+        let display = config_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "the kraken config file".into());
+        assert!(!display.is_empty(), "display string should not be empty");
+        assert!(
+            display.contains("kraken"),
+            "display string should contain 'kraken', got: {display}"
+        );
+    }
+
+    #[test]
     fn config_roundtrip() {
         let cfg = KrakenConfig {
             auth: AuthConfig {
