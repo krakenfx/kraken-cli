@@ -27,6 +27,9 @@ pub(crate) enum PaperCommand {
         /// Fee rate as a decimal (default: 0.0026 = 0.26% Kraken Starter tier).
         #[arg(long)]
         fee_rate: Option<f64>,
+        /// Slippage rate as a decimal (default: 0.0 = no slippage simulation).
+        #[arg(long)]
+        slippage_rate: Option<f64>,
     },
     /// Reset paper account. Optionally override balance, currency, or fee rate.
     Reset {
@@ -39,6 +42,9 @@ pub(crate) enum PaperCommand {
         /// New fee rate (default: keep previous).
         #[arg(long)]
         fee_rate: Option<f64>,
+        /// Slippage rate as a decimal (default: keep previous).
+        #[arg(long)]
+        slippage_rate: Option<f64>,
     },
     /// Show paper balances.
     Balance,
@@ -93,17 +99,20 @@ pub(crate) async fn execute(
             balance,
             currency,
             fee_rate,
-        } => execute_init(*balance, currency, *fee_rate),
+            slippage_rate,
+        } => execute_init(*balance, currency, *fee_rate, *slippage_rate),
         PaperCommand::Reset {
             balance,
             currency,
             fee_rate,
+            slippage_rate,
         } => {
             let client = build_spot_client(ctx)?;
             execute_reset(
                 balance.as_ref().copied(),
                 currency.as_deref(),
                 fee_rate.as_ref().copied(),
+                slippage_rate.as_ref().copied(),
                 &client,
                 verbose,
             )
@@ -172,8 +181,8 @@ pub(crate) async fn execute(
     }
 }
 
-fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<CommandOutput> {
-    use crate::paper::DEFAULT_FEE_RATE;
+fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>, slippage_rate: Option<f64>) -> Result<CommandOutput> {
+    use crate::paper::{DEFAULT_FEE_RATE, DEFAULT_SLIPPAGE_RATE};
 
     let migrated = migrate_legacy_state()?;
     let path = paper_state_path()?;
@@ -198,16 +207,25 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<C
         ));
     }
 
-    let state = PaperState::with_fee_rate(balance, currency, rate);
+    let slip = slippage_rate.unwrap_or(DEFAULT_SLIPPAGE_RATE);
+    if !slip.is_finite() || !(0.0..=1.0).contains(&slip) {
+        return Err(KrakenError::Validation(
+            "Slippage rate must be between 0.0 and 1.0 (e.g., 0.001 for 0.1%)".into(),
+        ));
+    }
+
+    let state = PaperState::with_fee_rate(balance, currency, rate, slip);
     save_state(&state)?;
 
     let cur = currency.to_uppercase();
     let fee_pct = format!("{:.2}%", rate * 100.0);
+    let slip_pct = format!("{:.2}%", slip * 100.0);
     let pairs = vec![
         ("Mode".into(), "[PAPER] Simulated Trading".into()),
         ("Action".into(), "Account initialized".into()),
         ("Starting Balance".into(), format!("{balance:.2} {cur}")),
         ("Fee Rate".into(), fee_pct),
+        ("Slippage Rate".into(), slip_pct),
     ];
 
     Ok(CommandOutput::key_value(
@@ -217,6 +235,7 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<C
             "starting_balance": balance,
             "starting_currency": cur,
             "fee_rate": rate,
+            "slipage_rate": slip,
         })),
     ))
 }
@@ -239,6 +258,7 @@ async fn execute_reset(
     balance: Option<f64>,
     currency: Option<&str>,
     fee_rate: Option<f64>,
+    slippage_rate: Option<f64>,
     client: &SpotClient,
     verbose: bool,
 ) -> Result<CommandOutput> {
@@ -256,10 +276,17 @@ async fn execute_reset(
             ));
         }
     }
+    if let Some(s) = slippage_rate {
+        if !s.is_finite() || !(0.0..=1.0).contains(&s) {
+            return Err(KrakenError::Validation(
+                "Slippage rate must be between 0.0 and 1.0 (e.g., 0.001 for 0.1%)".into(),
+            ))
+        }
+    }
 
     let mut state = load_state()?;
     reconcile_best_effort(&mut state, client, verbose).await;
-    state.reset_with(balance, currency, fee_rate);
+    state.reset_with(balance, currency, fee_rate, slippage_rate);
     save_state(&state)?;
 
     let bal = state.starting_balance;
@@ -271,6 +298,7 @@ async fn execute_reset(
         ("Action".into(), "Account reset".into()),
         ("Starting Balance".into(), format!("{bal:.2} {cur}")),
         ("Fee Rate".into(), fee_pct),
+        ("Slippage Rate".into(), format!("{:.2}%", state.slippage_rate * 100.0))
     ];
 
     Ok(CommandOutput::key_value(
@@ -280,6 +308,7 @@ async fn execute_reset(
             "starting_balance": bal,
             "starting_currency": cur,
             "fee_rate": state.fee_rate,
+            "slippage_rate": state.slippage_rate,
         })),
     ))
 }
