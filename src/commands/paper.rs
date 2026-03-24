@@ -8,7 +8,7 @@ use crate::errors::{KrakenError, Result};
 use crate::output::{self, CommandOutput};
 use crate::paper::{
     load_state, migrate_legacy_state, paper_state_path, parse_pair, save_state, OrderSide,
-    PaperState, PaperTrade,
+    PaperConfig, PaperState, PaperTrade,
 };
 use crate::{build_spot_client, AppContext};
 
@@ -210,7 +210,12 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>, slippage_ra
     let slip = slippage_rate.unwrap_or(DEFAULT_SLIPPAGE_RATE);
     validate_slippage_rate(slip)?;
 
-    let state = PaperState::with_fee_rate(balance, currency, rate, slip);
+    let state = PaperState::with_config(PaperConfig {
+        balance,
+        currency: currency.to_string(),
+        fee_rate: rate,
+        slippage_rate: slip,
+    });
     save_state(&state)?;
 
     let cur = currency.to_uppercase();
@@ -758,6 +763,11 @@ async fn execute_status(client: &SpotClient, verbose: bool) -> Result<CommandOut
             "Unrealized P&L".into(),
             format!("{pnl:+.2} {sc} ({pnl_pct:+.2}%){partial_marker}"),
         ),
+        ("Fee Rate".into(), format!("{:.2}%", state.fee_rate * 100.0)),
+        (
+            "Slippage Rate".into(),
+            format!("{:.2}%", state.slippage_rate * 100.0),
+        ),
         ("Total Trades".into(), state.filled_trades.len().to_string()),
         ("Open Orders".into(), state.open_orders.len().to_string()),
         (
@@ -780,6 +790,8 @@ async fn execute_status(client: &SpotClient, verbose: bool) -> Result<CommandOut
             "unrealized_pnl": pnl,
             "unrealized_pnl_pct": pnl_pct,
             "valuation_complete": valuation_complete,
+            "fee_rate": state.fee_rate,
+            "slippage_rate": state.slippage_rate,
             "total_trades": state.filled_trades.len(),
             "open_orders": state.open_orders.len(),
         })),

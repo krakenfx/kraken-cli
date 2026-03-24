@@ -13,6 +13,14 @@ pub(crate) const DEFAULT_FEE_RATE: f64 = 0.0026;
 
 pub(crate) const DEFAULT_SLIPPAGE_RATE: f64 = 0.0;
 
+#[derive(Debug, Clone)]
+pub(crate) struct PaperConfig {
+    pub(crate) balance: f64,
+    pub(crate) currency: String,
+    pub(crate) fee_rate: f64,
+    pub(crate) slippage_rate: f64,
+}
+
 const KNOWN_QUOTES: &[&str] = &[
     "USDT", "USDC", "USD", "EUR", "GBP", "CAD", "AUD", "JPY", "CHF", "ETH", "BTC", "DAI",
 ];
@@ -139,23 +147,28 @@ impl Default for PaperState {
 
 impl PaperState {
     pub(crate) fn new(balance: f64, currency: &str) -> Self {
-        Self::with_fee_rate(balance, currency, DEFAULT_FEE_RATE, DEFAULT_SLIPPAGE_RATE)
+        Self::with_config(PaperConfig {
+            balance,
+            currency: currency.to_string(),
+            fee_rate: DEFAULT_FEE_RATE,
+            slippage_rate: DEFAULT_SLIPPAGE_RATE,
+        })
     }
 
-    pub(crate) fn with_fee_rate(balance: f64, currency: &str, fee_rate: f64, slippage_rate: f64) -> Self {
+    pub(crate) fn with_config(config: PaperConfig) -> Self {
         let now = Utc::now().to_rfc3339();
-        let cur = currency.to_uppercase();
+        let cur = config.currency.to_uppercase();
         let mut balances = HashMap::new();
-        balances.insert(cur.clone(), balance);
+        balances.insert(cur.clone(), config.balance);
         Self {
             balances,
             reserved: HashMap::new(),
             open_orders: Vec::new(),
             filled_trades: Vec::new(),
-            starting_balance: balance,
+            starting_balance: config.balance,
             starting_currency: cur,
-            fee_rate,
-            slippage_rate,
+            fee_rate: config.fee_rate,
+            slippage_rate: config.slippage_rate,
             created_at: now.clone(),
             updated_at: now,
             next_order_id: 1,
@@ -165,11 +178,12 @@ impl PaperState {
 
     #[cfg(test)]
     pub(crate) fn reset(&mut self) {
-        let balance = self.starting_balance;
-        let currency = self.starting_currency.clone();
-        let fee_rate = self.fee_rate;
-        let slippage_rate = self.slippage_rate;
-        *self = Self::with_fee_rate(balance, &currency, fee_rate, slippage_rate);
+        *self = Self::with_config(PaperConfig {
+            balance: self.starting_balance,
+            currency: self.starting_currency.clone(),
+            fee_rate: self.fee_rate,
+            slippage_rate: self.slippage_rate,
+        });
     }
 
     pub(crate) fn reset_with(
@@ -179,13 +193,14 @@ impl PaperState {
         fee_rate: Option<f64>,
         slippage_rate: Option<f64>,
     ) {
-        let bal = balance.unwrap_or(self.starting_balance);
-        let cur = currency
-            .map(|c| c.to_uppercase())
-            .unwrap_or_else(|| self.starting_currency.clone());
-        let fee = fee_rate.unwrap_or(self.fee_rate);
-        let slip = slippage_rate.unwrap_or(self.slippage_rate);
-        *self = Self::with_fee_rate(bal, &cur, fee, slip);
+        *self = Self::with_config(PaperConfig {
+            balance: balance.unwrap_or(self.starting_balance),
+            currency: currency
+                .map(|c| c.to_uppercase())
+                .unwrap_or_else(|| self.starting_currency.clone()),
+            fee_rate: fee_rate.unwrap_or(self.fee_rate),
+            slippage_rate: slippage_rate.unwrap_or(self.slippage_rate),
+        });
     }
 
     pub(crate) fn available_balance(&self, asset: &str) -> f64 {
@@ -691,7 +706,7 @@ mod tests {
 
     #[test]
     fn market_buy_applies_slippage() {
-        let mut state = PaperState::with_fee_rate(10000.0, "USD", 0.0, 0.001);
+        let mut state = PaperState::with_config(PaperConfig { balance: 10000.0, currency: "USD".into(), fee_rate: 0.0, slippage_rate: 0.001 });
         let trade = state
             .place_market_order(OrderSide::Buy, "BTCUSD", 0.1, 50000.0, 49900.0)
             .unwrap();
@@ -701,7 +716,7 @@ mod tests {
 
     #[test]
     fn market_sell_applies_slippage() {
-        let mut state = PaperState::with_fee_rate(0.0, "USD", 0.0, 0.001);
+        let mut state = PaperState::with_config(PaperConfig { balance: 0.0, currency: "USD".into(), fee_rate: 0.0, slippage_rate: 0.001 });
         state.balances.insert("BTC".into(), 1.0);
         let trade = state
             .place_market_order(OrderSide::Sell, "BTCUSD", 1.0, 50000.0, 50000.0)
@@ -722,14 +737,14 @@ mod tests {
 
     #[test]
     fn reset_with_preserves_slippage() {
-        let mut state = PaperState::with_fee_rate(10000.0, "USD", 0.0026, 0.001);
+        let mut state = PaperState::with_config(PaperConfig { balance: 10000.0, currency: "USD".into(), fee_rate: 0.0026, slippage_rate: 0.001 });
         state.reset_with(Some(5000.0), None, None, None);
         assert!((state.slippage_rate - 0.001).abs() < 1e-10);
     }
 
     #[test]
     fn reset_with_updates_slippage() {
-        let mut state = PaperState::with_fee_rate(10000.0, "USD", 0.0026, 0.001);
+        let mut state = PaperState::with_config(PaperConfig { balance: 10000.0, currency: "USD".into(), fee_rate: 0.0026, slippage_rate: 0.001 });
         state.reset_with(None, None, None, Some(0.002));
         assert!((state.slippage_rate - 0.002).abs() < 1e-10);
     }
