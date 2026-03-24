@@ -41,7 +41,7 @@ pub(crate) struct PaperState {
     pub(crate) starting_currency: String,
     #[serde(default = "default_fee_rate")]
     pub(crate) fee_rate: f64,
-    #[serde(default)]
+    #[serde(default = "default_slippage_rate")]
     pub(crate) slippage_rate: f64,
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
@@ -57,6 +57,10 @@ fn default_next_order_id() -> u64 {
 
 fn default_fee_rate() -> f64 {
     DEFAULT_FEE_RATE
+}
+
+fn default_slippage_rate() -> f64 {
+    DEFAULT_SLIPPAGE_RATE
 }
 
 fn default_starting_balance() -> f64 {
@@ -1361,5 +1365,23 @@ mod tests {
         let state: PaperState =
             serde_json::from_str(json).expect("must deserialize without next_order_id");
         assert_eq!(state.next_order_id, 1);
+    }
+
+    #[test]
+    fn deserialize_state_missing_slippage_rate_defaults_to_zero() {
+        let json = r#"{
+            "balances": {"USD": 10000.0},
+            "reserved": {},
+            "open_orders": [],
+            "filled_trades": [],
+            "fee_rate": 0.0026,
+            "starting_balance": 10000.0,
+            "starting_currency": "USD",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        }"#;
+        let state: PaperState =
+            serde_json::from_str(json).expect("must deserialize without slippage_rate");
+        assert_eq!(state.slippage_rate, 0.0);
     }
 }

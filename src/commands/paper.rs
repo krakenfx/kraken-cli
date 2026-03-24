@@ -28,7 +28,7 @@ pub(crate) enum PaperCommand {
         #[arg(long)]
         fee_rate: Option<f64>,
         /// Slippage rate as a decimal (default: 0.0 = no slippage simulation).
-        #[arg(long)]
+        #[arg(long, alias = "slippage")]
         slippage_rate: Option<f64>,
     },
     /// Reset paper account. Optionally override balance, currency, or fee rate.
@@ -43,7 +43,7 @@ pub(crate) enum PaperCommand {
         #[arg(long)]
         fee_rate: Option<f64>,
         /// Slippage rate as a decimal (default: keep previous).
-        #[arg(long)]
+        #[arg(long, alias = "slippage")]
         slippage_rate: Option<f64>,
     },
     /// Show paper balances.
@@ -208,11 +208,7 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>, slippage_ra
     }
 
     let slip = slippage_rate.unwrap_or(DEFAULT_SLIPPAGE_RATE);
-    if !slip.is_finite() || !(0.0..=1.0).contains(&slip) {
-        return Err(KrakenError::Validation(
-            "Slippage rate must be between 0.0 and 1.0 (e.g., 0.001 for 0.1%)".into(),
-        ));
-    }
+    validate_slippage_rate(slip)?;
 
     let state = PaperState::with_fee_rate(balance, currency, rate, slip);
     save_state(&state)?;
@@ -235,7 +231,7 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>, slippage_ra
             "starting_balance": balance,
             "starting_currency": cur,
             "fee_rate": rate,
-            "slipage_rate": slip,
+            "slippage_rate": slip,
         })),
     ))
 }
@@ -277,11 +273,7 @@ async fn execute_reset(
         }
     }
     if let Some(s) = slippage_rate {
-        if !s.is_finite() || !(0.0..=1.0).contains(&s) {
-            return Err(KrakenError::Validation(
-                "Slippage rate must be between 0.0 and 1.0 (e.g., 0.001 for 0.1%)".into(),
-            ))
-        }
+        validate_slippage_rate(s)?;
     }
 
     let mut state = load_state()?;
@@ -365,6 +357,15 @@ async fn execute_balance(client: &SpotClient, verbose: bool) -> Result<CommandOu
         headers,
         rows,
     ))
+}
+
+fn validate_slippage_rate(rate: f64) -> Result<()> {
+    if !rate.is_finite() || !(0.0..=1.0).contains(&rate) {
+        return Err(KrakenError::Validation(
+            "Slippage rate must be between 0.0 and 1.0 (e.g., 0.001 for 0.1%)".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_order_type(order_type_str: &str) -> Result<bool> {
@@ -957,6 +958,32 @@ mod tests {
         assert!(validate_order_type("Limit").unwrap());
         assert!(validate_order_type("LIMIT").unwrap());
         assert!(!validate_order_type("Market").unwrap());
+    }
+
+    #[test]
+    fn test_slippage_validation_negative() {
+        assert!(validate_slippage_rate(-0.001).is_err());
+    }
+
+    #[test]
+    fn test_slippage_validation_above_one() {
+        assert!(validate_slippage_rate(1.001).is_err());
+    }
+
+    #[test]
+    fn test_slippage_validation_nan() {
+        assert!(validate_slippage_rate(f64::NAN).is_err());
+    }
+
+    #[test]
+    fn test_slippage_validation_infinity() {
+        assert!(validate_slippage_rate(f64::INFINITY).is_err());
+    }
+
+    #[test]
+    fn test_slippage_validation_zero_and_one_are_valid() {
+        assert!(validate_slippage_rate(0.0).is_ok());
+        assert!(validate_slippage_rate(1.0).is_ok());
     }
 
     #[test]
