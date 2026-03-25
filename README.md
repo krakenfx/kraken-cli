@@ -35,6 +35,7 @@ Try these with your AI agent:
 - [Commands](#commands)
 - [API Keys & Configuration](#api-keys--configuration)
 - [Verifying Binaries](#verifying-binaries)
+- [Contributing](#contributing)
 - [License & Disclaimer](#license--disclaimer)
 
 ## Installation
@@ -731,6 +732,10 @@ cargo build                    # dev build
 cargo test                     # run tests
 cargo clippy -- -D warnings    # lint
 ```
+
+## Contributing
+
+Bug reports, feature requests, and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License & Disclaimer
 
