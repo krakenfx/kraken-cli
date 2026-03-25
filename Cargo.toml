@@ -1,6 +1,6 @@
 [package]
 name = "kraken-cli"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 description = "Kraken CLI — trade, query, and manage your Kraken account from the terminal"
 license = "MIT"
