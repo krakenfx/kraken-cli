@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **This is experimental software. Commands execute real financial transactions. Test with `kraken paper` before real funds. See `DISCLAIMER.md`.**
+> **This is experimental software. Commands execute real financial transactions. Test with `kraken paper` (spot) or `kraken futures paper` (futures) before real funds. See `DISCLAIMER.md`.**
 
 Integration guidance for Claude Code, Claude Desktop, and other Anthropic-powered agents interacting with `kraken-cli`.
 
@@ -36,14 +36,14 @@ Public market data commands (ticker, orderbook, ohlc, trades, spreads, status) r
 - stdout is always valid JSON on success, or a JSON error envelope on failure.
 - The `error` field in error envelopes is a stable category code: `api`, `auth`, `network`, `rate_limit`, `validation`, `config`, `websocket`, `io`, `parse`.
 - WebSocket commands emit NDJSON (one JSON object per line).
-- Paper trading commands (`kraken paper ...`) use live prices but no real money. No auth needed.
+- Paper trading commands (`kraken paper ...` for spot, `kraken futures paper ...` for futures) use live prices but no real money. No auth needed.
 - Exit code 0 = success, non-zero = failure.
 
 ## Safety Rules
 
-1. Never execute any command marked `dangerous` without explicit user confirmation. The `dangerous` field in `agents/tool-catalog.json` is the authoritative list (32 commands).
+1. Never execute any command marked `dangerous` without explicit user confirmation. The `dangerous` field in `agents/tool-catalog.json` is the authoritative list (34 commands).
 2. Use `--validate` flag to dry-run order commands before submitting.
-3. Use `kraken paper` commands for testing strategies safely.
+3. Use `kraken paper` (spot) or `kraken futures paper` (futures) commands for testing strategies safely.
 4. Gate all order placement, cancellation, withdrawal, transfer, and staking operations behind user approval.
 5. Never log or display API secrets.
 
@@ -94,13 +94,24 @@ Futures use a separate engine with separate credentials. Symbols: `PF_XBTUSD` (p
 kraken futures order buy PF_XBTUSD 1 --type limit --price 50000 -o json
 ```
 
-### Paper trading (no auth, safe)
+### Spot paper trading (no auth, safe)
 
 ```bash
 kraken paper init --balance 10000 -o json
 kraken paper buy BTCUSD 0.01 -o json
 kraken paper status -o json
 kraken paper reset -o json
+```
+
+### Futures paper trading (no auth, safe)
+
+```bash
+kraken futures paper init --balance 10000 -o json
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market -o json
+kraken futures paper sell PF_ETHUSD 5 --leverage 20 --type market -o json
+kraken futures paper positions -o json
+kraken futures paper status -o json
+kraken futures paper reset -o json
 ```
 
 ### Error handling
@@ -121,5 +132,5 @@ Load `agents/tool-catalog.json` for the full machine-readable command contract. 
 
 - `AGENTS.md`: Complete agent integration guide
 - `CONTEXT.md`: Runtime-optimized context for tool-using agents
-- `agents/tool-catalog.json`: All 134 commands with parameters
+- `agents/tool-catalog.json`: All 151 commands with parameters
 - `agents/error-catalog.json`: Error categories with retry guidance

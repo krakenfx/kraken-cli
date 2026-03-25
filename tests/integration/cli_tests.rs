@@ -63,6 +63,7 @@ fn futures_help_shows_subcommands() {
         .stdout(predicate::str::contains("feeschedules"))
         .stdout(predicate::str::contains("accounts"))
         .stdout(predicate::str::contains("positions"))
+        .stdout(predicate::str::contains("paper"))
         .stdout(predicate::str::contains("ws"));
 }
 
@@ -872,4 +873,539 @@ fn paper_status_json_output_parsed() {
         serde_json::from_slice(&output.stdout).expect("output must be valid JSON");
     assert_eq!(json["mode"], "paper");
     assert!(json["valuation_complete"].is_boolean());
+}
+
+// --- Futures Paper Trading integration tests ---
+
+#[test]
+fn futures_paper_help_shows_subcommands() {
+    kraken()
+        .args(["futures", "paper", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("init"))
+        .stdout(predicate::str::contains("reset"))
+        .stdout(predicate::str::contains("balance"))
+        .stdout(predicate::str::contains("buy"))
+        .stdout(predicate::str::contains("sell"))
+        .stdout(predicate::str::contains("orders"))
+        .stdout(predicate::str::contains("cancel"))
+        .stdout(predicate::str::contains("cancel-all"))
+        .stdout(predicate::str::contains("positions"))
+        .stdout(predicate::str::contains("fills"))
+        .stdout(predicate::str::contains("history"))
+        .stdout(predicate::str::contains("leverage"))
+        .stdout(predicate::str::contains("set-leverage"))
+        .stdout(predicate::str::contains("status"))
+        .stdout(predicate::str::contains("batch-order"))
+        .stdout(predicate::str::contains("order-status"))
+        .stdout(predicate::str::contains("edit-order"));
+}
+
+#[test]
+fn futures_paper_init_table_output_labeled() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"));
+}
+
+#[test]
+fn futures_paper_init_json_output_labeled() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"mode\""),
+        "JSON output must contain mode field"
+    );
+    assert!(
+        stdout.contains("\"futures_paper\""),
+        "JSON mode must be futures_paper"
+    );
+}
+
+#[test]
+fn futures_paper_init_json_output_parsed() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output must be valid JSON");
+    assert_eq!(json["mode"], "futures_paper");
+    assert_eq!(json["starting_collateral"], 10000.0);
+}
+
+#[test]
+fn futures_paper_init_custom_balance_and_currency() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args([
+            "futures",
+            "paper",
+            "init",
+            "--balance",
+            "50000",
+            "--currency",
+            "EUR",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("50000"))
+        .stdout(predicate::str::contains("EUR"));
+}
+
+#[test]
+fn futures_paper_init_prevents_double_init() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already initialized"));
+}
+
+#[test]
+fn futures_paper_commands_fail_without_init() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "balance"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not initialized"));
+}
+
+#[test]
+fn futures_paper_status_fails_without_init() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "status"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not initialized"));
+}
+
+#[test]
+fn futures_paper_balance_table_labeled() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "balance"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"));
+}
+
+#[test]
+fn futures_paper_status_table_labeled() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"));
+}
+
+#[test]
+fn futures_paper_status_json_output_parsed() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    let output = kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "status", "--output", "json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output must be valid JSON");
+    assert_eq!(json["mode"], "futures_paper");
+    assert!(json["starting_collateral"].is_number());
+    assert!(json["collateral"].is_number());
+    assert!(json["equity"].is_number());
+    assert!(json["currency"].is_string());
+}
+
+#[test]
+fn futures_paper_history_table_labeled() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "history"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FP]"));
+}
+
+#[test]
+fn futures_paper_reset_works() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "reset"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"))
+        .stdout(predicate::str::contains("reset"));
+}
+
+#[test]
+fn futures_paper_orders_shows_empty_table() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "orders"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FP]"));
+}
+
+#[test]
+fn futures_paper_cancel_all_without_orders() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "cancel-all"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"));
+}
+
+#[test]
+fn futures_paper_cancel_nonexistent_order_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "cancel", "--order-id", "FP-99999"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"));
+}
+
+#[test]
+fn futures_paper_positions_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "positions"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FP]"));
+}
+
+#[test]
+fn futures_paper_fills_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "fills"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FP]"));
+}
+
+#[test]
+fn futures_paper_leverage_shows_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "leverage"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FP]"));
+}
+
+#[test]
+fn futures_paper_set_leverage_works() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "set-leverage", "PF_XBTUSD", "10"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"))
+        .stdout(predicate::str::contains("PF_XBTUSD"))
+        .stdout(predicate::str::contains("10"));
+}
+
+#[test]
+fn futures_paper_commands_work_after_failed_auth() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .env_remove("KRAKEN_API_KEY")
+        .env_remove("KRAKEN_API_SECRET")
+        .args(["balance"])
+        .assert()
+        .failure();
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .env_remove("KRAKEN_API_KEY")
+        .env_remove("KRAKEN_API_SECRET")
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"));
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .env_remove("KRAKEN_API_KEY")
+        .env_remove("KRAKEN_API_SECRET")
+        .args(["futures", "paper", "balance"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"));
+}
+
+#[test]
+fn futures_paper_state_in_correct_path() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+
+    let mac_path = dir
+        .path()
+        .join("Library/Application Support/kraken/paper/futures_state.json");
+    let xdg_path = dir.path().join(".config/kraken/paper/futures_state.json");
+    assert!(
+        mac_path.exists() || xdg_path.exists(),
+        "State file must be at kraken/paper/futures_state.json; checked {mac_path:?} and {xdg_path:?}"
+    );
+}
+
+#[test]
+fn futures_paper_state_isolated_from_spot() {
+    let dir = tempfile::tempdir().unwrap();
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["paper", "init"])
+        .assert()
+        .success();
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["paper", "balance"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[PAPER]"));
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "balance"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[FUTURES PAPER]"));
+}
+
+#[test]
+fn futures_paper_buy_fails_gracefully_without_network() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .env(
+            "KRAKEN_FUTURES_URL",
+            "https://futures.kraken.com/override-test/",
+        )
+        .args([
+            "futures",
+            "paper",
+            "buy",
+            "PF_XBTUSD",
+            "1",
+            "--type",
+            "market",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty().not());
+}
+
+#[test]
+fn futures_paper_buy_rejects_reserved_symbol_chars() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args([
+            "futures",
+            "paper",
+            "buy",
+            "PF_XBT/USD",
+            "1",
+            "--type",
+            "market",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("must not contain '/'"));
+}
+
+#[test]
+fn futures_paper_sell_fails_gracefully_without_network() {
+    let dir = tempfile::tempdir().unwrap();
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["futures", "paper", "init"])
+        .assert()
+        .success();
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .env(
+            "KRAKEN_FUTURES_URL",
+            "https://futures.kraken.com/override-test/",
+        )
+        .args([
+            "futures",
+            "paper",
+            "sell",
+            "PF_XBTUSD",
+            "1",
+            "--type",
+            "market",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::is_empty().not());
 }

@@ -20,6 +20,8 @@ Try these with your AI agent:
 
 > *"You are a Wall Street veteran with 20 years of experience. You have 1 minute. Paper trade BTC and show me your P&L."*
 
+> *"Open a 10x leveraged long on BTC futures paper with $5,000 collateral. Set a trailing stop at 3%."*
+
 ---
 
 > [!CAUTION]
@@ -99,7 +101,7 @@ If you're an AI agent or building one, start here:
 |----------|-------------|
 | [CONTEXT.md](CONTEXT.md) | Runtime context for tool-using agents |
 | [AGENTS.md](AGENTS.md) | Full integration guide: auth, invocation, errors, rate limits |
-| [agents/tool-catalog.json](agents/tool-catalog.json) | 134 commands with parameter schemas, types, and safety flags |
+| [agents/tool-catalog.json](agents/tool-catalog.json) | 151 commands with parameter schemas, types, and safety flags |
 | [agents/error-catalog.json](agents/error-catalog.json) | 9 error categories with retry guidance |
 | [skills/](skills/) | 50 goal-oriented SKILL.md workflow packages |
 | [CLAUDE.md](CLAUDE.md) | Claude-specific integration guidance |
@@ -122,8 +124,8 @@ Most CLIs are built for humans at a terminal. This one is built for LLM-based ag
 - **Structured output by default.** Every command supports `-o json`. No screen-scraping, no regex on table borders.
 - **Consistent error envelopes.** Errors are JSON objects with a stable `error` field (`auth`, `rate_limit`, `validation`, `api`, `network`). Agents route on `error` without parsing human sentences.
 - **Predictable exit codes.** Success is 0, failure is non-zero. Combined with JSON errors on stdout, agents detect and classify failures programmatically.
-- **Paper trading for safe iteration.** Test strategies against live prices with `kraken paper` commands. No API keys, no real money, same interface.
-- **Full API surface.** 134 commands covering Spot, Futures, xStocks, Forex, Funding, Earn, Subaccounts, and WebSocket streaming.
+- **Paper trading for safe iteration.** Test strategies against live prices with `kraken paper` (spot) and `kraken futures paper` (perpetual futures) commands. No API keys, no real money, same interface as live trading.
+- **Full API surface.** 151 commands covering Spot, Futures, xStocks, Forex, Funding, Earn, Subaccounts, WebSocket streaming, and paper trading for both spot and futures.
 - **Built-in MCP server.** Native Model Context Protocol support over stdio. No subprocess wrappers needed.
 - **Rate-limit aware.** No client-side throttling. When the Kraken API rejects a request due to rate limits, the CLI returns an enriched error with `suggestion`, `retryable`, and `docs_url` fields so agents can read the documentation and adapt their strategy.
 
@@ -290,6 +292,7 @@ Gemini CLI users can install directly: `gemini extensions install https://github
 | earn | Yes | Staking (dangerous) |
 | subaccount | Yes | Transfers (dangerous) |
 | futures | Mixed | Orders (dangerous) |
+| futures-paper | No | None (simulation) |
 | paper | No | None (simulation) |
 | auth | No | Read-only |
 
@@ -359,7 +362,7 @@ kraken balance -o json -v 2>/dev/null | jq .
 
 ## Commands
 
-134 commands across 12 groups. For machine-readable parameter schemas, load [agents/tool-catalog.json](agents/tool-catalog.json).
+151 commands across 13 groups. For machine-readable parameter schemas, load [agents/tool-catalog.json](agents/tool-catalog.json).
 
 | Group | Commands | Auth | Description |
 |-------|----------|------|-------------|
@@ -370,13 +373,14 @@ kraken balance -o json -v 2>/dev/null | jq .
 | earn | 6 | Yes | Staking strategies and allocations |
 | subaccount | 2 | Yes | Create subaccounts, transfer between accounts |
 | futures | 39 | Mixed | Futures market data and trading |
+| futures-paper | 17 | No | Futures paper trading simulation with live prices |
 | futures-ws | 9 | Mixed | Futures WebSocket streaming |
 | websocket | 15 | Mixed | Spot WebSocket v2 streaming and request/response |
-| paper | 10 | No | Paper trading simulation with live prices |
+| paper | 10 | No | Spot paper trading simulation with live prices |
 | auth | 4 | No | Credential management |
 | utility | 2 | No | Interactive setup and REPL shell |
 
-32 commands are marked `dangerous` (orders, withdrawals, transfers, cancel-all, staking). The authoritative list is the `dangerous` field in [agents/tool-catalog.json](agents/tool-catalog.json).
+34 commands are marked `dangerous` (orders, withdrawals, transfers, cancel-all, staking). The authoritative list is the `dangerous` field in [agents/tool-catalog.json](agents/tool-catalog.json).
 
 <details>
 <summary>Full command reference</summary>
@@ -523,6 +527,28 @@ kraken balance -o json -v 2>/dev/null | jq .
 | `kraken futures set-subaccount-status <UID> <ENABLED>` | Set subaccount trading status (auth) |
 | `kraken futures wallet-transfer <FROM> <TO> <UNIT> <AMOUNT>` | Transfer between wallets (auth) |
 
+### Futures: Paper Trading (No Auth)
+
+| Command | Description |
+|---------|-------------|
+| `kraken futures paper init [--balance 10000] [--currency USD] [--fee-rate 0.0005]` | Initialize futures paper account |
+| `kraken futures paper reset [--balance B] [--currency C] [--fee-rate R]` | Reset account (clear positions, orders, fills) |
+| `kraken futures paper balance` | Collateral, used margin, available margin, unrealized P&L |
+| `kraken futures paper status` | Account summary: equity, P&L since start, unrealized P&L, position/order counts |
+| `kraken futures paper buy <SYM> <SIZE> [--leverage L] [--type TYPE] [--price P] [--stop-price SP] [--trigger-signal mark\|index\|last] [--client-order-id ID] [--reduce-only] [--trailing-stop-max-deviation V] [--trailing-stop-deviation-unit percent\|quote_currency]` | Paper long (all 8 order types) |
+| `kraken futures paper sell <SYM> <SIZE> [--leverage L] [--type TYPE] [--price P] ...` | Paper short (all 8 order types) |
+| `kraken futures paper orders` | Open resting orders |
+| `kraken futures paper order-status <ID>` | Query specific order |
+| `kraken futures paper edit-order --order-id <ID> [--size S] [--price P] [--stop-price SP]` | Edit resting order |
+| `kraken futures paper cancel --order-id <ID>` | Cancel by order ID or `--cli-ord-id` |
+| `kraken futures paper cancel-all [--symbol SYM]` | Cancel all (optional symbol filter) |
+| `kraken futures paper batch-order '<JSON>'` | Batch order placement |
+| `kraken futures paper positions` | Open positions with mark price, liquidation price, unrealized P&L |
+| `kraken futures paper fills [--since TS]` | Fill history |
+| `kraken futures paper history` | Closed positions and cancelled orders with realized P&L |
+| `kraken futures paper leverage [--symbol SYM]` | Current leverage preferences |
+| `kraken futures paper set-leverage <SYM> <LEV>` | Set default leverage for a symbol |
+
 ### Futures WebSocket Streaming
 
 | Command | Description |
@@ -569,7 +595,11 @@ kraken balance -o json -v 2>/dev/null | jq .
 
 ## Paper Trading
 
-Paper trading provides a safe sandbox for testing trading logic against live Kraken prices. No API keys, no account, no real money. The command interface mirrors live trading exactly; agents can switch between paper and live by changing the command prefix (`kraken paper buy` vs `kraken order buy`).
+Paper trading provides a safe sandbox for testing trading logic against live Kraken prices. No API keys, no account, no real money. Two independent paper engines cover spot and futures.
+
+### Spot Paper Trading
+
+The command interface has near-parity with live spot trading. Switch between paper and live by changing the prefix: `kraken paper buy` vs `kraken order buy`. Known differences: paper supports `market` and `limit` order types only; slippage and partial fills are not modeled.
 
 **Agent pattern:**
 
@@ -609,6 +639,58 @@ kraken paper reset
 Prices come from the public Kraken Ticker API (no auth needed). A 0.26% taker fee (Kraken Starter tier default) is applied to all fills. Limit orders fill at the limit price when the live market crosses the order price.
 
 All output is labeled `[PAPER]` in table mode and includes `"mode": "paper"` in JSON mode.
+
+### Futures Paper Trading
+
+Near-parity with live `kraken futures order` commands. Supports all 8 order types (market, limit, post, stop, take-profit, ioc, trailing-stop, fok), leverage and margin tracking, position aggregation/netting, liquidation simulation, and funding rate accrual. Known differences: `order-status` accepts a single ID (live accepts multiple), post-only orders are cancelled rather than simulating maker queue priority, fills use the bid/ask snapshot with no depth-based slippage, and partial fills are not modeled. Switch between paper and live by replacing `futures paper` with `futures order`.
+
+Successful JSON responses include `"mode": "futures_paper"`. Most table views are labeled `[FUTURES PAPER]` or `[FP]`.
+
+**Agent pattern:**
+
+```bash
+kraken futures paper init --balance 10000 -o json
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market -o json
+kraken futures paper sell PF_ETHUSD 5 --leverage 20 --type market -o json
+kraken futures paper positions -o json
+kraken futures paper status -o json
+kraken futures paper reset -o json
+```
+
+**Human pattern:**
+
+```bash
+kraken futures paper init --balance 10000 --currency USD
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market
+kraken futures paper sell PF_XBTUSD 1 --leverage 10 --type limit --price 70000
+kraken futures paper positions
+kraken futures paper balance
+kraken futures paper fills
+kraken futures paper history
+kraken futures paper reset
+```
+
+| Command | Description |
+|---------|-------------|
+| `kraken futures paper init [--balance B] [--currency C] [--fee-rate R]` | Initialize futures paper account |
+| `kraken futures paper reset [--balance B] [--currency C] [--fee-rate R]` | Reset account (clear positions, orders, fills) |
+| `kraken futures paper balance` | Collateral, used margin, available margin, unrealized P&L |
+| `kraken futures paper status` | Equity, P&L since start, unrealized P&L, position/order counts |
+| `kraken futures paper buy <SYM> <SIZE> [--leverage L] [--type TYPE] ...` | Paper long (all 8 order types) |
+| `kraken futures paper sell <SYM> <SIZE> [--leverage L] [--type TYPE] ...` | Paper short (all 8 order types) |
+| `kraken futures paper orders` | Open resting orders |
+| `kraken futures paper order-status <ID>` | Query specific order |
+| `kraken futures paper edit-order --order-id <ID> [--size S] [--price P] [--stop-price SP]` | Edit a resting order |
+| `kraken futures paper cancel --order-id <ID>` | Cancel order (also supports `--cli-ord-id`) |
+| `kraken futures paper cancel-all [--symbol SYM]` | Cancel all (optional symbol filter) |
+| `kraken futures paper batch-order '<JSON>'` | Batch order placement |
+| `kraken futures paper positions` | Open positions with mark price, liquidation, P&L |
+| `kraken futures paper fills [--since TS]` | Fill history |
+| `kraken futures paper history` | Closed positions and cancelled orders |
+| `kraken futures paper leverage` | Current leverage preferences |
+| `kraken futures paper set-leverage <SYM> <LEV>` | Set default leverage per symbol |
+
+Prices come from the public Kraken Futures Ticker API (no auth needed). Taker fees are simulated. Positions track leverage, margin, and liquidation prices. Funding rates are accrued based on the public funding rate API. Spot paper and futures paper are fully independent: resetting one does not affect the other.
 
 ## Examples
 
@@ -677,9 +759,13 @@ The CLI does not pre-throttle or retry rate-limited requests. The Kraken API ser
 
 Verify `kraken` is on your PATH. Run `kraken mcp -s market` in a terminal to confirm the server starts. Check that your client configuration matches the JSON format in the [MCP Server](#mcp-server) section.
 
-**Paper trading state errors**
+**Spot paper trading state errors**
 
 Run `kraken paper reset` to clear and reinitialize.
+
+**Futures paper trading state errors**
+
+Run `kraken futures paper reset` to clear and reinitialize. Spot and futures paper states are independent.
 
 </details>
 
@@ -694,7 +780,8 @@ src/
   config.rs        -- Config file I/O, credential resolution, secret wrappers
   client.rs        -- HTTP clients with transient-error retry and enriched rate-limit errors
   errors.rs        -- Unified error types with category-based JSON envelopes
-  paper.rs         -- Paper trading state engine (local simulation)
+  paper.rs         -- Spot paper trading state engine (local simulation)
+  futures_paper.rs -- Futures paper trading engine (leverage, margin, liquidation, funding)
   shell.rs         -- Interactive REPL with rustyline
   telemetry.rs     -- Agent client identification, instance tracking, user-agent
   commands/        -- One module per command group
@@ -706,10 +793,11 @@ src/
     funding.rs     -- Deposits, withdrawals, wallet transfers
     earn.rs        -- Staking/earn
     subaccount.rs  -- Subaccount management
-    futures.rs     -- Futures trading and market data
-    futures_ws.rs  -- Futures WebSocket v1 streaming
-    websocket.rs   -- Spot WebSocket v2 streaming
-    paper.rs       -- Paper trading commands
+    futures.rs        -- Futures trading and market data
+    futures_paper.rs  -- Futures paper trading commands
+    futures_ws.rs     -- Futures WebSocket v1 streaming
+    websocket.rs      -- Spot WebSocket v2 streaming
+    paper.rs          -- Spot paper trading commands
     auth.rs        -- Credential management commands
     utility.rs     -- Setup wizard
   mcp/             -- Built-in MCP server

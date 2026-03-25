@@ -1,6 +1,6 @@
 # Skills Index
 
-50 agent skills for `kraken-cli`, organized by category.
+50 agent skills for `kraken-cli`, organized by category. Covers spot and futures paper trading, live trading, and portfolio management.
 
 ## Core
 
@@ -28,24 +28,24 @@ Price reads, multi-pair screening, alerts, and streaming.
 
 ## Spot Trading
 
-Order execution, position management, and paper testing.
+Order execution, position management, and spot paper testing.
 
 | Skill | Description |
 |-------|-------------|
 | [kraken-spot-execution](./kraken-spot-execution/SKILL.md) | Safe spot order execution with validation and confirmation gates. |
 | [kraken-stop-take-profit](./kraken-stop-take-profit/SKILL.md) | Stop-loss and take-profit management for risk-bounded positions. |
 | [kraken-fee-optimization](./kraken-fee-optimization/SKILL.md) | Minimize fees through maker orders, volume tiers, and fee currency selection. |
-| [kraken-paper-strategy](./kraken-paper-strategy/SKILL.md) | Test strategies on paper trading before live deployment. |
-| [kraken-paper-to-live](./kraken-paper-to-live/SKILL.md) | Promote validated paper strategies to live trading with safety checks. |
+| [kraken-paper-strategy](./kraken-paper-strategy/SKILL.md) | Test spot strategies on paper trading before live deployment. |
+| [kraken-paper-to-live](./kraken-paper-to-live/SKILL.md) | Promote validated paper strategies (spot and futures) to live trading. |
 | [kraken-risk-operations](./kraken-risk-operations/SKILL.md) | Operational risk controls for live agent trading sessions. |
 
 ## Futures
 
-Futures trading, risk management, and advanced strategies.
+Futures trading, risk management, paper testing, and advanced strategies.
 
 | Skill | Description |
 |-------|-------------|
-| [kraken-futures-trading](./kraken-futures-trading/SKILL.md) | Futures order lifecycle: place, edit, cancel, batch, positions. |
+| [kraken-futures-trading](./kraken-futures-trading/SKILL.md) | Futures order lifecycle: place, edit, cancel, batch, positions. Includes paper trading. |
 | [kraken-futures-risk](./kraken-futures-risk/SKILL.md) | Leverage, funding rates, margin health, and liquidation awareness. |
 | [kraken-liquidation-guard](./kraken-liquidation-guard/SKILL.md) | Prevent futures liquidation through margin monitoring and emergency procedures. |
 | [kraken-basis-trading](./kraken-basis-trading/SKILL.md) | Delta-neutral spot-futures basis trades. |

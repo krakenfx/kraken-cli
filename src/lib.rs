@@ -9,6 +9,7 @@ pub mod client;
 pub(crate) mod commands;
 pub mod config;
 pub mod errors;
+pub(crate) mod futures_paper;
 pub(crate) mod mcp;
 pub mod output;
 pub(crate) mod paper;
@@ -336,7 +337,7 @@ pub enum Command {
         #[arg(long, alias = "aclass")]
         asset_class: Option<String>,
     },
-    /// Paper trading (simulated, no real money).
+    /// Spot paper trading (simulated, no real money). For futures paper trading, use `kraken futures paper`.
     Paper {
         #[command(subcommand)]
         cmd: PaperCommand,

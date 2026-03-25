@@ -1,6 +1,6 @@
 # kraken-cli Runtime Context for AI Agents
 
-**This is experimental software. Commands interact with the live Kraken exchange and can result in real financial transactions. The user who deploys this tool is responsible for all outcomes. Test with `kraken paper` before using real funds. See `DISCLAIMER.md` for full terms.**
+**This is experimental software. Commands interact with the live Kraken exchange and can result in real financial transactions. The user who deploys this tool is responsible for all outcomes. Test with `kraken paper` (spot) or `kraken futures paper` (futures) before using real funds. See `DISCLAIMER.md` for full terms.**
 
 This file is optimized for runtime agent use. It defines how to call `kraken` safely and reliably.
 
@@ -35,7 +35,7 @@ export KRAKEN_FUTURES_API_KEY="your-futures-key"
 export KRAKEN_FUTURES_API_SECRET="your-futures-secret"
 ```
 
-Public market data and paper trading do not require credentials.
+Public market data, spot paper trading (`kraken paper`), and futures paper trading (`kraken futures paper`) do not require credentials.
 
 ## Asset Classes
 
@@ -57,7 +57,7 @@ Futures include crypto perps, 5 forex perps (PF_EURUSD, PF_GBPUSD, PF_AUDUSD, PF
 ## Safety Rules
 
 1. Never place live orders or withdrawals without explicit human approval.
-2. Prefer `kraken paper ...` for strategy testing.
+2. Prefer `kraken paper ...` (spot) or `kraken futures paper ...` (futures) for strategy testing.
 3. Validate orders before execution with `--validate`.
 4. Use `cancel-after` for unattended sessions.
 5. Never log or echo API secrets.
@@ -115,7 +115,7 @@ kraken order buy BTCUSD 0.001 --type limit --price 50000 --validate -o json
 kraken order buy BTCUSD 0.001 --type limit --price 50000 -o json
 ```
 
-Paper trading loop:
+Spot paper trading loop:
 
 ```bash
 kraken paper init --balance 10000 -o json
@@ -123,12 +123,21 @@ kraken paper buy BTCUSD 0.01 -o json
 kraken paper status -o json
 ```
 
+Futures paper trading loop:
+
+```bash
+kraken futures paper init --balance 10000 -o json
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market -o json
+kraken futures paper positions -o json
+kraken futures paper status -o json
+```
+
 ## MCP Server
 
 For MCP-compatible clients (Claude Desktop, ChatGPT, Codex, Gemini CLI, Cursor, VS Code, Windsurf), use the built-in MCP server:
 
 ```bash
-kraken mcp -s market,trade,paper
+kraken mcp -s market,account,paper,futures-paper
 ```
 
 This exposes CLI commands as structured MCP tools over stdio. No subprocess wrappers needed.
@@ -142,5 +151,5 @@ Security note:
 ## Tool Discovery
 
 Use these machine-readable files:
-- `agents/tool-catalog.json`: full command catalog (134 commands with parameter schemas and `dangerous` flags)
+- `agents/tool-catalog.json`: full command catalog (151 commands with parameter schemas and `dangerous` flags)
 - `agents/error-catalog.json`: error categories and retry policy

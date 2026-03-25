@@ -12,7 +12,7 @@ metadata:
 # kraken-futures-trading
 
 Use this skill for:
-- placing futures buy and sell orders (market, limit, stop)
+- placing futures buy and sell orders (market, limit, post, stop, take-profit, ioc, trailing-stop, fok)
 - editing and cancelling futures orders
 - batch order placement for multi-leg strategies
 - monitoring open positions and fills
@@ -54,7 +54,7 @@ export KRAKEN_FUTURES_API_SECRET="your-futures-secret"
 Market order:
 
 ```bash
-kraken futures order buy PF_XBTUSD 1 -o json 2>/dev/null
+kraken futures order buy PF_XBTUSD 1 --type market -o json 2>/dev/null
 ```
 
 Limit order:
@@ -72,13 +72,13 @@ kraken futures order buy PF_XBTUSD 1 --type stop --stop-price 55000 --trigger-si
 Trailing stop:
 
 ```bash
-kraken futures order sell PF_XBTUSD 1 --type stop --stop-price 68000 --trailing-stop-max-deviation 500 --trailing-stop-deviation-unit quote_currency -o json 2>/dev/null
+kraken futures order sell PF_XBTUSD 1 --type trailing-stop --stop-price 68000 --trailing-stop-max-deviation 500 --trailing-stop-deviation-unit quote_currency -o json 2>/dev/null
 ```
 
 Reduce-only (close position without opening new exposure):
 
 ```bash
-kraken futures order sell PF_XBTUSD 1 --reduce-only -o json 2>/dev/null
+kraken futures order sell PF_XBTUSD 1 --type market --reduce-only -o json 2>/dev/null
 ```
 
 ## Batch Orders
@@ -154,9 +154,24 @@ kraken futures cancel-after 600 -o json 2>/dev/null
 
 Refresh periodically. If the agent crashes, orders auto-cancel.
 
+## Paper Trading
+
+Test futures strategies without real money using `kraken futures paper`. Near-parity with live futures: all 8 order types (market, limit, post, stop, take-profit, ioc, trailing-stop, fok); leverage, margin tracking, liquidation simulation, and funding rates. Known differences: single-ID `order-status`, post-only orders are cancelled rather than queued, fills use the bid/ask snapshot with no depth-based slippage, and partial fills are not modeled.
+
+```bash
+kraken futures paper init --balance 10000 -o json 2>/dev/null
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market -o json 2>/dev/null
+kraken futures paper positions -o json 2>/dev/null
+kraken futures paper status -o json 2>/dev/null
+kraken futures paper reset -o json 2>/dev/null
+```
+
+Switch between paper and live by replacing `futures paper` with `futures order`. No credentials required for paper trading.
+
 ## Hard Rules
 
 - Never place futures orders without explicit human approval.
 - Always check `futures accounts` before trading to confirm margin availability.
 - Use `--reduce-only` when closing positions to prevent accidental flips.
 - Enable `cancel-after` for any automated session.
+- Test strategies with `kraken futures paper` before going live.
