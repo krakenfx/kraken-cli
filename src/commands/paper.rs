@@ -8,7 +8,7 @@ use crate::errors::{KrakenError, Result};
 use crate::output::{self, CommandOutput};
 use crate::paper::{
     load_state, migrate_legacy_state, paper_state_path, parse_pair, save_state, OrderSide,
-    PaperState, PaperTrade,
+    PaperConfig, PaperState, PaperTrade,
 };
 use crate::{build_spot_client, AppContext};
 
@@ -27,6 +27,9 @@ pub(crate) enum PaperCommand {
         /// Fee rate as a decimal (default: 0.0026 = 0.26% Kraken Starter tier).
         #[arg(long)]
         fee_rate: Option<f64>,
+        /// Slippage rate as a decimal (default: 0.0 = no slippage simulation).
+        #[arg(long, alias = "slippage")]
+        slippage_rate: Option<f64>,
     },
     /// Reset paper account. Optionally override balance, currency, or fee rate.
     Reset {
@@ -39,6 +42,9 @@ pub(crate) enum PaperCommand {
         /// New fee rate (default: keep previous).
         #[arg(long)]
         fee_rate: Option<f64>,
+        /// Slippage rate as a decimal (default: keep previous).
+        #[arg(long, alias = "slippage")]
+        slippage_rate: Option<f64>,
     },
     /// Show paper balances.
     Balance,
@@ -93,17 +99,20 @@ pub(crate) async fn execute(
             balance,
             currency,
             fee_rate,
-        } => execute_init(*balance, currency, *fee_rate),
+            slippage_rate,
+        } => execute_init(*balance, currency, *fee_rate, *slippage_rate),
         PaperCommand::Reset {
             balance,
             currency,
             fee_rate,
+            slippage_rate,
         } => {
             let client = build_spot_client(ctx)?;
             execute_reset(
                 balance.as_ref().copied(),
                 currency.as_deref(),
                 fee_rate.as_ref().copied(),
+                slippage_rate.as_ref().copied(),
                 &client,
                 verbose,
             )
@@ -172,8 +181,8 @@ pub(crate) async fn execute(
     }
 }
 
-fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<CommandOutput> {
-    use crate::paper::DEFAULT_FEE_RATE;
+fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>, slippage_rate: Option<f64>) -> Result<CommandOutput> {
+    use crate::paper::{DEFAULT_FEE_RATE, DEFAULT_SLIPPAGE_RATE};
 
     let migrated = migrate_legacy_state()?;
     let path = paper_state_path()?;
@@ -198,16 +207,26 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<C
         ));
     }
 
-    let state = PaperState::with_fee_rate(balance, currency, rate);
+    let slip = slippage_rate.unwrap_or(DEFAULT_SLIPPAGE_RATE);
+    validate_slippage_rate(slip)?;
+
+    let state = PaperState::with_config(PaperConfig {
+        balance,
+        currency: currency.to_string(),
+        fee_rate: rate,
+        slippage_rate: slip,
+    });
     save_state(&state)?;
 
     let cur = currency.to_uppercase();
     let fee_pct = format!("{:.2}%", rate * 100.0);
+    let slip_pct = format!("{:.2}%", slip * 100.0);
     let pairs = vec![
         ("Mode".into(), "[PAPER] Simulated Trading".into()),
         ("Action".into(), "Account initialized".into()),
         ("Starting Balance".into(), format!("{balance:.2} {cur}")),
         ("Fee Rate".into(), fee_pct),
+        ("Slippage Rate".into(), slip_pct),
     ];
 
     Ok(CommandOutput::key_value(
@@ -217,6 +236,7 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<C
             "starting_balance": balance,
             "starting_currency": cur,
             "fee_rate": rate,
+            "slippage_rate": slip,
         })),
     ))
 }
@@ -239,6 +259,7 @@ async fn execute_reset(
     balance: Option<f64>,
     currency: Option<&str>,
     fee_rate: Option<f64>,
+    slippage_rate: Option<f64>,
     client: &SpotClient,
     verbose: bool,
 ) -> Result<CommandOutput> {
@@ -256,10 +277,13 @@ async fn execute_reset(
             ));
         }
     }
+    if let Some(s) = slippage_rate {
+        validate_slippage_rate(s)?;
+    }
 
     let mut state = load_state()?;
     reconcile_best_effort(&mut state, client, verbose).await;
-    state.reset_with(balance, currency, fee_rate);
+    state.reset_with(balance, currency, fee_rate, slippage_rate);
     save_state(&state)?;
 
     let bal = state.starting_balance;
@@ -271,6 +295,7 @@ async fn execute_reset(
         ("Action".into(), "Account reset".into()),
         ("Starting Balance".into(), format!("{bal:.2} {cur}")),
         ("Fee Rate".into(), fee_pct),
+        ("Slippage Rate".into(), format!("{:.2}%", state.slippage_rate * 100.0))
     ];
 
     Ok(CommandOutput::key_value(
@@ -280,6 +305,7 @@ async fn execute_reset(
             "starting_balance": bal,
             "starting_currency": cur,
             "fee_rate": state.fee_rate,
+            "slippage_rate": state.slippage_rate,
         })),
     ))
 }
@@ -336,6 +362,15 @@ async fn execute_balance(client: &SpotClient, verbose: bool) -> Result<CommandOu
         headers,
         rows,
     ))
+}
+
+fn validate_slippage_rate(rate: f64) -> Result<()> {
+    if !rate.is_finite() || !(0.0..=1.0).contains(&rate) {
+        return Err(KrakenError::Validation(
+            "Slippage rate must be between 0.0 and 1.0 (e.g., 0.001 for 0.1%)".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_order_type(order_type_str: &str) -> Result<bool> {
@@ -728,6 +763,11 @@ async fn execute_status(client: &SpotClient, verbose: bool) -> Result<CommandOut
             "Unrealized P&L".into(),
             format!("{pnl:+.2} {sc} ({pnl_pct:+.2}%){partial_marker}"),
         ),
+        ("Fee Rate".into(), format!("{:.2}%", state.fee_rate * 100.0)),
+        (
+            "Slippage Rate".into(),
+            format!("{:.2}%", state.slippage_rate * 100.0),
+        ),
         ("Total Trades".into(), state.filled_trades.len().to_string()),
         ("Open Orders".into(), state.open_orders.len().to_string()),
         (
@@ -750,6 +790,8 @@ async fn execute_status(client: &SpotClient, verbose: bool) -> Result<CommandOut
             "unrealized_pnl": pnl,
             "unrealized_pnl_pct": pnl_pct,
             "valuation_complete": valuation_complete,
+            "fee_rate": state.fee_rate,
+            "slippage_rate": state.slippage_rate,
             "total_trades": state.filled_trades.len(),
             "open_orders": state.open_orders.len(),
         })),
@@ -928,6 +970,32 @@ mod tests {
         assert!(validate_order_type("Limit").unwrap());
         assert!(validate_order_type("LIMIT").unwrap());
         assert!(!validate_order_type("Market").unwrap());
+    }
+
+    #[test]
+    fn test_slippage_validation_negative() {
+        assert!(validate_slippage_rate(-0.001).is_err());
+    }
+
+    #[test]
+    fn test_slippage_validation_above_one() {
+        assert!(validate_slippage_rate(1.001).is_err());
+    }
+
+    #[test]
+    fn test_slippage_validation_nan() {
+        assert!(validate_slippage_rate(f64::NAN).is_err());
+    }
+
+    #[test]
+    fn test_slippage_validation_infinity() {
+        assert!(validate_slippage_rate(f64::INFINITY).is_err());
+    }
+
+    #[test]
+    fn test_slippage_validation_zero_and_one_are_valid() {
+        assert!(validate_slippage_rate(0.0).is_ok());
+        assert!(validate_slippage_rate(1.0).is_ok());
     }
 
     #[test]

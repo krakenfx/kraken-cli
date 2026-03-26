@@ -11,6 +11,16 @@ use crate::errors::{KrakenError, Result};
 
 pub(crate) const DEFAULT_FEE_RATE: f64 = 0.0026;
 
+pub(crate) const DEFAULT_SLIPPAGE_RATE: f64 = 0.0;
+
+#[derive(Debug, Clone)]
+pub(crate) struct PaperConfig {
+    pub(crate) balance: f64,
+    pub(crate) currency: String,
+    pub(crate) fee_rate: f64,
+    pub(crate) slippage_rate: f64,
+}
+
 const KNOWN_QUOTES: &[&str] = &[
     "USDT", "USDC", "USD", "EUR", "GBP", "CAD", "AUD", "JPY", "CHF", "ETH", "BTC", "DAI",
 ];
@@ -39,6 +49,8 @@ pub(crate) struct PaperState {
     pub(crate) starting_currency: String,
     #[serde(default = "default_fee_rate")]
     pub(crate) fee_rate: f64,
+    #[serde(default = "default_slippage_rate")]
+    pub(crate) slippage_rate: f64,
     pub(crate) created_at: String,
     pub(crate) updated_at: String,
     #[serde(default = "default_next_order_id")]
@@ -53,6 +65,10 @@ fn default_next_order_id() -> u64 {
 
 fn default_fee_rate() -> f64 {
     DEFAULT_FEE_RATE
+}
+
+fn default_slippage_rate() -> f64 {
+    DEFAULT_SLIPPAGE_RATE
 }
 
 fn default_starting_balance() -> f64 {
@@ -131,22 +147,28 @@ impl Default for PaperState {
 
 impl PaperState {
     pub(crate) fn new(balance: f64, currency: &str) -> Self {
-        Self::with_fee_rate(balance, currency, DEFAULT_FEE_RATE)
+        Self::with_config(PaperConfig {
+            balance,
+            currency: currency.to_string(),
+            fee_rate: DEFAULT_FEE_RATE,
+            slippage_rate: DEFAULT_SLIPPAGE_RATE,
+        })
     }
 
-    pub(crate) fn with_fee_rate(balance: f64, currency: &str, fee_rate: f64) -> Self {
+    pub(crate) fn with_config(config: PaperConfig) -> Self {
         let now = Utc::now().to_rfc3339();
-        let cur = currency.to_uppercase();
+        let cur = config.currency.to_uppercase();
         let mut balances = HashMap::new();
-        balances.insert(cur.clone(), balance);
+        balances.insert(cur.clone(), config.balance);
         Self {
             balances,
             reserved: HashMap::new(),
             open_orders: Vec::new(),
             filled_trades: Vec::new(),
-            starting_balance: balance,
+            starting_balance: config.balance,
             starting_currency: cur,
-            fee_rate,
+            fee_rate: config.fee_rate,
+            slippage_rate: config.slippage_rate,
             created_at: now.clone(),
             updated_at: now,
             next_order_id: 1,
@@ -156,10 +178,12 @@ impl PaperState {
 
     #[cfg(test)]
     pub(crate) fn reset(&mut self) {
-        let balance = self.starting_balance;
-        let currency = self.starting_currency.clone();
-        let fee_rate = self.fee_rate;
-        *self = Self::with_fee_rate(balance, &currency, fee_rate);
+        *self = Self::with_config(PaperConfig {
+            balance: self.starting_balance,
+            currency: self.starting_currency.clone(),
+            fee_rate: self.fee_rate,
+            slippage_rate: self.slippage_rate,
+        });
     }
 
     pub(crate) fn reset_with(
@@ -167,13 +191,16 @@ impl PaperState {
         balance: Option<f64>,
         currency: Option<&str>,
         fee_rate: Option<f64>,
+        slippage_rate: Option<f64>,
     ) {
-        let bal = balance.unwrap_or(self.starting_balance);
-        let cur = currency
-            .map(|c| c.to_uppercase())
-            .unwrap_or_else(|| self.starting_currency.clone());
-        let fee = fee_rate.unwrap_or(self.fee_rate);
-        *self = Self::with_fee_rate(bal, &cur, fee);
+        *self = Self::with_config(PaperConfig {
+            balance: balance.unwrap_or(self.starting_balance),
+            currency: currency
+                .map(|c| c.to_uppercase())
+                .unwrap_or_else(|| self.starting_currency.clone()),
+            fee_rate: fee_rate.unwrap_or(self.fee_rate),
+            slippage_rate: slippage_rate.unwrap_or(self.slippage_rate),
+        });
     }
 
     pub(crate) fn available_balance(&self, asset: &str) -> f64 {
@@ -211,7 +238,8 @@ impl PaperState {
 
         match side {
             OrderSide::Buy => {
-                let cost = volume * ask;
+                let fill_price = ask * (1.0 + self.slippage_rate);
+                let cost = volume * fill_price;
                 let fee = cost * self.fee_rate;
                 let total_cost = cost + fee;
                 let available = self.available_balance(&quote);
@@ -232,7 +260,7 @@ impl PaperState {
                     quote,
                     side,
                     volume,
-                    price: ask,
+                    price: fill_price,
                     fee,
                     cost,
                     filled_at: Utc::now().to_rfc3339(),
@@ -248,7 +276,8 @@ impl PaperState {
                         "Insufficient {base} balance. Available: {available:.8}, Required: {volume:.8}"
                     )));
                 }
-                let proceeds = volume * bid;
+                let fill_price = bid * (1.0 - self.slippage_rate);
+                let proceeds = volume * fill_price;
                 let fee = proceeds * self.fee_rate;
                 let net_proceeds = proceeds - fee;
                 *self.balances.entry(base.clone()).or_insert(0.0) -= volume;
@@ -263,7 +292,7 @@ impl PaperState {
                     quote,
                     side,
                     volume,
-                    price: bid,
+                    price: fill_price,
                     fee,
                     cost: proceeds,
                     filled_at: Utc::now().to_rfc3339(),
@@ -673,6 +702,51 @@ mod tests {
     fn test_fee_calculation() {
         let fee = 1.0 * 50_000.0 * DEFAULT_FEE_RATE;
         assert!((fee - 130.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn market_buy_applies_slippage() {
+        let mut state = PaperState::with_config(PaperConfig { balance: 10000.0, currency: "USD".into(), fee_rate: 0.0, slippage_rate: 0.001 });
+        let trade = state
+            .place_market_order(OrderSide::Buy, "BTCUSD", 0.1, 50000.0, 49900.0)
+            .unwrap();
+        // 50000 * 1.001 = 50050.0, volume 0.1 => cost 5005.0
+        assert!((trade.price - 50050.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn market_sell_applies_slippage() {
+        let mut state = PaperState::with_config(PaperConfig { balance: 0.0, currency: "USD".into(), fee_rate: 0.0, slippage_rate: 0.001 });
+        state.balances.insert("BTC".into(), 1.0);
+        let trade = state
+            .place_market_order(OrderSide::Sell, "BTCUSD", 1.0, 50000.0, 50000.0)
+            .unwrap();
+        // 50000 * 0.999 = 49950.0 — clean number, no precision issue
+        assert!((trade.price - 49950.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn zero_slippage_is_backward_compatible() {
+        let mut state = PaperState::new(10000.0, "USD");
+        let trade = state
+            .place_market_order(OrderSide::Buy, "BTCUSD", 0.1, 50000.0, 49900.0)
+            .unwrap();
+        // no slippage, fill at exact ask
+        assert!((trade.price - 50000.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn reset_with_preserves_slippage() {
+        let mut state = PaperState::with_config(PaperConfig { balance: 10000.0, currency: "USD".into(), fee_rate: 0.0026, slippage_rate: 0.001 });
+        state.reset_with(Some(5000.0), None, None, None);
+        assert!((state.slippage_rate - 0.001).abs() < 1e-10);
+    }
+
+    #[test]
+    fn reset_with_updates_slippage() {
+        let mut state = PaperState::with_config(PaperConfig { balance: 10000.0, currency: "USD".into(), fee_rate: 0.0026, slippage_rate: 0.001 });
+        state.reset_with(None, None, None, Some(0.002));
+        assert!((state.slippage_rate - 0.002).abs() < 1e-10);
     }
 
     #[test]
@@ -1306,5 +1380,23 @@ mod tests {
         let state: PaperState =
             serde_json::from_str(json).expect("must deserialize without next_order_id");
         assert_eq!(state.next_order_id, 1);
+    }
+
+    #[test]
+    fn deserialize_state_missing_slippage_rate_defaults_to_zero() {
+        let json = r#"{
+            "balances": {"USD": 10000.0},
+            "reserved": {},
+            "open_orders": [],
+            "filled_trades": [],
+            "fee_rate": 0.0026,
+            "starting_balance": 10000.0,
+            "starting_currency": "USD",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z"
+        }"#;
+        let state: PaperState =
+            serde_json::from_str(json).expect("must deserialize without slippage_rate");
+        assert_eq!(state.slippage_rate, 0.0);
     }
 }
