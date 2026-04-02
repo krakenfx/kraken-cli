@@ -20,7 +20,8 @@
     "futures": "Futures trading and market data",
     "futures-ws": "Futures WebSocket streaming",
     "websocket": "Spot WebSocket v2 streaming",
-    "paper": "Paper trading simulation (no auth required)",
+    "futures-paper": "Futures paper trading simulation with leverage, margin, and liquidation (no auth required)",
+    "paper": "Spot paper trading simulation (no auth required)",
     "auth": "Credential management",
     "utility": "Setup and interactive shell"
   },
@@ -2154,7 +2155,7 @@
           "name": "--type",
           "type": "string",
           "required": false,
-          "description": "Order type: market,limit,stop,take-profit"
+          "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)"
         },
         {
           "name": "--price",
@@ -2227,7 +2228,7 @@
           "name": "--type",
           "type": "string",
           "required": false,
-          "description": "Order type: market,limit,stop,take-profit"
+          "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)"
         },
         {
           "name": "--price",
@@ -3651,6 +3652,229 @@
       "dangerous": false,
       "parameters": [],
       "example": "kraken paper status"
+    },
+    {
+      "name": "futures-paper-init",
+      "command": "kraken futures paper init",
+      "group": "futures-paper",
+      "description": "Initialize futures paper trading account with collateral.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--balance", "type": "number", "required": false, "description": "Starting collateral (default 10000)" },
+        { "name": "--currency", "type": "string", "required": false, "description": "Collateral currency (default USD)" },
+        { "name": "--fee-rate", "type": "number", "required": false, "description": "Override taker fee rate (default 0.0005 = 0.05%)" }
+      ],
+      "example": "kraken futures paper init --balance 10000 --currency USD"
+    },
+    {
+      "name": "futures-paper-reset",
+      "command": "kraken futures paper reset",
+      "group": "futures-paper",
+      "description": "Reset futures paper account (clear positions, orders, fills).",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--balance", "type": "number", "required": false, "description": "New starting collateral" },
+        { "name": "--currency", "type": "string", "required": false, "description": "New collateral currency" },
+        { "name": "--fee-rate", "type": "number", "required": false, "description": "Override taker fee rate (default 0.0005 = 0.05%)" }
+      ],
+      "example": "kraken futures paper reset"
+    },
+    {
+      "name": "futures-paper-balance",
+      "command": "kraken futures paper balance",
+      "group": "futures-paper",
+      "description": "Show futures paper collateral, used margin, available margin, and unrealized P&L.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [],
+      "example": "kraken futures paper balance"
+    },
+    {
+      "name": "futures-paper-status",
+      "command": "kraken futures paper status",
+      "group": "futures-paper",
+      "description": "Account summary: equity, P&L since start, unrealized P&L, position and order counts.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [],
+      "example": "kraken futures paper status"
+    },
+    {
+      "name": "futures-paper-buy",
+      "command": "kraken futures paper buy <SYMBOL> <SIZE>",
+      "group": "futures-paper",
+      "description": "Place a futures paper buy (long) order.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "SYMBOL", "type": "string", "required": true, "positional": true, "description": "Futures symbol (e.g. PF_XBTUSD)" },
+        { "name": "SIZE", "type": "number", "required": true, "positional": true, "description": "Contract size" },
+        { "name": "--leverage", "type": "number", "required": false, "description": "Leverage multiplier" },
+        { "name": "--type", "type": "string", "required": false, "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)" },
+        { "name": "--price", "type": "number", "required": false, "description": "Limit price (required for limit, post, ioc, fok)" },
+        { "name": "--stop-price", "type": "number", "required": false, "description": "Trigger price (for stop, take-profit, trailing-stop)" },
+        { "name": "--trigger-signal", "type": "string", "required": false, "description": "Trigger signal: mark, index, last" },
+        { "name": "--client-order-id", "type": "string", "required": false, "description": "Correlation ID" },
+        { "name": "--reduce-only", "type": "boolean", "required": false, "description": "Only reduce existing position" },
+        { "name": "--trailing-stop-max-deviation", "type": "number", "required": false, "description": "Trailing stop deviation value" },
+        { "name": "--trailing-stop-deviation-unit", "type": "string", "required": false, "description": "percent or quote_currency" }
+      ],
+      "example": "kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market"
+    },
+    {
+      "name": "futures-paper-sell",
+      "command": "kraken futures paper sell <SYMBOL> <SIZE>",
+      "group": "futures-paper",
+      "description": "Place a futures paper sell (short) order.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "SYMBOL", "type": "string", "required": true, "positional": true, "description": "Futures symbol (e.g. PF_XBTUSD)" },
+        { "name": "SIZE", "type": "number", "required": true, "positional": true, "description": "Contract size" },
+        { "name": "--leverage", "type": "number", "required": false, "description": "Leverage multiplier" },
+        { "name": "--type", "type": "string", "required": false, "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)" },
+        { "name": "--price", "type": "number", "required": false, "description": "Limit price (required for limit, post, ioc, fok)" },
+        { "name": "--stop-price", "type": "number", "required": false, "description": "Trigger price (for stop, take-profit, trailing-stop)" },
+        { "name": "--trigger-signal", "type": "string", "required": false, "description": "Trigger signal: mark, index, last" },
+        { "name": "--client-order-id", "type": "string", "required": false, "description": "Correlation ID" },
+        { "name": "--reduce-only", "type": "boolean", "required": false, "description": "Only reduce existing position" },
+        { "name": "--trailing-stop-max-deviation", "type": "number", "required": false, "description": "Trailing stop deviation value" },
+        { "name": "--trailing-stop-deviation-unit", "type": "string", "required": false, "description": "percent or quote_currency" }
+      ],
+      "example": "kraken futures paper sell PF_ETHUSD 5 --leverage 20 --type market"
+    },
+    {
+      "name": "futures-paper-orders",
+      "command": "kraken futures paper orders",
+      "group": "futures-paper",
+      "description": "Show open resting futures paper orders.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [],
+      "example": "kraken futures paper orders"
+    },
+    {
+      "name": "futures-paper-order-status",
+      "command": "kraken futures paper order-status <ORDER_ID>",
+      "group": "futures-paper",
+      "description": "Get status of a specific futures paper order.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "ORDER_ID", "type": "string", "required": true, "positional": true, "description": "Order ID to query" }
+      ],
+      "example": "kraken futures paper order-status abc123"
+    },
+    {
+      "name": "futures-paper-edit-order",
+      "command": "kraken futures paper edit-order",
+      "group": "futures-paper",
+      "description": "Edit a resting futures paper order.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--order-id", "type": "string", "required": true, "description": "Order ID to edit" },
+        { "name": "--size", "type": "number", "required": false, "description": "New size" },
+        { "name": "--price", "type": "number", "required": false, "description": "New price" },
+        { "name": "--stop-price", "type": "number", "required": false, "description": "New stop price" }
+      ],
+      "example": "kraken futures paper edit-order --order-id abc123 --size 2 --price 51000"
+    },
+    {
+      "name": "futures-paper-cancel",
+      "command": "kraken futures paper cancel",
+      "group": "futures-paper",
+      "description": "Cancel a futures paper order by order ID or client order ID.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--order-id", "type": "string", "required": false, "description": "Order ID to cancel" },
+        { "name": "--cli-ord-id", "type": "string", "required": false, "description": "Client order ID to cancel" }
+      ],
+      "example": "kraken futures paper cancel --order-id abc123"
+    },
+    {
+      "name": "futures-paper-cancel-all",
+      "command": "kraken futures paper cancel-all",
+      "group": "futures-paper",
+      "description": "Cancel all open futures paper orders.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--symbol", "type": "string", "required": false, "description": "Filter by symbol" }
+      ],
+      "example": "kraken futures paper cancel-all --symbol PF_XBTUSD"
+    },
+    {
+      "name": "futures-paper-batch-order",
+      "command": "kraken futures paper batch-order <JSON>",
+      "group": "futures-paper",
+      "description": "Place a batch of futures paper orders from a JSON array.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "JSON", "type": "string", "required": true, "positional": true, "description": "JSON array of orders (same format as live futures batch-order)" }
+      ],
+      "example": "kraken futures paper batch-order '[{\"symbol\":\"PF_XBTUSD\",\"side\":\"buy\",\"size\":1,\"orderType\":\"lmt\",\"limitPrice\":50000}]'"
+    },
+    {
+      "name": "futures-paper-positions",
+      "command": "kraken futures paper positions",
+      "group": "futures-paper",
+      "description": "Show open futures paper positions with mark price, liquidation price, and unrealized P&L.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [],
+      "example": "kraken futures paper positions"
+    },
+    {
+      "name": "futures-paper-fills",
+      "command": "kraken futures paper fills",
+      "group": "futures-paper",
+      "description": "Show futures paper fill history.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--since", "type": "string", "required": false, "description": "Filter fills since timestamp" }
+      ],
+      "example": "kraken futures paper fills"
+    },
+    {
+      "name": "futures-paper-history",
+      "command": "kraken futures paper history",
+      "group": "futures-paper",
+      "description": "Show closed positions, cancelled orders, and realized P&L.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [],
+      "example": "kraken futures paper history"
+    },
+    {
+      "name": "futures-paper-leverage",
+      "command": "kraken futures paper leverage",
+      "group": "futures-paper",
+      "description": "Get current leverage preferences per symbol.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--symbol", "type": "string", "required": false, "description": "Filter by symbol" }
+      ],
+      "example": "kraken futures paper leverage"
+    },
+    {
+      "name": "futures-paper-set-leverage",
+      "command": "kraken futures paper set-leverage <SYMBOL> <LEVERAGE>",
+      "group": "futures-paper",
+      "description": "Set default leverage for a futures symbol.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "SYMBOL", "type": "string", "required": true, "positional": true, "description": "Futures symbol" },
+        { "name": "LEVERAGE", "type": "number", "required": true, "positional": true, "description": "Leverage multiplier" }
+      ],
+      "example": "kraken futures paper set-leverage PF_XBTUSD 10"
     },
     {
       "name": "auth-set",

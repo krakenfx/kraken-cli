@@ -257,6 +257,12 @@ pub(crate) enum FuturesCommand {
         #[command(subcommand)]
         cmd: super::futures_ws::FuturesWsCommand,
     },
+
+    /// Futures paper trading (simulated, no real money).
+    Paper {
+        #[command(subcommand)]
+        cmd: super::futures_paper::FuturesPaperCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -407,6 +413,7 @@ pub(crate) async fn execute(
             Ok(parse_generic(&data))
         }
         FuturesCommand::HistoricalFundingRates { symbol } => {
+            validate_path_segment(symbol, "symbol")?;
             let params = [("symbol", symbol.as_str())];
             let data = client
                 .public_get("historical-funding-rates", &params, verbose)
@@ -767,6 +774,8 @@ pub(crate) async fn execute(
         }
 
         FuturesCommand::Ws { cmd } => super::futures_ws::execute(cmd, client, creds, verbose).await,
+
+        FuturesCommand::Paper { cmd } => super::futures_paper::execute(cmd, client, verbose).await,
     }
 }
 

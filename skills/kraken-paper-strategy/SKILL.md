@@ -12,19 +12,21 @@ metadata:
 # kraken-paper-strategy
 
 Use this skill for:
-- validating entry and exit logic
+- validating entry and exit logic on spot markets
 - testing position sizing and simple rebalance loops
 - rehearsing error handling without risk
 
+For futures paper trading (leverage, margin, shorts, liquidation), see `kraken futures paper` commands. This skill covers spot paper trading only.
+
 ## Limitations
 
-Paper trading runs locally against live market prices but does not simulate fees or slippage.
+Paper trading runs locally against live market prices. A 0.26% taker fee (Kraken Starter tier default) is applied to every fill, but slippage and partial fills are not modeled.
 
-- **No fees.** Kraken charges maker/taker fees (0.16%/0.26% at the base tier, lower at higher volume tiers). Paper fills ignore this entirely, so paper P&L will overstate real returns.
-- **No slippage.** Paper orders fill at the exact quoted mid-price. Live market orders can fill at worse prices, especially for larger sizes or thin order books.
+- **Fees included.** A 0.26% taker fee is deducted from collateral on each fill. Live maker fees are lower (0.16%), so limit orders that provide liquidity on a live exchange cost less than paper predicts.
+- **No slippage.** Paper orders fill at the exact quoted price. Live market orders can fill at worse prices, especially for larger sizes or thin order books.
 - **No partial fills or rejection.** Paper orders always fill in full immediately. Live orders may partially fill, queue, or be rejected.
 
-When presenting paper results to the user, state that these numbers do not include fees or slippage and that live performance will differ. A rough adjustment: subtract at least 0.26% per round-trip trade from paper returns to approximate base-tier taker fees.
+When presenting paper results to the user, note that slippage is not modeled and live performance will differ. The fee deduction is already reflected in paper P&L.
 
 ## Baseline Workflow
 

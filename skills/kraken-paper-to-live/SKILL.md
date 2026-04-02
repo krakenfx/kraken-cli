@@ -20,11 +20,11 @@ Use this skill for:
 
 ## Paper-to-Live Performance Gap
 
-Paper trading does not simulate fees, slippage, or partial fills. Live results will be worse than paper results. Before promoting, factor in:
+Both spot and futures paper trading simulate taker fees (0.26% spot, configurable for futures). Slippage and partial fills are not fully modeled. Live results may differ. Before promoting, factor in:
 
-- **Fees:** Kraken base-tier taker fee is 0.26% per fill (0.16% maker). Each round-trip trade costs at least 0.32-0.52% that paper ignores.
 - **Slippage:** Market orders fill at available liquidity, not the mid-price. Thin books or larger sizes widen the gap.
 - **Partial fills and latency:** Limit orders may fill partially or not at all. Network and matching-engine latency can cause missed entries or exits.
+- **Maker fees:** Paper uses taker fee rates for all fills. Live limit orders that provide liquidity pay lower maker fees (0.16% spot).
 
 When presenting promotion analysis to the user, explicitly state the expected performance reduction from these factors.
 
@@ -34,12 +34,14 @@ A strategy is ready for live promotion when:
 1. Paper runs produce consistent results over multiple sessions.
 2. Error handling works correctly (rate limits, network failures).
 3. The strategy stays within defined risk parameters.
-4. Paper returns remain positive after subtracting estimated fees (at least 0.26% per fill).
+4. Paper returns remain positive after subtracting estimated fees (0.26% per fill for spot, 0.05% for futures).
 5. The user explicitly approves the transition.
 
 ## Pre-Flight Checklist
 
-Before the first live trade:
+### Spot
+
+Before the first live spot trade:
 
 1. **Verify credentials**:
    ```bash
@@ -66,9 +68,40 @@ Before the first live trade:
    kraken order cancel-after 600 -o json 2>/dev/null
    ```
 
+### Futures
+
+Before the first live futures trade:
+
+1. **Verify futures credentials**:
+   ```bash
+   kraken futures accounts -o json 2>/dev/null
+   ```
+
+2. **Check margin availability**:
+   ```bash
+   kraken futures accounts -o json 2>/dev/null
+   ```
+
+3. **Confirm instrument is tradable**:
+   ```bash
+   kraken futures instrument-status --symbol PF_XBTUSD -o json 2>/dev/null
+   ```
+
+4. **Set leverage**:
+   ```bash
+   kraken futures set-leverage PF_XBTUSD 10 -o json 2>/dev/null
+   ```
+
+5. **Enable dead man's switch**:
+   ```bash
+   kraken futures cancel-after 600 -o json 2>/dev/null
+   ```
+
 ## Command Migration
 
-Paper and live commands differ only in the prefix:
+Paper and live commands differ only in the prefix.
+
+### Spot
 
 | Paper | Live |
 |-------|------|
@@ -78,6 +111,20 @@ Paper and live commands differ only in the prefix:
 | `kraken paper orders` | `kraken open-orders` |
 | `kraken paper history` | `kraken trades-history` |
 | `kraken paper cancel <ID>` | `kraken order cancel <TXID>` |
+
+### Futures
+
+| Paper | Live |
+|-------|------|
+| `kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market` | `kraken futures order buy PF_XBTUSD 1 --type market` |
+| `kraken futures paper sell PF_XBTUSD 1 --leverage 10 --type market` | `kraken futures order sell PF_XBTUSD 1 --type market` |
+| `kraken futures paper positions` | `kraken futures positions` |
+| `kraken futures paper orders` | `kraken futures open-orders` |
+| `kraken futures paper fills` | `kraken futures fills` |
+| `kraken futures paper cancel --order-id <ID>` | `kraken futures cancel --order-id <ID>` |
+| `kraken futures paper cancel-all` | `kraken futures cancel-all` |
+
+**Leverage note:** Paper accepts `--leverage` inline on buy/sell commands. Live futures configures leverage separately via `kraken futures set-leverage <SYMBOL> <LEVERAGE>` before placing orders.
 
 ## Gradual Promotion
 
@@ -101,12 +148,21 @@ After going live, maintain these controls:
 
 If live behavior diverges from paper:
 
-1. Cancel all open orders:
+### Spot
+1. Cancel all open spot orders:
    ```bash
    kraken order cancel-all -o json 2>/dev/null
    ```
-2. Assess positions.
-3. Return to paper trading to debug.
+2. Assess balances.
+3. Return to `kraken paper` to debug.
+
+### Futures
+1. Cancel all open futures orders:
+   ```bash
+   kraken futures cancel-all -o json 2>/dev/null
+   ```
+2. Close open positions with `--reduce-only`.
+3. Return to `kraken futures paper` to debug.
 
 ## Hard Rules
 

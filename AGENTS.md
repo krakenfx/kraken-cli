@@ -55,7 +55,9 @@ No config file needed. No interactive prompts. The CLI reads credentials from th
 | subaccount | Access & Modify Account Settings |
 | websocket (public) | None |
 | websocket (private) | Same as account + trade |
+| futures | Access Futures Markets, Create & Modify Orders, Cancel/Close Orders |
 | paper | None (local simulation) |
+| futures paper | None (local simulation) |
 
 ## Invocation Pattern
 
@@ -87,10 +89,15 @@ kraken open-orders -o json
 kraken order buy BTCUSD 0.001 --type limit --price 50000 -o json
 kraken order cancel TXID123 -o json
 
-# Paper trading (no auth)
+# Spot paper trading (no auth)
 kraken paper init --balance 10000 -o json
 kraken paper buy BTCUSD 0.01 -o json
 kraken paper status -o json
+
+# Futures paper trading (no auth)
+kraken futures paper init --balance 10000 -o json
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market -o json
+kraken futures paper positions -o json
 ```
 
 ## Asset Classes
@@ -242,9 +249,9 @@ Kraken enforces multiple independent rate limit systems. The `suggestion` field 
 
 ## Paper Trading
 
-Paper trading provides a safe sandbox for testing. No API keys, no account, no real money. Uses live Kraken prices.
+Two independent paper engines cover spot and futures. No API keys, no account, no real money. Both use live Kraken prices.
 
-### Lifecycle
+### Spot Paper
 
 ```bash
 kraken paper init --balance 10000 -o json   # Create paper account
@@ -256,9 +263,30 @@ kraken paper history -o json                # Trade history
 kraken paper reset -o json                  # Reset account
 ```
 
-Paper trading mirrors the live trading interface. Agents can switch between paper and live by changing the command prefix: `kraken paper buy` vs `kraken order buy`.
+Switch between paper and live by changing the prefix: `kraken paper buy` vs `kraken order buy`.
 
 A 0.26% taker fee is applied to all fills (Kraken Starter tier default). Limit orders fill at the limit price when the live market crosses the order price.
+
+### Futures Paper
+
+Near-parity with live `kraken futures order` commands. Supports all 8 order types, leverage/margin tracking, position aggregation/netting, liquidation simulation, and funding rate accrual. Known differences: single-ID `order-status`, post-only orders are cancelled rather than queued, fills use the bid/ask snapshot with no depth-based slippage, and partial fills are not modeled.
+
+```bash
+kraken futures paper init --balance 10000 -o json                              # Create account
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market -o json      # Market long
+kraken futures paper sell PF_ETHUSD 5 --leverage 20 --type market -o json     # Market short
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type limit --price 50000 -o json  # Limit long
+kraken futures paper sell PF_XBTUSD 1 --leverage 10 --type stop --stop-price 48000 --trigger-signal mark -o json  # Stop order
+kraken futures paper positions -o json                                         # Open positions
+kraken futures paper balance -o json                                           # Margin state
+kraken futures paper fills -o json                                             # Fill history
+kraken futures paper status -o json                                            # Account summary
+kraken futures paper reset -o json                                             # Reset account
+```
+
+Switch between paper and live by replacing `futures paper` with `futures order`: `kraken futures paper buy` vs `kraken futures order buy`.
+
+Spot paper and futures paper are fully independent. Resetting one does not affect the other.
 
 ## Command Groups Overview
 
@@ -271,19 +299,20 @@ A 0.26% taker fee is applied to all fills (Kraken Starter tier default). Limit o
 | earn | Yes | 6 | Staking strategies, allocations |
 | subaccount | Yes | 2 | Create subaccounts, transfer between accounts |
 | futures | Mixed | 39 | Futures market data (public) and trading (private) |
+| futures-paper | No | 17 | Futures paper trading: all 8 order types, leverage, margin, liquidation |
 | futures-ws | Mixed | 9 | Futures WebSocket streaming |
 | websocket | Mixed | 15 | Spot WebSocket v2 streaming and request/response |
-| paper | No | 10 | Paper trading simulation |
+| paper | No | 10 | Spot paper trading simulation |
 | auth | No | 4 | Credential management (set, show, test, reset) |
 | utility | No | 2 | Interactive setup and REPL shell |
 
-Total: 134 commands. For the full machine-readable catalog, see `agents/tool-catalog.json`.
+Total: 151 commands. For the full machine-readable catalog, see `agents/tool-catalog.json`.
 
 `kraken mcp` is a runtime mode that starts an MCP server, not a tool-callable command. It is not included in the catalog.
 
 ## Dangerous Commands
 
-The catalog marks 32 commands as `dangerous: true`. These move real money, cancel real orders, or mutate account state. Gate every one with confirmation logic.
+The catalog marks 34 commands as `dangerous: true`. These move real money, cancel real orders, or mutate account state. Gate every one with confirmation logic.
 
 The authoritative source is the `dangerous` field in `agents/tool-catalog.json`.
 
@@ -323,7 +352,8 @@ kraken order buy BTCUSD 0.001 --type limit --price 50000 --validate -o json
 Use paper trading for full lifecycle testing:
 
 ```bash
-kraken paper buy BTCUSD 0.001 -o json
+kraken paper buy BTCUSD 0.001 -o json                                 # spot
+kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market -o json  # futures
 ```
 
 ## Integration
@@ -354,7 +384,7 @@ import json
 with open("agents/tool-catalog.json") as f:
     catalog = json.load(f)
 
-# All 134 commands with full parameter schemas
+# All 151 commands with full parameter schemas
 commands = catalog["commands"]
 
 # Filter to safe read-only commands
@@ -399,7 +429,7 @@ Configure your MCP client:
 }
 ```
 
-**Service groups**: `market`, `account`, `trade`, `funding`, `earn`, `subaccount`, `futures`, `paper`, `auth`, or `all`. Default exposed groups are `market,account,paper`.
+**Service groups**: `market`, `account`, `trade`, `funding`, `earn`, `subaccount`, `futures`, `futures-paper`, `paper`, `auth`, or `all`. Default exposed groups are `market,account,paper`.
 
 **Behavior:**
 - Streaming groups (`websocket`, `futures-ws`) are excluded in MCP v1 (REST-only tools).
@@ -432,7 +462,7 @@ Configure your MCP client:
 
 | File | Format | Description |
 |------|--------|-------------|
-| `agents/tool-catalog.json` | JSON | All 134 commands with parameters, types, safety flags, and examples |
+| `agents/tool-catalog.json` | JSON | All 151 commands with parameters, types, safety flags, and examples |
 | `agents/error-catalog.json` | JSON | 9 error categories with retry guidance |
 | `agents/examples/` | Shell | Runnable workflow examples |
 | `skills/` | SKILL.md | Goal-oriented workflow skills for agents |
