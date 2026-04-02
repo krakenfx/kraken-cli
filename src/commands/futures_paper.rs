@@ -1210,14 +1210,7 @@ fn parse_batch_row(v: &Value) -> Result<OrderParams> {
     let stop_price = parse_batch_f64(v, "stop_price")?;
     let trigger_signal = match v.get("trigger_signal") {
         Some(val) => match val.as_str() {
-            Some("mark") => Some(TriggerSignal::Mark),
-            Some("index") => Some(TriggerSignal::Index),
-            Some("last") => Some(TriggerSignal::Last),
-            Some(other) => {
-                return Err(KrakenError::Validation(format!(
-                    "Invalid trigger_signal '{other}'. Use mark, index, or last."
-                )))
-            }
+            Some(s) => Some(TriggerSignal::from_str_cli(s)?),
             None => {
                 return Err(KrakenError::Validation(
                     "trigger_signal must be a string (mark, index, or last)".into(),

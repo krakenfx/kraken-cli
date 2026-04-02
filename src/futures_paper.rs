@@ -25,6 +25,15 @@ pub(crate) enum Side {
     Short,
 }
 
+impl Side {
+    pub(crate) fn opposite(self) -> Self {
+        match self {
+            Self::Long => Self::Short,
+            Self::Short => Self::Long,
+        }
+    }
+}
+
 impl std::fmt::Display for Side {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -723,10 +732,7 @@ impl FuturesPaperState {
         if !params.reduce_only {
             return Ok(());
         }
-        let opposite_side = match params.side {
-            Side::Long => Side::Short,
-            Side::Short => Side::Long,
-        };
+        let opposite_side = params.side.opposite();
         let pos = self
             .positions
             .iter()
@@ -759,10 +765,7 @@ impl FuturesPaperState {
             return 0.0;
         }
 
-        let opposite_side = match params.side {
-            Side::Long => Side::Short,
-            Side::Short => Side::Long,
-        };
+        let opposite_side = params.side.opposite();
         let opposite_pos_size = self
             .positions
             .iter()
@@ -836,10 +839,7 @@ impl FuturesPaperState {
             .positions
             .iter()
             .position(|p| p.symbol == symbol && p.side == fill_side);
-        let opposite_side = match fill_side {
-            Side::Long => Side::Short,
-            Side::Short => Side::Long,
-        };
+        let opposite_side = fill_side.opposite();
         let opp_idx = self
             .positions
             .iter()
@@ -1189,10 +1189,7 @@ impl FuturesPaperState {
             }
 
             if order.reduce_only {
-                let opposite_side = match order.side {
-                    Side::Long => Side::Short,
-                    Side::Short => Side::Long,
-                };
+                let opposite_side = order.side.opposite();
                 let has_position = self.positions.iter().any(|p| {
                     p.symbol == order.symbol && p.side == opposite_side && p.size >= order.size
                 });
@@ -1323,10 +1320,7 @@ impl FuturesPaperState {
             };
 
             if order.reduce_only {
-                let opposite_side = match order.side {
-                    Side::Long => Side::Short,
-                    Side::Short => Side::Long,
-                };
+                let opposite_side = order.side.opposite();
                 let has_position = self.positions.iter().any(|p| {
                     p.symbol == order.symbol && p.side == opposite_side && p.size >= order.size
                 });
@@ -1411,10 +1405,7 @@ impl FuturesPaperState {
                 id: fill_id,
                 order_id: order_id.clone(),
                 symbol: pos.symbol.clone(),
-                side: match pos.side {
-                    Side::Long => Side::Short,
-                    Side::Short => Side::Long,
-                },
+                side: pos.side.opposite(),
                 size: pos.size,
                 price: mark,
                 fee: 0.0,
