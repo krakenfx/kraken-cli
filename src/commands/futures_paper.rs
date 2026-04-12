@@ -441,7 +441,7 @@ async fn fetch_funding_rate(client: &FuturesClient, symbol: &str, verbose: bool)
 
     rates
         .last()
-        .and_then(|entry| entry.get("fundingRate").and_then(|v| v.as_f64()))
+        .and_then(|entry| entry.get("relativeFundingRate").and_then(|v| v.as_f64()))
         .ok_or_else(|| KrakenError::Parse("No funding rate entries".into()))
 }
 
