@@ -668,3 +668,54 @@ async fn futures_private_get_rate_limit_from_non_2xx_returned_immediately() {
 
     assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::RateLimit);
 }
+
+#[tokio::test]
+async fn futures_funding_rate_reads_relative_field() {
+    let server = MockServer::start().await;
+    let base_url = format!("{}/api/v3", server.uri());
+
+    Mock::given(method("GET"))
+        .and(path("/api/v3/historical-funding-rates"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "result": "success",
+            "rates": [
+                {
+                    "timestamp": "2026-04-12T06:00:00Z",
+                    "fundingRate": 0.3761286388681191,
+                    "relativeFundingRate": 5.247063888889e-06
+                },
+                {
+                    "timestamp": "2026-04-12T07:00:00Z",
+                    "fundingRate": 0.1127,
+                    "relativeFundingRate": 0.0000158
+                }
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = FuturesClient::new(Some(&base_url)).unwrap();
+    let data = client
+        .public_get(
+            "historical-funding-rates",
+            &[("symbol", "PF_XBTUSD")],
+            false,
+        )
+        .await
+        .unwrap();
+
+    let rates = data.get("rates").unwrap().as_array().unwrap();
+    let last = rates.last().unwrap();
+
+    let relative = last.get("relativeFundingRate").and_then(|v| v.as_f64());
+    let absolute = last.get("fundingRate").and_then(|v| v.as_f64());
+
+    assert_eq!(relative, Some(0.0000158), "must read relativeFundingRate");
+    assert_eq!(absolute, Some(0.1127));
+    assert!(
+        relative.unwrap() < absolute.unwrap(),
+        "relativeFundingRate must be smaller than fundingRate; \
+         using the wrong field overcharges by orders of magnitude"
+    );
+}
