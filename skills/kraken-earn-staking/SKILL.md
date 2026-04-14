@@ -19,6 +19,26 @@ Use this skill for:
 
 ## Discover Strategies
 
+### Lock types
+
+- "bonded": The strategy has bonding and/or unbonding period that lock up funds
+- "instant": Known as "flexible". The funds are immediately allocated or deallocated without a lock-up period
+- "flex": Known as "auto-earn". No lock-up period. Funds are available for anything - trading, withdrawal, etc. without having to explicitly deallocate them
+
+When communicating to client, use the front-end terminology rather than API terminology (so bonded, flexible and auto-earn).
+
+### Flex
+
+- Better known as auto-earn
+- Funds in eligible wallet (i.e. spot wallet) are implicitly allocated
+- No lock-up period
+- Funds cannot be explicitly allocated to or deallocated from a strategy via API — Auto-Earn manages this automatically based on settings
+- Auto-earn preferences (enable/disable per yield source) can be set in user settings, but not via API
+- The granularity of control per yield source: staking, opt-in-rewards, base-rewards
+- `can_allocate` and `can_deallocate` on flex strategy are always false even if user is eligible for the flex strategy
+
+### Examples
+
 List all strategies for an asset:
 
 ```bash
@@ -28,7 +48,7 @@ kraken earn strategies --asset ETH -o json 2>/dev/null
 Filter by lock type:
 
 ```bash
-kraken earn strategies --asset ETH --lock-type flex -o json 2>/dev/null
+kraken earn strategies --asset ETH --lock-type instant -o json 2>/dev/null
 kraken earn strategies --asset DOT --lock-type bonded -o json 2>/dev/null
 ```
 
@@ -38,7 +58,7 @@ Paginate results:
 kraken earn strategies --limit 10 --cursor <CURSOR> --ascending -o json 2>/dev/null
 ```
 
-Key fields in each strategy: `id`, `asset`, `apr_estimate`, `lock_type` (flex, bonded, timed), `min_amount`, `can_allocate`, `can_deallocate`.
+Key fields in each strategy: `id`, `asset`, `apr_estimate`, `lock_type`, `min_amount`, `can_allocate`, `can_deallocate`, `yield_source`.
 
 ## Allocation Workflow
 
