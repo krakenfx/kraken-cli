@@ -137,24 +137,63 @@ pub(crate) async fn execute(cmd: &AuthCommand, ctx: &AppContext) -> Result<Comma
         }
         AuthCommand::Show => {
             let cfg = config::load()?;
-            let key_display = cfg.auth.api_key.as_deref().unwrap_or("(not set)");
-            let secret_display = cfg
+
+            // Table output shows a last-4 mask of the api key so a user with
+            // multiple keys on the same machine can tell them apart at a glance,
+            // but never exposes secret material. Secrets render as a fixed
+            // "[REDACTED]" token in both modes: there is no legitimate reason to
+            // eyeball secret prefixes, and aligning both renderers reduces the
+            // screen-share / paste-to-Slack leak surface that motivates this
+            // command's output shape.
+            let key_display = cfg
                 .auth
-                .api_secret
+                .api_key
                 .as_deref()
                 .map(mask_string)
                 .unwrap_or_else(|| "(not set)".to_string());
-            let futures_key = cfg.auth.futures_api_key.as_deref().unwrap_or("(not set)");
+            let futures_key_display = cfg
+                .auth
+                .futures_api_key
+                .as_deref()
+                .map(mask_string)
+                .unwrap_or_else(|| "(not set)".to_string());
+
+            let secret_display = if cfg.auth.api_secret.is_some() {
+                "[REDACTED]".to_string()
+            } else {
+                "(not set)".to_string()
+            };
 
             let pairs = vec![
-                ("API Key".into(), key_display.to_string()),
+                ("API Key".into(), key_display.clone()),
                 ("API Secret".into(), secret_display),
-                ("Futures API Key".into(), futures_key.to_string()),
+                ("Futures API Key".into(), futures_key_display.clone()),
             ];
+            // JSON output emits structured `{present, masked}` objects so
+            // downstream scripts can branch on presence without parsing a
+            // masked string, and so log-scrubbers keyed on the literal
+            // "[REDACTED]" token still match. The `masked` field is present
+            // only when the key exists and is safe to display; full key
+            // material never appears in JSON output.
             let json = serde_json::json!({
-                "api_key": key_display,
-                "api_secret": "[REDACTED]",
-                "futures_api_key": futures_key,
+                "api_key": match cfg.auth.api_key.as_deref() {
+                    Some(k) => serde_json::json!({
+                        "present": true,
+                        "masked": mask_string(k),
+                    }),
+                    None => serde_json::json!({ "present": false }),
+                },
+                "api_secret": match cfg.auth.api_secret.as_deref() {
+                    Some(_) => serde_json::json!({ "present": true, "masked": "[REDACTED]" }),
+                    None => serde_json::json!({ "present": false }),
+                },
+                "futures_api_key": match cfg.auth.futures_api_key.as_deref() {
+                    Some(k) => serde_json::json!({
+                        "present": true,
+                        "masked": mask_string(k),
+                    }),
+                    None => serde_json::json!({ "present": false }),
+                },
             });
             Ok(CommandOutput::key_value(pairs, json))
         }

@@ -319,7 +319,7 @@ async fn execute_balance(client: &SpotClient, verbose: bool) -> Result<CommandOu
         .iter()
         .filter(|(_, &v)| v.abs() > DUST_THRESHOLD)
         .collect();
-    sorted_assets.sort_by(|(a, _), (b, _)| a.cmp(b));
+    sorted_assets.sort_by_key(|(a, _)| *a);
 
     let headers = vec![
         "[PAPER] Asset".into(),

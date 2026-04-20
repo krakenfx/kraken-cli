@@ -1,0 +1,49 @@
+{
+  "name": "kraken-cli",
+  "version": "0.3.2",
+  "description": "Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken.",
+  "author": {
+    "name": "Kraken",
+    "email": "support@kraken.com",
+    "url": "https://kraken.com/kraken-cli"
+  },
+  "homepage": "https://kraken.com/kraken-cli",
+  "repository": "https://github.com/krakenfx/kraken-cli",
+  "license": "MIT",
+  "keywords": [
+    "trading",
+    "crypto",
+    "finance",
+    "mcp",
+    "paper-trading",
+    "futures",
+    "forex",
+    "stocks"
+  ],
+  "skills": "./skills/",
+  "mcpServers": {
+    "kraken": {
+      "command": "kraken",
+      "args": ["mcp", "-s", "market,paper"]
+    }
+  },
+  "interface": {
+    "displayName": "Kraken CLI",
+    "shortDescription": "Trade crypto, stocks, forex, and derivatives from your AI agent.",
+    "longDescription": "Agent-first CLI with a built-in MCP server. 151 commands covering spot, futures, xStocks, forex, staking, and paper trading. Ships with 50 goal-oriented skills for strategies like DCA, grid trading, basis trades, and portfolio rebalancing. Paper trading works out of the box with no API keys; live trading is an explicit opt-in via expanded MCP service flags.",
+    "developerName": "Kraken",
+    "category": "Finance",
+    "capabilities": ["Read"],
+    "websiteURL": "https://kraken.com/kraken-cli",
+    "privacyPolicyURL": "https://www.kraken.com/legal/privacy",
+    "termsOfServiceURL": "https://www.kraken.com/legal",
+    "defaultPrompt": [
+      "Give me a morning market brief for BTC, ETH, and SOL.",
+      "Paper trade a DCA strategy on BTCUSD for 5 minutes and show the result.",
+      "Scan perpetual futures funding rates for attractive carry opportunities."
+    ],
+    "brandColor": "#5841D8",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png"
+  }
+}

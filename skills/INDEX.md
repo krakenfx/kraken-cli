@@ -8,6 +8,7 @@ Shared runtime contract, safety rules, autonomy progression, and MCP integration
 
 | Skill | Description |
 |-------|-------------|
+| [kraken-setup](./kraken-setup/SKILL.md) | Install, credentials, and first paper-trading session. |
 | [kraken-shared](./kraken-shared/SKILL.md) | Auth, invocation contract, parsing, and safety rules. |
 | [kraken-autonomy-levels](./kraken-autonomy-levels/SKILL.md) | Progress from read-only to fully autonomous agent trading. |
 | [kraken-mcp-integration](./kraken-mcp-integration/SKILL.md) | Connect MCP clients (Claude Desktop, Gemini CLI, Cursor) to kraken-cli. |

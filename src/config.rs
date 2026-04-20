@@ -91,7 +91,6 @@ impl std::fmt::Display for SecretValue {
 }
 
 /// Resolved credentials for Spot API calls.
-#[derive(Debug)]
 pub struct SpotCredentials {
     pub api_key: String,
     pub api_secret: SecretValue,
@@ -99,11 +98,30 @@ pub struct SpotCredentials {
 }
 
 /// Resolved credentials for Futures API calls.
-#[derive(Debug)]
 pub struct FuturesCredentials {
     pub api_key: String,
     pub api_secret: SecretValue,
     pub source: CredentialSource,
+}
+
+impl std::fmt::Debug for SpotCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SpotCredentials")
+            .field("api_key", &mask_string(&self.api_key))
+            .field("api_secret", &self.api_secret)
+            .field("source", &self.source)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for FuturesCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FuturesCredentials")
+            .field("api_key", &mask_string(&self.api_key))
+            .field("api_secret", &self.api_secret)
+            .field("source", &self.source)
+            .finish()
+    }
 }
 
 /// Where the credentials were resolved from.
@@ -162,6 +180,18 @@ pub(crate) fn save(cfg: &KrakenConfig) -> Result<()> {
     Ok(())
 }
 
+/// Normalize a raw `env::var` result: treat both `Err` (unset) and `Ok("")`
+/// (explicitly set to empty string) as absent.
+///
+/// Plugin hosts such as Claude Code pass an empty string when a `userConfig`
+/// field is left blank by the user. Without this normalization, credential
+/// resolution would return `Some("")` and treat it as a real (but invalid)
+/// credential, producing confusing Kraken API errors instead of falling
+/// through to the next resolution tier.
+fn normalize_env_value(raw: std::result::Result<String, env::VarError>) -> Option<String> {
+    raw.ok().filter(|s| !s.is_empty())
+}
+
 /// Clear stored credentials while preserving the `[settings]` section.
 pub(crate) fn reset_auth() -> Result<()> {
     let path = config_path()?;
@@ -206,9 +236,11 @@ pub(crate) fn resolve_spot_credentials(
         (None, None) => {}
     }
 
-    // Environment variables (pair-level: both must be present)
-    let env_key = env::var("KRAKEN_API_KEY").ok();
-    let env_secret = env::var("KRAKEN_API_SECRET").ok();
+    // Environment variables (pair-level: both must be present). Empty-string
+    // values are treated as unset so plugin hosts that pass blank user input
+    // through env vars fall through to the next tier.
+    let env_key = normalize_env_value(env::var("KRAKEN_API_KEY"));
+    let env_secret = normalize_env_value(env::var("KRAKEN_API_SECRET"));
     match (&env_key, &env_secret) {
         (Some(k), Some(s)) => {
             return Ok(SpotCredentials {
@@ -232,7 +264,6 @@ pub(crate) fn resolve_spot_credentials(
         (None, None) => {}
     }
 
-    // Config file
     let cfg = load()?;
     match (cfg.auth.api_key, cfg.auth.api_secret) {
         (Some(k), Some(s)) => Ok(SpotCredentials {
@@ -277,8 +308,8 @@ pub(crate) fn resolve_futures_credentials(
         (None, None) => {}
     }
 
-    let env_key = env::var("KRAKEN_FUTURES_API_KEY").ok();
-    let env_secret = env::var("KRAKEN_FUTURES_API_SECRET").ok();
+    let env_key = normalize_env_value(env::var("KRAKEN_FUTURES_API_KEY"));
+    let env_secret = normalize_env_value(env::var("KRAKEN_FUTURES_API_SECRET"));
     match (&env_key, &env_secret) {
         (Some(k), Some(s)) => {
             return Ok(FuturesCredentials {
@@ -310,7 +341,7 @@ pub(crate) fn resolve_futures_credentials(
             source: CredentialSource::Config,
         }),
         _ => Err(KrakenError::Auth(
-            "No Futures API credentials found. Use `kraken setup` or set KRAKEN_FUTURES_API_KEY / KRAKEN_FUTURES_API_SECRET env vars.".into(),
+            "No Futures API credentials found. Use `kraken auth set` or set KRAKEN_FUTURES_API_KEY / KRAKEN_FUTURES_API_SECRET env vars.".into(),
         )),
     }
 }
@@ -343,15 +374,23 @@ pub fn read_secret_from_file(path: &Path) -> Result<SecretValue> {
     Ok(SecretValue::new(trimmed))
 }
 
-/// Mask a string for display, showing only the first 4 and last 4 characters.
+/// Mask a string for display by keeping only the trailing 4 characters.
+///
+/// Format: `****wxyz`. Deliberately narrower than the common `abcd...wxyz`
+/// first-4+last-4 mask: for a 16-char credential the old format leaked 50%
+/// of the material, enough for correlation against leaked key dumps and
+/// presence-oracle lookups. The last-4 format matches the industry norm
+/// (AWS, Stripe, GitHub) and still lets a user distinguish between two
+/// keys they have on the same machine.
+///
+/// Strings of 8 characters or fewer are masked as `****` (no tail leak).
 pub(crate) fn mask_string(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= 8 {
         return "****".to_string();
     }
-    let prefix: String = chars[..4].iter().collect();
     let suffix: String = chars[chars.len() - 4..].iter().collect();
-    format!("{prefix}...{suffix}")
+    format!("****{suffix}")
 }
 
 #[cfg(unix)]
@@ -409,7 +448,76 @@ mod tests {
 
     #[test]
     fn mask_string_long() {
-        assert_eq!(mask_string("abcdefghij"), "abcd...ghij");
+        assert_eq!(mask_string("abcdefghij"), "****ghij");
+    }
+
+    #[test]
+    fn mask_string_boundary_nine_chars_shows_last_four_only() {
+        // Nine chars is the first length where we reveal anything.
+        // Verifies the suffix, not any prefix characters.
+        assert_eq!(mask_string("abcdefghi"), "****fghi");
+    }
+
+    #[test]
+    fn mask_string_does_not_leak_prefix() {
+        // Regression guard: the old format leaked the first 4 chars
+        // (`abcd...wxyz`). Keep this test so a future refactor can't
+        // silently bring that back.
+        let masked = mask_string("prefixSHOULDNOTappearSUFFIX1234");
+        assert!(
+            !masked.contains("pref"),
+            "prefix leaked in mask output: {masked}"
+        );
+        assert!(masked.ends_with("1234"));
+    }
+
+    #[test]
+    fn spot_credentials_debug_masks_api_key_and_redacts_secret() {
+        let creds = SpotCredentials {
+            api_key: "abcdefghijklmnop".into(),
+            api_secret: SecretValue::new("supersecret12345".into()),
+            source: CredentialSource::Env,
+        };
+        let debug = format!("{:?}", creds);
+        assert!(
+            !debug.contains("abcdefghijklmnop"),
+            "api_key must not appear in Debug output: {debug}"
+        );
+        assert!(
+            !debug.contains("supersecret12345"),
+            "api_secret must not appear in Debug output: {debug}"
+        );
+        assert!(
+            debug.contains("****mnop"),
+            "api_key should be masked with last-4 only: {debug}"
+        );
+        // Defence against regression to first-4+last-4.
+        assert!(
+            !debug.contains("abcd"),
+            "api_key prefix leaked in Debug: {debug}"
+        );
+        assert!(
+            debug.contains("[REDACTED]"),
+            "api_secret should be redacted: {debug}"
+        );
+    }
+
+    #[test]
+    fn futures_credentials_debug_masks_api_key_and_redacts_secret() {
+        let creds = FuturesCredentials {
+            api_key: "futureskey123456".into(),
+            api_secret: SecretValue::new("futuresecret1234".into()),
+            source: CredentialSource::Env,
+        };
+        let debug = format!("{:?}", creds);
+        assert!(!debug.contains("futureskey123456"));
+        assert!(!debug.contains("futuresecret1234"));
+        assert!(debug.contains("****3456"));
+        assert!(
+            !debug.contains("futu"),
+            "api_key prefix leaked in Debug: {debug}"
+        );
+        assert!(debug.contains("[REDACTED]"));
     }
 
     #[test]
@@ -438,13 +546,59 @@ mod tests {
             "futures_api_secret leaked in Debug: {debug}"
         );
         assert!(
-            debug.contains("abcd...mnop"),
-            "api_key should be masked: {debug}"
+            debug.contains("****mnop"),
+            "api_key should be masked with last-4 only: {debug}"
+        );
+        assert!(
+            debug.contains("****3456"),
+            "futures_api_key should be masked with last-4 only: {debug}"
+        );
+        // Prefix leak guard. The field name "futures_api_key" itself
+        // contains "futu", so we only check the value position (after
+        // the first `Some(`) for a masked prefix instead of scanning
+        // the whole string.
+        assert!(
+            !debug.contains("Some(\"abcd") && !debug.contains("Some(\"futu"),
+            "key prefixes leaked in Debug payload: {debug}"
         );
         assert!(
             debug.contains("[REDACTED]"),
             "secrets should be redacted: {debug}"
         );
+    }
+
+    #[test]
+    fn normalize_env_value_treats_unset_as_none() {
+        let raw: std::result::Result<String, env::VarError> = Err(env::VarError::NotPresent);
+        assert_eq!(normalize_env_value(raw), None);
+    }
+
+    #[test]
+    fn normalize_env_value_treats_empty_string_as_none() {
+        let raw: std::result::Result<String, env::VarError> = Ok(String::new());
+        assert_eq!(normalize_env_value(raw), None);
+    }
+
+    #[test]
+    fn normalize_env_value_preserves_set_value() {
+        let raw: std::result::Result<String, env::VarError> = Ok("abc123".to_string());
+        assert_eq!(normalize_env_value(raw), Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn normalize_env_value_preserves_whitespace() {
+        // Whitespace is deliberately preserved; only the literal empty string
+        // is treated as absent. Whitespace in a credential is almost certainly
+        // a user mistake, and we want the Kraken API call to surface that.
+        let raw: std::result::Result<String, env::VarError> = Ok("   ".to_string());
+        assert_eq!(normalize_env_value(raw), Some("   ".to_string()));
+    }
+
+    #[test]
+    fn normalize_env_value_treats_invalid_unicode_as_none() {
+        let raw: std::result::Result<String, env::VarError> =
+            Err(env::VarError::NotUnicode(std::ffi::OsString::from("bad")));
+        assert_eq!(normalize_env_value(raw), None);
     }
 
     #[test]

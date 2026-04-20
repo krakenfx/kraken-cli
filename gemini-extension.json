@@ -1,12 +1,12 @@
 {
   "name": "kraken-cli",
-  "version": "0.1.0",
+  "version": "0.3.2",
   "description": "Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken.",
   "contextFileName": "CONTEXT.md",
   "mcpServers": {
     "kraken": {
       "command": "kraken",
-      "args": ["mcp", "-s", "all"]
+      "args": ["mcp", "-s", "market,paper"]
     }
   }
 }

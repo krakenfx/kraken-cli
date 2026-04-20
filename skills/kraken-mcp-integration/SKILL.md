@@ -30,22 +30,34 @@ Add this to your MCP client configuration (Claude Desktop: `claude_desktop_confi
   "mcpServers": {
     "kraken": {
       "command": "kraken",
-      "args": ["mcp", "-s", "market,trade,paper"]
+      "args": ["mcp", "-s", "market,paper"]
     }
   }
 }
 ```
 
-### 2. Set credentials
+`-s market,paper` is the default service list: public market data plus paper
+trading. No real funds can be touched until you opt in explicitly by
+expanding the service list. See [Enabling live trading](#enabling-live-trading)
+below.
 
-The MCP server reads credentials from environment variables:
+Credential resolution follows the standard CLI precedence: command-line
+flags, then `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` in the MCP server's `env`
+block, then a secure local config file managed by the CLI (written by
+`kraken auth set` and `kraken setup`, stored with user-only permissions in
+your OS's standard config directory). The MCP server and the standalone CLI
+share the same config file, so a single `kraken auth set` serves both.
+
+### 2. Set credentials (only needed for live trading)
+
+If you stay on `market,paper`, skip this step — paper trading needs no keys.
+
+For live trading, the MCP server reads credentials from environment variables:
 
 ```bash
 export KRAKEN_API_KEY="your-key"
 export KRAKEN_API_SECRET="your-secret"
 ```
-
-Public market data and paper trading require no credentials.
 
 ### 3. Restart your MCP client
 
@@ -57,10 +69,10 @@ Control which command groups the MCP server exposes:
 
 ```bash
 kraken mcp -s market                    # public data only (safe, no auth)
-kraken mcp -s market,paper              # market data + paper trading
+kraken mcp -s market,paper              # market data + paper trading (marketplace default)
 kraken mcp -s market,trade,paper        # add live trading
-kraken mcp -s market,account,trade      # add account queries
-kraken mcp -s all                       # everything (many tools)
+kraken mcp -s market,account,trade      # add account queries and live trading
+kraken mcp -s all                       # everything (many tools, includes funding/earn/subaccount)
 ```
 
 Keep the service list to what you need. MCP clients typically handle 50-100 tools well.
@@ -76,6 +88,41 @@ Keep the service list to what you need. MCP clients typically handle 50-100 tool
 | futures | Mixed | ~39 | Orders (dangerous) |
 | paper | No | ~10 | None (simulation) |
 | auth | No | ~3 | Read-only (auth set/auth reset excluded) |
+
+## Enabling live trading
+
+Every `kraken-cli` marketplace listing ships with `-s market,paper` by default,
+so a fresh install can never place a real order. To opt in to live trading,
+edit the MCP server args in your client's config and widen the service list:
+
+```json
+{
+  "mcpServers": {
+    "kraken": {
+      "command": "kraken",
+      "args": ["mcp", "-s", "market,trade,paper"],
+      "env": {
+        "KRAKEN_API_KEY": "your-key",
+        "KRAKEN_API_SECRET": "your-secret"
+      }
+    }
+  }
+}
+```
+
+Recommended upgrade path:
+
+1. Start with `market,paper` (the default).
+2. Add `trade` once you are comfortable and have an API key scoped to orders
+   only. See the "Recommended key scope" section of `skills/kraken-setup/SKILL.md`
+   before generating a key.
+3. Add `account` if you want the agent to read balances and positions.
+4. Only enable `funding`, `earn`, `subaccount`, or `all` if you specifically
+   need those workflows. Each of these unlocks tools that can move funds off
+   the exchange or alter account structure.
+
+Switching to `-s all` expands the set of tools the agent can reach by
+prompt-injection or mistake. Prefer a narrow list and widen it deliberately.
 
 ## Safety
 
