@@ -245,9 +245,240 @@ fn balance_without_credentials_fails() {
         .env_remove("KRAKEN_API_KEY")
         .env_remove("KRAKEN_API_SECRET")
         .env("HOME", "/nonexistent")
+        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
         .args(["balance", "--output", "json"])
         .assert()
         .failure();
+}
+
+// --- Empty-string env var handling (plugin hosts like Claude Code) ---
+//
+// Plugin hosts pass an empty string for userConfig fields that the user left
+// blank. Credential resolution must treat the empty string as absent and fall
+// through to the next tier, producing the friendly "not configured" error
+// rather than attempting auth with garbage credentials and surfacing a cryptic
+// Kraken API error. These tests exercise the full CLI entry point so both the
+// env-reading logic and the error envelope stay correct end-to-end.
+
+#[test]
+fn spot_both_env_empty_falls_through_to_config_tier() {
+    kraken()
+        .env("KRAKEN_API_KEY", "")
+        .env("KRAKEN_API_SECRET", "")
+        .env("HOME", "/nonexistent")
+        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
+        .args(["balance", "--output", "json"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("No Spot API credentials found"))
+        // No mismatched-pair warning when both are treated as absent.
+        .stderr(predicate::str::contains("KRAKEN_API_KEY is set").not())
+        .stderr(predicate::str::contains("KRAKEN_API_SECRET is set").not());
+}
+
+#[test]
+fn spot_empty_key_with_real_secret_warns_and_falls_through() {
+    kraken()
+        .env("KRAKEN_API_KEY", "")
+        .env("KRAKEN_API_SECRET", "real-secret-value")
+        .env("HOME", "/nonexistent")
+        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
+        .args(["balance", "--output", "json"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "KRAKEN_API_SECRET is set but KRAKEN_API_KEY is missing",
+        ))
+        .stdout(predicate::str::contains("No Spot API credentials found"));
+}
+
+#[test]
+fn spot_real_key_with_empty_secret_warns_and_falls_through() {
+    kraken()
+        .env("KRAKEN_API_KEY", "real-key-value")
+        .env("KRAKEN_API_SECRET", "")
+        .env("HOME", "/nonexistent")
+        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
+        .args(["balance", "--output", "json"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "KRAKEN_API_KEY is set but KRAKEN_API_SECRET is missing",
+        ))
+        .stdout(predicate::str::contains("No Spot API credentials found"));
+}
+
+#[test]
+fn futures_both_env_empty_falls_through_to_config_tier() {
+    kraken()
+        .env("KRAKEN_FUTURES_API_KEY", "")
+        .env("KRAKEN_FUTURES_API_SECRET", "")
+        .env("HOME", "/nonexistent")
+        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
+        .args(["futures", "accounts", "--output", "json"])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("No Futures API credentials found"))
+        .stderr(predicate::str::contains("KRAKEN_FUTURES_API_KEY is set").not())
+        .stderr(predicate::str::contains("KRAKEN_FUTURES_API_SECRET is set").not());
+}
+
+#[test]
+fn futures_empty_key_with_real_secret_warns_and_falls_through() {
+    kraken()
+        .env("KRAKEN_FUTURES_API_KEY", "")
+        .env("KRAKEN_FUTURES_API_SECRET", "real-secret-value")
+        .env("HOME", "/nonexistent")
+        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
+        .args(["futures", "accounts", "--output", "json"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "KRAKEN_FUTURES_API_SECRET is set but KRAKEN_FUTURES_API_KEY is missing",
+        ))
+        .stdout(predicate::str::contains("No Futures API credentials found"));
+}
+
+#[test]
+fn futures_real_key_with_empty_secret_warns_and_falls_through() {
+    kraken()
+        .env("KRAKEN_FUTURES_API_KEY", "real-key-value")
+        .env("KRAKEN_FUTURES_API_SECRET", "")
+        .env("HOME", "/nonexistent")
+        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
+        .args(["futures", "accounts", "--output", "json"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "KRAKEN_FUTURES_API_KEY is set but KRAKEN_FUTURES_API_SECRET is missing",
+        ))
+        .stdout(predicate::str::contains("No Futures API credentials found"));
+}
+
+#[test]
+fn auth_show_masks_api_key() {
+    // `auth show` must never expose either the full key or the secret
+    // in either renderer:
+    //
+    // - Table mode: api_key renders as a last-4 mask (`****7890`), so
+    //   an operator with multiple keys can tell them apart without
+    //   giving up correlation material; api_secret renders as the
+    //   literal `[REDACTED]` token so screen-shares and paste-to-Slack
+    //   cannot exfiltrate any secret prefix.
+    //
+    // - JSON mode: both fields render as structured
+    //   `{present, masked}` objects. `masked` never contains the full
+    //   material, and `api_secret.masked` is the fixed `[REDACTED]`
+    //   string. Structured output lets scripts branch on presence
+    //   without parsing a masked string and keeps log-scrubbers that
+    //   match on `[REDACTED]` working.
+    let dir = tempfile::tempdir().unwrap();
+    let api_key = "supersecretapikey1234567890";
+    let api_secret = "supersecretsecretvalue1234";
+
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args([
+            "auth",
+            "set",
+            "--api-key",
+            api_key,
+            "--api-secret",
+            api_secret,
+        ])
+        .assert()
+        .success();
+
+    // Table mode.
+    kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["auth", "show"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(api_key).not())
+        .stdout(predicate::str::contains(api_secret).not())
+        // Last-4 mask for the api_key.
+        .stdout(predicate::str::contains("****7890"))
+        // Regression guard against first-4+last-4 (`supe...`).
+        .stdout(predicate::str::contains("supe...").not())
+        // Secret appears only as the fixed redaction token.
+        .stdout(predicate::str::contains("[REDACTED]"));
+
+    // JSON mode.
+    let output = kraken()
+        .env("HOME", dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+        .args(["auth", "show", "--output", "json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains(api_key),
+        "JSON output leaked full api_key: {stdout}"
+    );
+    assert!(
+        !stdout.contains(api_secret),
+        "JSON output leaked full api_secret: {stdout}"
+    );
+    assert!(
+        !stdout.contains("supe...") && !stdout.contains("supersecret"),
+        "JSON output leaked api_key prefix: {stdout}"
+    );
+
+    // Structural assertions on the JSON. Parsing ensures we hit the
+    // exact contract downstream scripts depend on, not just string
+    // substring matches that would also pass on a malformed shape.
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("auth show --output json must emit valid JSON");
+    let data = parsed
+        .get("data")
+        .or(Some(&parsed))
+        .unwrap_or(&parsed)
+        .clone();
+    // Tolerate both flat and nested JSON envelopes; find the fields
+    // wherever the output renderer puts them.
+    let find = |key: &str| -> serde_json::Value {
+        if let Some(v) = data.get(key) {
+            return v.clone();
+        }
+        if let Some(v) = parsed.get(key) {
+            return v.clone();
+        }
+        serde_json::Value::Null
+    };
+    let api_key_json = find("api_key");
+    let api_secret_json = find("api_secret");
+
+    assert_eq!(
+        api_key_json.get("present").and_then(|v| v.as_bool()),
+        Some(true),
+        "api_key.present should be true: {stdout}"
+    );
+    let masked_key = api_key_json
+        .get("masked")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    assert!(
+        masked_key.ends_with("7890"),
+        "api_key.masked should end with last-4: got {masked_key}"
+    );
+    assert!(
+        !masked_key.contains("supe") && !masked_key.contains("supersecret"),
+        "api_key.masked leaked prefix: {masked_key}"
+    );
+
+    assert_eq!(
+        api_secret_json.get("present").and_then(|v| v.as_bool()),
+        Some(true),
+        "api_secret.present should be true: {stdout}"
+    );
+    assert_eq!(
+        api_secret_json.get("masked").and_then(|v| v.as_str()),
+        Some("[REDACTED]"),
+        "api_secret.masked should be the fixed [REDACTED] token: {stdout}"
+    );
 }
 
 #[test]
@@ -256,6 +487,7 @@ fn json_error_is_valid_json() {
         .env_remove("KRAKEN_API_KEY")
         .env_remove("KRAKEN_API_SECRET")
         .env("HOME", "/nonexistent")
+        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
         .args(["balance", "--output", "json"])
         .output()
         .unwrap();

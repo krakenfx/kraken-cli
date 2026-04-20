@@ -1391,7 +1391,7 @@ impl FuturesPaperState {
             }
         }
 
-        liq_indices.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        liq_indices.sort_unstable_by_key(|entry| std::cmp::Reverse(entry.0));
 
         for (idx, mark) in liq_indices {
             let pos = self.positions.remove(idx);

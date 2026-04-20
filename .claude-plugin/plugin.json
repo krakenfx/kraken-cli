@@ -1,0 +1,48 @@
+{
+  "name": "kraken-cli",
+  "version": "0.3.2",
+  "description": "Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken. Paper trading by default; live trading opt-in via API keys.",
+  "author": {
+    "name": "Kraken",
+    "email": "support@kraken.com",
+    "url": "https://kraken.com/kraken-cli"
+  },
+  "homepage": "https://kraken.com/kraken-cli",
+  "repository": "https://github.com/krakenfx/kraken-cli",
+  "license": "MIT",
+  "keywords": [
+    "trading",
+    "crypto",
+    "finance",
+    "mcp",
+    "paper-trading",
+    "futures",
+    "forex",
+    "stocks"
+  ],
+  "skills": "./skills/",
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "Kraken Spot API key",
+      "description": "Leave blank to use market data and paper trading only (no account needed).",
+      "sensitive": true
+    },
+    "api_secret": {
+      "type": "string",
+      "title": "Kraken Spot API secret",
+      "description": "Leave blank if you left the API key blank.",
+      "sensitive": true
+    }
+  },
+  "mcpServers": {
+    "kraken": {
+      "command": "kraken",
+      "args": ["mcp", "-s", "market,paper"],
+      "env": {
+        "KRAKEN_API_KEY": "${user_config.api_key}",
+        "KRAKEN_API_SECRET": "${user_config.api_secret}"
+      }
+    }
+  }
+}
