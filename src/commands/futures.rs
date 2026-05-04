@@ -75,6 +75,23 @@ pub(crate) enum FuturesCommand {
         /// Futures symbol (e.g. PI_XBTUSD).
         symbol: String,
     },
+    /// Get OHLC candle data for a futures contract (no auth).
+    Ohlc {
+        /// Futures symbol (e.g. PF_XBTUSD).
+        symbol: String,
+        /// Candle resolution.
+        #[arg(long, default_value = "1d", value_parser = ["1m", "5m", "15m", "30m", "1h", "4h", "12h", "1d", "1w"])]
+        interval: String,
+        /// Tick type for the price series.
+        #[arg(long, default_value = "trade", value_parser = ["trade", "mark", "index"])]
+        tick_type: String,
+        /// Start of range, unix seconds (inclusive).
+        #[arg(long)]
+        from: Option<u64>,
+        /// End of range, unix seconds (inclusive).
+        #[arg(long)]
+        to: Option<u64>,
+    },
 
     // === Private commands ===
     /// Get futures account/wallet info (auth required).
@@ -419,6 +436,30 @@ pub(crate) async fn execute(
                 .public_get("historical-funding-rates", &params, verbose)
                 .await?;
             Ok(parse_generic(&data))
+        }
+        FuturesCommand::Ohlc {
+            symbol,
+            interval,
+            tick_type,
+            from,
+            to,
+        } => {
+            validate_path_segment(symbol, "symbol")?;
+            let mut params: Vec<(&str, &str)> = Vec::new();
+            let from_owned;
+            if let Some(f) = from {
+                from_owned = f.to_string();
+                params.push(("from", &from_owned));
+            }
+            let to_owned;
+            if let Some(t) = to {
+                to_owned = t.to_string();
+                params.push(("to", &to_owned));
+            }
+            let data = client
+                .public_get_charts(tick_type, symbol, interval, &params, verbose)
+                .await?;
+            Ok(parse_futures_ohlc(&data))
         }
 
         // === Private commands ===
@@ -1042,6 +1083,34 @@ fn parse_orderbook(data: &Value) -> CommandOutput {
     CommandOutput::new(data.clone(), headers, rows)
 }
 
+/// Parse the futures charts OHLC response into Time | Open | High | Low | Close | Volume.
+///
+/// NOTE: `time` is in millis since epoch (the OHLC endpoint uses seconds).
+fn parse_futures_ohlc(data: &Value) -> CommandOutput {
+    let headers = vec![
+        "Time".into(),
+        "Open".into(),
+        "High".into(),
+        "Low".into(),
+        "Close".into(),
+        "Volume".into(),
+    ];
+    let mut rows = Vec::new();
+    if let Some(candles) = data.get("candles").and_then(|c| c.as_array()) {
+        for candle in candles {
+            rows.push(vec![
+                jstr(candle, "time"),
+                jstr(candle, "open"),
+                jstr(candle, "high"),
+                jstr(candle, "low"),
+                jstr(candle, "close"),
+                jstr(candle, "volume"),
+            ]);
+        }
+    }
+    CommandOutput::new(data.clone(), headers, rows)
+}
+
 /// Parse order status response (POST orders/status) into order_id | status table.
 fn parse_order_status(data: &Value) -> CommandOutput {
     let headers = vec!["order_id".into(), "status".into()];
@@ -1546,5 +1615,59 @@ mod tests {
     fn build_history_params_empty() {
         let params = build_history_params(None, None, None);
         assert!(params.is_empty());
+    }
+
+    #[test]
+    fn parse_futures_ohlc_candle_fields() {
+        // curl -s -i 'https://futures.kraken.com/api/charts/v1/trade/PF_XBTUSD/1d?from=1735689600&to=1735862400'
+        let data = serde_json::json!({
+            "candles": [
+                {
+                    "time": 1735689600000_u64,
+                    "open": "93432",
+                    "high": "95032",
+                    "low": "92651",
+                    "close": "94431",
+                    "volume": "2267.6796"
+                },
+                {
+                    "time": 1735776000000_u64,
+                    "open": "94431",
+                    "high": "97774",
+                    "low": "94210",
+                    "close": "96918",
+                    "volume": "3145.21"
+                }
+            ],
+            "more_candles": false
+        });
+
+        let cmd_out = parse_futures_ohlc(&data);
+
+        assert_eq!(cmd_out.rows.len(), 2);
+
+        assert_eq!(
+            cmd_out.rows[0],
+            vec![
+                "1735689600000",
+                "93432",
+                "95032",
+                "92651",
+                "94431",
+                "2267.6796"
+            ]
+        );
+
+        assert_eq!(
+            cmd_out.rows[1],
+            vec![
+                "1735776000000",
+                "94431",
+                "97774",
+                "94210",
+                "96918",
+                "3145.21"
+            ]
+        );
     }
 }

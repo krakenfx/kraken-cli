@@ -132,5 +132,5 @@ Load `agents/tool-catalog.json` for the full machine-readable command contract. 
 
 - `AGENTS.md`: Complete agent integration guide
 - `CONTEXT.md`: Runtime-optimized context for tool-using agents
-- `agents/tool-catalog.json`: All 151 commands with parameters
+- `agents/tool-catalog.json`: All 152 commands with parameters
 - `agents/error-catalog.json`: Error categories with retry guidance

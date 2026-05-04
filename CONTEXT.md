@@ -151,5 +151,5 @@ Security note:
 ## Tool Discovery
 
 Use these machine-readable files:
-- `agents/tool-catalog.json`: full command catalog (151 commands with parameter schemas and `dangerous` flags)
+- `agents/tool-catalog.json`: full command catalog (152 commands with parameter schemas and `dangerous` flags)
 - `agents/error-catalog.json`: error categories and retry policy
