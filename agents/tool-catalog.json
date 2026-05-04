@@ -2672,6 +2672,48 @@
       "example": "kraken futures historical-funding-rates PI_XBTUSD"
     },
     {
+      "name": "futures-ohlc",
+      "command": "kraken futures ohlc <SYMBOL>",
+      "group": "futures",
+      "description": "Get OHLC candle data for a futures contract. Candle timestamps are in milliseconds since epoch (the spot OHLC endpoint uses seconds).",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "symbol",
+          "type": "string",
+          "required": true,
+          "positional": true,
+          "description": "Futures symbol (e.g. PF_XBTUSD)"
+        },
+        {
+          "name": "--interval",
+          "type": "string",
+          "required": false,
+          "description": "Candle resolution: 1m, 5m, 15m, 30m, 1h, 4h, 12h, 1d, 1w (default 1d)"
+        },
+        {
+          "name": "--tick-type",
+          "type": "string",
+          "required": false,
+          "description": "Tick type for the price series: trade, mark, index (default trade)"
+        },
+        {
+          "name": "--from",
+          "type": "integer",
+          "required": false,
+          "description": "Start of range, unix seconds (inclusive)"
+        },
+        {
+          "name": "--to",
+          "type": "integer",
+          "required": false,
+          "description": "End of range, unix seconds (inclusive)"
+        }
+      ],
+      "example": "kraken futures ohlc PF_XBTUSD --interval 1d --from 1735689600 --to 1735862400 -o json"
+    },
+    {
       "name": "futures-order-status",
       "command": "kraken futures order-status",
       "group": "futures",

@@ -101,7 +101,7 @@ If you're an AI agent or building one, start here:
 |----------|-------------|
 | [CONTEXT.md](CONTEXT.md) | Runtime context for tool-using agents |
 | [AGENTS.md](AGENTS.md) | Full integration guide: auth, invocation, errors, rate limits |
-| [agents/tool-catalog.json](agents/tool-catalog.json) | 151 commands with parameter schemas, types, and safety flags |
+| [agents/tool-catalog.json](agents/tool-catalog.json) | 152 commands with parameter schemas, types, and safety flags |
 | [agents/error-catalog.json](agents/error-catalog.json) | 9 error categories with retry guidance |
 | [skills/](skills/) | 50 goal-oriented SKILL.md workflow packages |
 | [CLAUDE.md](CLAUDE.md) | Claude-specific integration guidance |
@@ -125,7 +125,7 @@ Most CLIs are built for humans at a terminal. This one is built for LLM-based ag
 - **Consistent error envelopes.** Errors are JSON objects with a stable `error` field (`auth`, `rate_limit`, `validation`, `api`, `network`). Agents route on `error` without parsing human sentences.
 - **Predictable exit codes.** Success is 0, failure is non-zero. Combined with JSON errors on stdout, agents detect and classify failures programmatically.
 - **Paper trading for safe iteration.** Test strategies against live prices with `kraken paper` (spot) and `kraken futures paper` (perpetual futures) commands. No API keys, no real money, same interface as live trading.
-- **Full API surface.** 151 commands covering Spot, Futures, xStocks, Forex, Funding, Earn, Subaccounts, WebSocket streaming, and paper trading for both spot and futures.
+- **Full API surface.** 152 commands covering Spot, Futures, xStocks, Forex, Funding, Earn, Subaccounts, WebSocket streaming, and paper trading for both spot and futures.
 - **Built-in MCP server.** Native Model Context Protocol support over stdio. No subprocess wrappers needed.
 - **Rate-limit aware.** No client-side throttling. When the Kraken API rejects a request due to rate limits, the CLI returns an enriched error with `suggestion`, `retryable`, and `docs_url` fields so agents can read the documentation and adapt their strategy.
 
@@ -362,7 +362,7 @@ kraken balance -o json -v 2>/dev/null | jq .
 
 ## Commands
 
-151 commands across 13 groups. For machine-readable parameter schemas, load [agents/tool-catalog.json](agents/tool-catalog.json).
+152 commands across 13 groups. For machine-readable parameter schemas, load [agents/tool-catalog.json](agents/tool-catalog.json).
 
 | Group | Commands | Auth | Description |
 |-------|----------|------|-------------|
@@ -481,6 +481,7 @@ kraken balance -o json -v 2>/dev/null | jq .
 | `kraken futures ticker <SYMBOL>` | Single ticker |
 | `kraken futures orderbook <SYMBOL>` | Order book |
 | `kraken futures history <SYMBOL> [--since TS] [--before TS]` | Trade history |
+| `kraken futures ohlc <SYMBOL> [--interval 1d] [--tick-type trade] [--from TS] [--to TS]` | OHLC candles (timestamps in ms) |
 | `kraken futures feeschedules` | Fee schedules |
 | `kraken futures instrument-status [--symbol SYM]` | Instrument status |
 

@@ -514,6 +514,59 @@ impl FuturesClient {
         }
     }
 
+    /// Execute a public GET request on the Futures charts API, with retry on
+    /// transient errors and 5xx server errors (GET is inherently idempotent).
+    ///
+    /// No auth headers.
+    pub async fn public_get_charts(
+        &self,
+        tick_type: &str,
+        symbol: &str,
+        resolution: &str,
+        params: &[(&str, &str)],
+        verbose: bool,
+    ) -> Result<Value> {
+        let mut base_url = url::Url::parse(&self.base_url)
+            .map_err(|e| KrakenError::Validation(format!("Invalid futures base URL: {e}")))?;
+        // The charts API lives at a different path prefix than the v3 derivatives
+        base_url.set_path(&format!("/api/charts/v1/{tick_type}/{symbol}/{resolution}"));
+        let url = base_url.to_string();
+
+        if verbose {
+            crate::output::verbose(&format!("GET {url}"));
+        }
+
+        let mut attempt = 0u32;
+        loop {
+            let response = self.http.get(&url).query(params).send().await;
+            match response {
+                Ok(r) if r.status().is_server_error() && attempt < MAX_RETRIES => {
+                    let status = r.status();
+                    attempt += 1;
+                    let backoff = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
+                    if verbose {
+                        crate::output::verbose(&format!(
+                            "Server error {status}, retry {attempt}/{MAX_RETRIES} after {backoff}ms"
+                        ));
+                    }
+                    tokio::time::sleep(Duration::from_millis(backoff)).await;
+                }
+                Ok(r) => return self.parse_futures_response(r, verbose).await,
+                Err(e) if is_transient(&e) && attempt < MAX_RETRIES => {
+                    attempt += 1;
+                    let backoff = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
+                    if verbose {
+                        crate::output::verbose(&format!(
+                            "Transient error, retry {attempt}/{MAX_RETRIES} after {backoff}ms"
+                        ));
+                    }
+                    tokio::time::sleep(Duration::from_millis(backoff)).await;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+    }
+
     /// Execute a private GET on the Futures API with auth headers and retry
     /// on transient errors and 5xx server errors (GET is inherently idempotent).
     pub async fn private_get(

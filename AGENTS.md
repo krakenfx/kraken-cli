@@ -306,7 +306,7 @@ Spot paper and futures paper are fully independent. Resetting one does not affec
 | auth | No | 4 | Credential management (set, show, test, reset) |
 | utility | No | 2 | Interactive setup and REPL shell |
 
-Total: 151 commands. For the full machine-readable catalog, see `agents/tool-catalog.json`.
+Total: 152 commands. For the full machine-readable catalog, see `agents/tool-catalog.json`.
 
 `kraken mcp` is a runtime mode that starts an MCP server, not a tool-callable command. It is not included in the catalog.
 
@@ -384,7 +384,7 @@ import json
 with open("agents/tool-catalog.json") as f:
     catalog = json.load(f)
 
-# All 151 commands with full parameter schemas
+# All 152 commands with full parameter schemas
 commands = catalog["commands"]
 
 # Filter to safe read-only commands
@@ -462,7 +462,7 @@ Configure your MCP client:
 
 | File | Format | Description |
 |------|--------|-------------|
-| `agents/tool-catalog.json` | JSON | All 151 commands with parameters, types, safety flags, and examples |
+| `agents/tool-catalog.json` | JSON | All 152 commands with parameters, types, safety flags, and examples |
 | `agents/error-catalog.json` | JSON | 9 error categories with retry guidance |
 | `agents/examples/` | Shell | Runnable workflow examples |
 | `skills/` | SKILL.md | Goal-oriented workflow skills for agents |
