@@ -21,9 +21,9 @@ echo ""
 
 # Get prices
 echo "Step 2: Fetch prices"
-BTC_PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].c[0] // "0"')
-ETH_PRICE=$(kraken ticker ETHUSD -o json 2>/dev/null | jq -r '.[].c[0] // "0"')
-SOL_PRICE=$(kraken ticker SOLUSD -o json 2>/dev/null | jq -r '.[].c[0] // "0"')
+BTC_PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].last_price // "0"')
+ETH_PRICE=$(kraken ticker ETHUSD -o json 2>/dev/null | jq -r '.[].last_price // "0"')
+SOL_PRICE=$(kraken ticker SOLUSD -o json 2>/dev/null | jq -r '.[].last_price // "0"')
 echo "  BTC: \$$BTC_PRICE  ETH: \$$ETH_PRICE  SOL: \$$SOL_PRICE"
 echo ""
 

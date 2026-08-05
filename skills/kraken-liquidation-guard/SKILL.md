@@ -119,3 +119,5 @@ If the agent crashes, orders auto-cancel, preventing further margin consumption.
 - Alert at 0.5 ratio; act at 0.7. Do not wait for the exchange to liquidate.
 - Emergency flatten requires human approval unless the agent operates at autonomy level 4+.
 - Never increase position size when margin ratio is above 0.3.
+- `futures set-leverage` is flagged dangerous: it changes the margin requirement on open positions, so de-risking with it needs the same human approval as flattening.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

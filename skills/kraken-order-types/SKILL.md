@@ -158,3 +158,4 @@ kraken order buy BTCUSD 0.001 --type limit --price 50000 --validate -o json 2>/d
 - All order placement commands are dangerous. Never execute without explicit human approval.
 - Always validate with `--validate` before live submission.
 - Use `--reduce-only` on futures exits to prevent accidental position flips.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

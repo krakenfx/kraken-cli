@@ -107,7 +107,8 @@ kraken ledgers --type staking --start 1704067200 --end 1735689600 -o json 2>/dev
 
 ## Hard Rules
 
-- Export data is read-only; no dangerous operations involved.
+- Requesting and reading exports is read-only, but `export-retrieve` (writes to disk) and `export-delete` (irreversible) are flagged dangerous. Never delete a report without explicit human approval.
 - Verify export completeness by checking trade counts against `trades-history` totals.
 - Keep exports secure; they contain full trading history.
 - Futures and spot exports are separate; ensure both are included.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

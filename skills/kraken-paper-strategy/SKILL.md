@@ -20,20 +20,21 @@ For futures paper trading (leverage, margin, shorts, liquidation), see `kraken f
 
 ## Limitations
 
-Paper trading runs locally against live market prices. A 0.26% taker fee (Kraken Starter tier default) is applied to every fill, but slippage and partial fills are not modeled.
+Paper trading runs locally against live market prices. It simulates fees and slippage but has other limitations.
 
-- **Fees included.** A 0.26% taker fee is deducted from collateral on each fill. Live maker fees are lower (0.16%), so limit orders that provide liquidity on a live exchange cost less than paper predicts.
-- **No slippage.** Paper orders fill at the exact quoted price. Live market orders can fill at worse prices, especially for larger sizes or thin order books.
+- **Fees are configurable.** A 0.26% taker fee (Kraken Starter tier) is applied by default. Override with `--fee-rate` at `workspace create` (fixed for the account's life). Real fees vary by volume tier and maker/taker status. Live maker fees are lower (0.16%).
+- **Slippage is configurable.** A flat slippage rate can be applied to market orders with `--slippage-rate` (default: 0.0). Market buys fill at `ask * (1 + slippage_rate)`, sells at `bid * (1 - slippage_rate)`. This is a conservative approximation; real slippage depends on order book depth, size, and volatility.
 - **No partial fills or rejection.** Paper orders always fill in full immediately. Live orders may partially fill, queue, or be rejected.
 
-When presenting paper results to the user, note that slippage is not modeled and live performance will differ. The fee deduction is already reflected in paper P&L.
+When presenting paper results to the user, note that partial fills and order book dynamics are not simulated. If slippage is set to 0.0 (default), remind the user that live market orders will fill at worse prices.
 
 ## Baseline Workflow
 
 ```bash
-kraken paper init --balance 10000 --currency USD -o json 2>/dev/null
+kraken workspace create sandbox --capital 10000 --mode paper --currency USD --slippage-rate 0.001 -o json 2>/dev/null
+export KRAKEN_WORKSPACE=sandbox
 kraken paper buy BTCUSD 0.01 -o json 2>/dev/null
-kraken paper status -o json 2>/dev/null
+kraken workspace status -o json 2>/dev/null
 kraken paper sell BTCUSD 0.005 --type limit --price 70000 -o json 2>/dev/null
 kraken paper orders -o json 2>/dev/null
 kraken paper history -o json 2>/dev/null
@@ -42,7 +43,7 @@ kraken paper history -o json 2>/dev/null
 ## Reset Between Runs
 
 ```bash
-kraken paper reset -o json 2>/dev/null
+kraken workspace reset -o json --yes 2>/dev/null
 ```
 
 ## Migration Rule
@@ -51,3 +52,5 @@ Only move a strategy to live trading after:
 1. repeated paper runs with stable behavior
 2. explicit user sign-off
 3. `--validate` checks pass for live order payloads
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

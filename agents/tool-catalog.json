@@ -1,14 +1,17 @@
 {
-  "schema_version": "1.0.0",
-  "cli_version": "0.1.0",
+  "schema_version": "1.1.0",
+  "cli_version": "0.4.0",
   "description": "Machine-readable command catalog for kraken-cli.",
   "global_flags": {
-    "--output / -o": "Output format: json or table (default table)",
-    "--verbose / -v": "Print request/response diagnostics to stderr",
+    "--output / -o": "Output format for the command RESULT on stdout: json or table (default table)",
+    "--verbose / -v": "Raise diagnostic log level to debug for kraken-cli (logs go to stderr; RUST_LOG overrides)",
+    "--log-format": "Diagnostic log format on stderr: json (default; JSONL), pretty, or compact. Also settable via KRAKEN_LOG_FORMAT. Independent of --output.",
     "--api-key": "Override API key",
     "--api-secret": "Override API secret (use --api-secret-stdin or --api-secret-file instead)",
     "--api-url": "Override Spot API base URL",
-    "--futures-url": "Override Futures API base URL"
+    "--futures-url": "Override Futures API base URL",
+    "--yes / --force": "Skip confirmation prompts for destructive operations (reset, promote, cancel-all against the real account). Required for non-interactive use of any dangerous command; the MCP server passes it implicitly behind its own acknowledgment gate.",
+    "--workspace / KRAKEN_WORKSPACE": "Scope the paper account, its sessions, and lab experiments to an isolated workspaces/<name>/ tree; recorded market data stays global. The workspace must already exist (kraken workspace create). Name must be a single path-safe segment (letters, digits, '.', '-', '_'). Blank, unset, or 'default' addresses the flat layout - the real Kraken account."
   },
   "groups": {
     "market": "Public market data (no auth required)",
@@ -23,7 +26,9 @@
     "futures-paper": "Futures paper trading simulation with leverage, margin, and liquidation (no auth required)",
     "paper": "Spot paper trading simulation (no auth required)",
     "auth": "Credential management",
-    "utility": "Setup and interactive shell"
+    "feedback": "Product feedback upload to Kraken (no auth required)",
+    "utility": "Setup and interactive shell",
+    "workspace": "Strategy workspaces: the account that unifies paper and live trading. Created and funded once; no auth for paper accounts."
   },
   "commands": [
     {
@@ -63,6 +68,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         }
@@ -84,8 +90,15 @@
           "description": "Comma-delimited list of pairs to query"
         },
         {
+          "name": "--info",
+          "type": "string",
+          "required": false,
+          "description": "Information level: info, leverage, fees, or margin"
+        },
+        {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         }
@@ -110,8 +123,9 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
-          "description": "Asset class filter (tokenized_asset, forex)"
+          "description": "Asset class filter"
         }
       ],
       "example": "kraken ticker BTCUSD ETHUSD -o json"
@@ -146,6 +160,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         }
@@ -176,6 +191,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         }
@@ -200,12 +216,14 @@
         {
           "name": "--depth",
           "type": "integer",
+          "values": ["10", "25", "100", "250", "1000"],
           "required": false,
           "description": "Order book depth"
         },
         {
           "name": "--grouping",
           "type": "integer",
+          "values": ["1", "5", "10", "25", "50", "100", "250", "500", "1000"],
           "required": false,
           "description": "Price grouping level"
         }
@@ -242,6 +260,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         }
@@ -272,6 +291,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         }
@@ -296,6 +316,7 @@
         {
           "name": "--depth",
           "type": "integer",
+          "values": ["0", "10", "25", "100", "250", "1000"],
           "required": false,
           "description": "Order book depth"
         }
@@ -306,13 +327,14 @@
       "name": "balance",
       "command": "kraken balance",
       "group": "account",
-      "description": "Get all cash balances.",
+      "description": "Get all cash balances. Inside a workspace, shows the workspace account instead of the venue.",
       "auth_required": true,
       "dangerous": false,
       "parameters": [
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier for balance display"
         }
@@ -340,6 +362,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -363,6 +386,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -373,7 +397,7 @@
       "name": "open-orders",
       "command": "kraken open-orders",
       "group": "account",
-      "description": "Get currently open orders.",
+      "description": "Get currently open orders. Inside a workspace, shows the workspace account instead of the venue.",
       "auth_required": true,
       "dangerous": false,
       "parameters": [
@@ -384,6 +408,12 @@
           "description": "Include trades in output"
         },
         {
+          "name": "--userref",
+          "type": "integer",
+          "required": false,
+          "description": "Filter by user reference ID"
+        },
+        {
           "name": "--cl-ord-id",
           "type": "string",
           "required": false,
@@ -392,6 +422,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -406,6 +437,12 @@
       "auth_required": true,
       "dangerous": false,
       "parameters": [
+        {
+          "name": "--trades",
+          "type": "boolean",
+          "required": false,
+          "description": "Include trade details"
+        },
         {
           "name": "--start",
           "type": "string",
@@ -426,7 +463,7 @@
         },
         {
           "name": "--userref",
-          "type": "string",
+          "type": "integer",
           "required": false,
           "description": "User reference ID filter"
         },
@@ -439,6 +476,7 @@
         {
           "name": "--closetime",
           "type": "string",
+          "values": ["open", "close", "both"],
           "required": false,
           "description": "Which time to use: open, close, both"
         },
@@ -457,6 +495,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -486,7 +525,7 @@
         },
         {
           "name": "--userref",
-          "type": "string",
+          "type": "integer",
           "required": false,
           "description": "User reference ID filter"
         },
@@ -499,6 +538,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -509,15 +549,16 @@
       "name": "trades-history",
       "command": "kraken trades-history",
       "group": "account",
-      "description": "Get trade execution history.",
+      "description": "Get trade execution history. Inside a workspace, shows the workspace account instead of the venue.",
       "auth_required": true,
       "dangerous": false,
       "parameters": [
         {
           "name": "--type",
           "type": "string",
+          "values": ["all", "any position", "closed position", "closing position", "no position"],
           "required": false,
-          "description": "Trade type filter"
+          "description": "Trade type filter. Multi-word values also accept kebab-case aliases (any-position, closed-position, closing-position, no-position)."
         },
         {
           "name": "--trades",
@@ -530,6 +571,18 @@
           "type": "integer",
           "required": false,
           "description": "Result offset for pagination"
+        },
+        {
+          "name": "--start",
+          "type": "string",
+          "required": false,
+          "description": "Start timestamp or transaction ID"
+        },
+        {
+          "name": "--end",
+          "type": "string",
+          "required": false,
+          "description": "End timestamp or transaction ID"
         },
         {
           "name": "--consolidate-taker",
@@ -552,6 +605,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -582,6 +636,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -617,6 +672,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -646,6 +702,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         },
@@ -676,6 +733,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -706,6 +764,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -729,6 +788,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -746,6 +806,7 @@
         {
           "name": "--report",
           "type": "string",
+          "values": ["trades", "ledgers"],
           "required": true,
           "description": "Report type (trades, ledgers)"
         },
@@ -758,6 +819,7 @@
         {
           "name": "--format",
           "type": "string",
+          "values": ["CSV", "TSV"],
           "required": false,
           "description": "Export format (CSV, TSV)"
         },
@@ -793,6 +855,7 @@
         {
           "name": "--report",
           "type": "string",
+          "values": ["trades", "ledgers"],
           "required": true,
           "description": "Report type (trades, ledgers)"
         }
@@ -813,6 +876,12 @@
           "required": true,
           "positional": true,
           "description": "Export report ID"
+        },
+        {
+          "name": "--output-file",
+          "type": "string",
+          "required": false,
+          "description": "Destination path for the downloaded report"
         }
       ],
       "example": "kraken export-retrieve ABCD"
@@ -823,7 +892,7 @@
       "group": "account",
       "description": "Delete export report.",
       "auth_required": true,
-      "dangerous": false,
+      "dangerous": true,
       "parameters": [
         {
           "name": "id",
@@ -839,9 +908,10 @@
       "name": "order-buy",
       "command": "kraken order buy <PAIR> <VOLUME>",
       "group": "trade",
-      "description": "Place a buy order.",
+      "description": "Place a buy order. Routed by workspace mode: fills on the paper journal inside a paper workspace, trades the real account otherwise.",
       "auth_required": true,
       "dangerous": true,
+      "paper_safe": true,
       "parameters": [
         {
           "name": "pair",
@@ -912,13 +982,13 @@
           "description": "Time in force: GTC, IOC, GTD"
         },
         {
-          "name": "--starttm",
+          "name": "--start-time",
           "type": "string",
           "required": false,
           "description": "Scheduled start time"
         },
         {
-          "name": "--expiretm",
+          "name": "--expire-time",
           "type": "string",
           "required": false,
           "description": "Expiration time"
@@ -954,8 +1024,14 @@
           "description": "Validate only, do not submit"
         },
         {
-          "name": "--userref",
+          "name": "--reason",
           "type": "string",
+          "required": false,
+          "description": "Record why this order was placed in the workspace decision log"
+        },
+        {
+          "name": "--userref",
+          "type": "integer",
           "required": false,
           "description": "User reference ID"
         },
@@ -984,9 +1060,10 @@
       "name": "order-sell",
       "command": "kraken order sell <PAIR> <VOLUME>",
       "group": "trade",
-      "description": "Place a sell order.",
+      "description": "Place a sell order. Routed by workspace mode: fills on the paper journal inside a paper workspace, trades the real account otherwise.",
       "auth_required": true,
       "dangerous": true,
+      "paper_safe": true,
       "parameters": [
         {
           "name": "pair",
@@ -1057,13 +1134,13 @@
           "description": "Time in force: GTC, IOC, GTD"
         },
         {
-          "name": "--starttm",
+          "name": "--start-time",
           "type": "string",
           "required": false,
           "description": "Scheduled start time"
         },
         {
-          "name": "--expiretm",
+          "name": "--expire-time",
           "type": "string",
           "required": false,
           "description": "Expiration time"
@@ -1099,8 +1176,14 @@
           "description": "Validate only, do not submit"
         },
         {
-          "name": "--userref",
+          "name": "--reason",
           "type": "string",
+          "required": false,
+          "description": "Record why this order was placed in the workspace decision log"
+        },
+        {
+          "name": "--userref",
+          "type": "integer",
           "required": false,
           "description": "User reference ID"
         },
@@ -1212,6 +1295,12 @@
           "description": "New trigger price"
         },
         {
+          "name": "--pair",
+          "type": "string",
+          "required": false,
+          "description": "Trading pair, required for non-crypto assets"
+        },
+        {
           "name": "--post-only",
           "type": "boolean",
           "required": false,
@@ -1254,51 +1343,22 @@
           "description": "New price"
         },
         {
-          "name": "--price2",
+          "name": "--pair",
           "type": "string",
           "required": false,
-          "description": "New secondary price"
-        },
-        {
-          "name": "--oflags",
-          "type": "string",
-          "required": false,
-          "description": "New order flags"
-        },
-        {
-          "name": "--deadline",
-          "type": "string",
-          "required": false,
-          "description": "RFC3339 deadline"
-        },
-        {
-          "name": "--cancel-response",
-          "type": "boolean",
-          "required": false,
-          "description": "Include cancel response details"
-        },
-        {
-          "name": "--validate",
-          "type": "boolean",
-          "required": false,
-          "description": "Validate only, do not submit"
-        },
-        {
-          "name": "--userref",
-          "type": "string",
-          "required": false,
-          "description": "New user reference ID"
+          "description": "Trading pair"
         }
       ],
-      "example": "kraken order edit OABC12-DEFG3-HIJKL4 --price 52000 --validate"
+      "example": "kraken order edit OABC12-DEFG3-HIJKL4 --price 52000"
     },
     {
       "name": "order-cancel",
       "command": "kraken order cancel <TXID...>",
       "group": "trade",
-      "description": "Cancel one or more orders.",
+      "description": "Cancel one or more orders. Routed by workspace mode: inside a paper workspace, cancels on the workspace journal (single txid only).",
       "auth_required": true,
       "dangerous": true,
+      "paper_safe": true,
       "parameters": [
         {
           "name": "txid",
@@ -1312,6 +1372,12 @@
           "type": "string",
           "required": false,
           "description": "Client order ID to cancel"
+        },
+        {
+          "name": "--reason",
+          "type": "string",
+          "required": false,
+          "description": "Record why this order was cancelled in the workspace decision log"
         }
       ],
       "example": "kraken order cancel OABC12-DEFG3-HIJKL4"
@@ -1344,9 +1410,10 @@
       "name": "order-cancel-all",
       "command": "kraken order cancel-all",
       "group": "trade",
-      "description": "Cancel all open orders.",
+      "description": "Cancel all open orders. Routed by workspace mode: inside a paper workspace, cancels on the workspace journal.",
       "auth_required": true,
       "dangerous": true,
+      "paper_safe": true,
       "parameters": [
         {
           "name": "--yes",
@@ -1393,12 +1460,14 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         },
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -1436,6 +1505,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         },
@@ -1465,6 +1535,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         },
@@ -1501,6 +1572,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -1539,6 +1611,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         },
@@ -1557,6 +1630,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -1580,6 +1654,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         },
@@ -1592,6 +1667,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -1615,6 +1691,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         },
@@ -1688,6 +1765,7 @@
         {
           "name": "--asset-class",
           "type": "string",
+          "values": ["currency", "tokenized_asset", "forex"],
           "required": false,
           "description": "Asset class filter"
         },
@@ -1724,6 +1802,7 @@
         {
           "name": "--rebase-multiplier",
           "type": "string",
+          "values": ["rebased", "base"],
           "required": false,
           "description": "Rebase multiplier"
         }
@@ -1954,7 +2033,7 @@
       "group": "subaccount",
       "description": "Create subaccount.",
       "auth_required": true,
-      "dangerous": false,
+      "dangerous": true,
       "parameters": [
         {
           "name": "username",
@@ -2154,6 +2233,7 @@
         {
           "name": "--type",
           "type": "string",
+          "values": ["market", "limit", "post", "stop", "take-profit", "ioc", "trailing-stop", "fok"],
           "required": false,
           "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)"
         },
@@ -2172,6 +2252,7 @@
         {
           "name": "--trigger-signal",
           "type": "string",
+          "values": ["mark", "index", "last"],
           "required": false,
           "description": "Trigger signal type"
         },
@@ -2196,6 +2277,7 @@
         {
           "name": "--trailing-stop-deviation-unit",
           "type": "string",
+          "values": ["percent", "quote_currency"],
           "required": false,
           "description": "Trailing stop deviation unit"
         }
@@ -2227,6 +2309,7 @@
         {
           "name": "--type",
           "type": "string",
+          "values": ["market", "limit", "post", "stop", "take-profit", "ioc", "trailing-stop", "fok"],
           "required": false,
           "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)"
         },
@@ -2245,6 +2328,7 @@
         {
           "name": "--trigger-signal",
           "type": "string",
+          "values": ["mark", "index", "last"],
           "required": false,
           "description": "Trigger signal type"
         },
@@ -2269,6 +2353,7 @@
         {
           "name": "--trailing-stop-deviation-unit",
           "type": "string",
+          "values": ["percent", "quote_currency"],
           "required": false,
           "description": "Trailing stop deviation unit"
         }
@@ -2462,7 +2547,7 @@
       "group": "futures",
       "description": "Set leverage.",
       "auth_required": true,
-      "dangerous": false,
+      "dangerous": true,
       "parameters": [
         {
           "name": "symbol",
@@ -2647,6 +2732,7 @@
         {
           "name": "--contract-type",
           "type": "string",
+          "values": ["futures_inverse", "futures_vanilla", "flexible_futures"],
           "required": false,
           "description": "Filter by contract type: futures_inverse, futures_vanilla, flexible_futures"
         }
@@ -2673,7 +2759,7 @@
     },
     {
       "name": "futures-order-status",
-      "command": "kraken futures order-status",
+      "command": "kraken futures order-status <ORDER_ID...>",
       "group": "futures",
       "description": "Get status of specific orders by ID.",
       "auth_required": true,
@@ -2705,7 +2791,7 @@
       "group": "futures",
       "description": "Set PnL preference for a symbol.",
       "auth_required": true,
-      "dangerous": false,
+      "dangerous": true,
       "parameters": [
         {
           "name": "symbol",
@@ -2980,6 +3066,12 @@
           "type": "string",
           "required": false,
           "description": "Event trigger filter"
+        },
+        {
+          "name": "--snapshot",
+          "type": "boolean",
+          "required": false,
+          "description": "Request a snapshot when subscribing"
         }
       ],
       "example": "kraken ws ticker BTC/USD ETH/USD"
@@ -2998,6 +3090,12 @@
           "required": true,
           "positional": true,
           "description": "One or more trading pairs"
+        },
+        {
+          "name": "--snapshot",
+          "type": "boolean",
+          "required": false,
+          "description": "Request a snapshot when subscribing"
         }
       ],
       "example": "kraken ws trades BTC/USD"
@@ -3022,6 +3120,12 @@
           "type": "integer",
           "required": false,
           "description": "Order book depth (10, 25, 100, 500, 1000)"
+        },
+        {
+          "name": "--snapshot",
+          "type": "boolean",
+          "required": false,
+          "description": "Request a snapshot when subscribing"
         }
       ],
       "example": "kraken ws book BTC/USD --depth 25"
@@ -3046,6 +3150,12 @@
           "type": "integer",
           "required": false,
           "description": "Candle interval in minutes"
+        },
+        {
+          "name": "--snapshot",
+          "type": "boolean",
+          "required": false,
+          "description": "Request a snapshot when subscribing"
         }
       ],
       "example": "kraken ws ohlc BTC/USD --interval 5"
@@ -3064,6 +3174,12 @@
           "required": false,
           "positional": true,
           "description": "Trading pairs (optional, streams all if omitted)"
+        },
+        {
+          "name": "--snapshot",
+          "type": "boolean",
+          "required": false,
+          "description": "Request a snapshot when subscribing"
         }
       ],
       "example": "kraken ws instrument BTC/USD"
@@ -3075,7 +3191,14 @@
       "description": "Stream trade executions.",
       "auth_required": true,
       "dangerous": false,
-      "parameters": [],
+      "parameters": [
+        { "name": "--snap-trades", "type": "boolean", "required": false, "description": "Include the most recent fills in the snapshot" },
+        { "name": "--snap-orders", "type": "boolean", "required": false, "description": "Include open orders in the snapshot" },
+        { "name": "--order-status", "type": "boolean", "required": false, "description": "Stream all order status transitions" },
+        { "name": "--rebased", "type": "boolean", "required": false, "description": "Display tokenized assets in underlying-equity terms" },
+        { "name": "--ratecounter", "type": "boolean", "required": false, "description": "Include the rate-limit counter" },
+        { "name": "--users", "type": "string", "required": false, "description": "Stream master and subaccount events" }
+      ],
       "example": "kraken ws executions"
     },
     {
@@ -3085,7 +3208,11 @@
       "description": "Stream balance updates.",
       "auth_required": true,
       "dangerous": false,
-      "parameters": [],
+      "parameters": [
+        { "name": "--snapshot", "type": "boolean", "required": false, "description": "Request a snapshot when subscribing" },
+        { "name": "--rebased", "type": "boolean", "required": false, "description": "Display tokenized assets in underlying-equity terms" },
+        { "name": "--users", "type": "string", "required": false, "description": "Stream master and subaccount events" }
+      ],
       "example": "kraken ws balances"
     },
     {
@@ -3102,6 +3229,18 @@
           "required": true,
           "positional": true,
           "description": "One or more trading pairs"
+        },
+        {
+          "name": "--depth",
+          "type": "integer",
+          "required": false,
+          "description": "Order book depth: 10, 100, or 1000"
+        },
+        {
+          "name": "--snapshot",
+          "type": "boolean",
+          "required": false,
+          "description": "Request a snapshot when subscribing"
         }
       ],
       "example": "kraken ws level3 BTC/USD"
@@ -3479,49 +3618,6 @@
       "example": "kraken ws batch-cancel --orders OABC12 ODEF34"
     },
     {
-      "name": "paper-init",
-      "command": "kraken paper init",
-      "group": "paper",
-      "description": "Initialize paper trading account.",
-      "auth_required": false,
-      "dangerous": false,
-      "parameters": [
-        {
-          "name": "--balance",
-          "type": "number",
-          "required": false,
-          "description": "Starting balance (default 10000)"
-        },
-        {
-          "name": "--currency",
-          "type": "string",
-          "required": false,
-          "description": "Base currency (default USD)"
-        }
-      ],
-      "example": "kraken paper init --balance 50000 --currency USD"
-    },
-    {
-      "name": "paper-reset",
-      "command": "kraken paper reset",
-      "group": "paper",
-      "description": "Reset paper account.",
-      "auth_required": false,
-      "dangerous": false,
-      "parameters": [],
-      "example": "kraken paper reset"
-    },
-    {
-      "name": "paper-balance",
-      "command": "kraken paper balance",
-      "group": "paper",
-      "description": "Show paper balances.",
-      "auth_required": false,
-      "dangerous": false,
-      "parameters": [],
-      "example": "kraken paper balance -o json"
-    },
-    {
       "name": "paper-buy",
       "command": "kraken paper buy <PAIR> <VOLUME>",
       "group": "paper",
@@ -3554,6 +3650,12 @@
           "type": "string",
           "required": false,
           "description": "Limit price"
+        },
+        {
+          "name": "--reason",
+          "type": "string",
+          "required": false,
+          "description": "Record why this simulated order was placed"
         }
       ],
       "example": "kraken paper buy BTCUSD 0.01 --type limit --price 50000"
@@ -3591,6 +3693,12 @@
           "type": "string",
           "required": false,
           "description": "Limit price"
+        },
+        {
+          "name": "--reason",
+          "type": "string",
+          "required": false,
+          "description": "Record why this simulated order was placed"
         }
       ],
       "example": "kraken paper sell BTCUSD 0.01 --type market"
@@ -3644,14 +3752,157 @@
       "example": "kraken paper history -o json"
     },
     {
-      "name": "paper-status",
-      "command": "kraken paper status",
+      "name": "explain-pnl",
+      "command": "kraken explain pnl",
       "group": "paper",
-      "description": "Paper portfolio status.",
+      "description": "Decompose a stopped session's P&L into plain-terms components (price movement, fees, spread, slippage, residual), with missed-fill counterfactuals and per-origin attribution. Requires 'kraken session stop' to have run first.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--session", "type": "string", "required": false, "description": "Which session: latest (default), an ordinal (s3), or a label" }
+      ],
+      "example": "kraken explain pnl --session latest -o json"
+    },
+    {
+      "name": "lab-score",
+      "command": "kraken lab score",
+      "group": "paper",
+      "description": "Score a stopped session into an honest scorecard: a first-class source block naming the session's provenance (replay tape + speed, or live + symbols), the explain-pnl waterfall carried verbatim, plus mechanical metrics (return, max drawdown, fees, friction, turnover, hit rate, profit factor, slippage sensitivity, trade counts) over the session's own recorded marks. Hit rate and profit factor grade closed FIFO round trips only and read null when no lot closed. Requires 'kraken session stop' to have run first. With --experiment, judges the scorecard against a frozen experiment's criteria and adds a mechanical pass/fail verdict.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "--session",
+          "type": "string",
+          "required": false,
+          "description": "Which session: latest (default), an ordinal (s3), or a label"
+        },
+        {
+          "name": "--experiment",
+          "type": "string",
+          "required": false,
+          "description": "Judge against this frozen experiment's criteria (hash-verified)"
+        }
+      ],
+      "example": "kraken lab score --session latest --experiment momentum-1 -o json"
+    },
+    {
+      "name": "lab-new",
+      "command": "kraken lab new <NAME>",
+      "group": "paper",
+      "description": "Pre-register an experiment: freeze a hypothesis and its mechanical success criteria into a hash-sealed spec before any session. The seal makes post-hoc goalpost moves detectable; a frozen spec is immutable.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "positional": true,
+          "description": "Experiment name (path-safe segment; becomes session labels)"
+        },
+        {
+          "name": "--hypothesis",
+          "type": "string",
+          "required": true,
+          "description": "The falsifiable claim being tested"
+        },
+        {
+          "name": "--strategy",
+          "type": "string",
+          "required": false,
+          "description": "The strategy under test, if one is named"
+        },
+        {
+          "name": "--min-return-pct",
+          "type": "number",
+          "required": false,
+          "description": "Success: return of at least this percent"
+        },
+        {
+          "name": "--max-drawdown-pct",
+          "type": "number",
+          "required": false,
+          "description": "Success: worst drop relative to its peak (max percentage drawdown) of at most this percent"
+        },
+        {
+          "name": "--min-fills",
+          "type": "integer",
+          "required": false,
+          "description": "Success: at least this many fills"
+        },
+        {
+          "name": "--session",
+          "type": "string[]",
+          "required": false,
+          "description": "Pre-register an ordered session plan entry (repeatable): live:<window> or replay:<ref>"
+        }
+      ],
+      "example": "kraken lab new momentum-1 --hypothesis 'buying strength beats the tape' --min-return-pct 1 --min-fills 2 -o json"
+    },
+    {
+      "name": "lab-show",
+      "command": "kraken lab show <NAME>",
+      "group": "paper",
+      "description": "Show a frozen experiment's sealed spec, verifying its sha256 seal; a spec modified after freezing reads as a parse error, never as a quietly moved goalpost.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "positional": true,
+          "description": "Experiment name"
+        }
+      ],
+      "example": "kraken lab show momentum-1 -o json"
+    },
+    {
+      "name": "lab-compare",
+      "command": "kraken lab compare <NAME>",
+      "group": "paper",
+      "description": "Compare every session of a frozen experiment side by side: each session is re-scored from its recorded window and judged against the sealed criteria. Per-session verdicts are the only cross-session comparable numbers (sessions cover different market windows); a session that cannot be scored appears as a named error column, never an omission. pass_count counts only mechanically scored passing verdicts.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "positional": true,
+          "description": "Experiment name"
+        }
+      ],
+      "example": "kraken lab compare momentum-1 -o json"
+    },
+    {
+      "name": "lab-next",
+      "command": "kraken lab next <NAME>",
+      "group": "paper",
+      "description": "What a frozen experiment's sealed session plan says to do now: the exact 'kraken session start' command for the next planned session (live or replay), the session still in progress, or plan_complete pointing at 'kraken lab compare'. Progress is re-derived from the sessions tree on every call; aborted sessions keep their ordinals and never count toward the plan. Refuses to hand out a replay session whose tape no longer matches its sealed content hash.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "positional": true,
+          "description": "Experiment name"
+        }
+      ],
+      "example": "kraken lab next dca-robust-1 -o json"
+    },
+    {
+      "name": "tape-list",
+      "command": "kraken tape list",
+      "group": "market",
+      "description": "List every replayable tape: the global shared library (tape:<name>) plus the active scope's session tapes (session:s<n>), with backend, capture state, symbols, channels, and whether a writer holds it now.",
       "auth_required": false,
       "dangerous": false,
       "parameters": [],
-      "example": "kraken paper status"
+      "example": "kraken tape list -o json"
     },
     {
       "name": "futures-paper-init",
@@ -3712,14 +3963,14 @@
         { "name": "SYMBOL", "type": "string", "required": true, "positional": true, "description": "Futures symbol (e.g. PF_XBTUSD)" },
         { "name": "SIZE", "type": "number", "required": true, "positional": true, "description": "Contract size" },
         { "name": "--leverage", "type": "number", "required": false, "description": "Leverage multiplier" },
-        { "name": "--type", "type": "string", "required": false, "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)" },
+        { "name": "--type", "type": "string", "values": ["market", "limit", "post", "stop", "take-profit", "ioc", "trailing-stop", "fok"], "required": false, "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)" },
         { "name": "--price", "type": "number", "required": false, "description": "Limit price (required for limit, post, ioc, fok)" },
         { "name": "--stop-price", "type": "number", "required": false, "description": "Trigger price (for stop, take-profit, trailing-stop)" },
-        { "name": "--trigger-signal", "type": "string", "required": false, "description": "Trigger signal: mark, index, last" },
+        { "name": "--trigger-signal", "type": "string", "values": ["mark", "index", "last"], "required": false, "description": "Trigger signal: mark, index, last" },
         { "name": "--client-order-id", "type": "string", "required": false, "description": "Correlation ID" },
         { "name": "--reduce-only", "type": "boolean", "required": false, "description": "Only reduce existing position" },
         { "name": "--trailing-stop-max-deviation", "type": "number", "required": false, "description": "Trailing stop deviation value" },
-        { "name": "--trailing-stop-deviation-unit", "type": "string", "required": false, "description": "percent or quote_currency" }
+        { "name": "--trailing-stop-deviation-unit", "type": "string", "values": ["percent", "quote_currency"], "required": false, "description": "percent or quote_currency" }
       ],
       "example": "kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market"
     },
@@ -3734,14 +3985,14 @@
         { "name": "SYMBOL", "type": "string", "required": true, "positional": true, "description": "Futures symbol (e.g. PF_XBTUSD)" },
         { "name": "SIZE", "type": "number", "required": true, "positional": true, "description": "Contract size" },
         { "name": "--leverage", "type": "number", "required": false, "description": "Leverage multiplier" },
-        { "name": "--type", "type": "string", "required": false, "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)" },
+        { "name": "--type", "type": "string", "values": ["market", "limit", "post", "stop", "take-profit", "ioc", "trailing-stop", "fok"], "required": false, "description": "Order type: market, limit, post, stop, take-profit, ioc, trailing-stop, fok (default: limit)" },
         { "name": "--price", "type": "number", "required": false, "description": "Limit price (required for limit, post, ioc, fok)" },
         { "name": "--stop-price", "type": "number", "required": false, "description": "Trigger price (for stop, take-profit, trailing-stop)" },
-        { "name": "--trigger-signal", "type": "string", "required": false, "description": "Trigger signal: mark, index, last" },
+        { "name": "--trigger-signal", "type": "string", "values": ["mark", "index", "last"], "required": false, "description": "Trigger signal: mark, index, last" },
         { "name": "--client-order-id", "type": "string", "required": false, "description": "Correlation ID" },
         { "name": "--reduce-only", "type": "boolean", "required": false, "description": "Only reduce existing position" },
         { "name": "--trailing-stop-max-deviation", "type": "number", "required": false, "description": "Trailing stop deviation value" },
-        { "name": "--trailing-stop-deviation-unit", "type": "string", "required": false, "description": "percent or quote_currency" }
+        { "name": "--trailing-stop-deviation-unit", "type": "string", "values": ["percent", "quote_currency"], "required": false, "description": "percent or quote_currency" }
       ],
       "example": "kraken futures paper sell PF_ETHUSD 5 --leverage 20 --type market"
     },
@@ -3836,9 +4087,7 @@
       "description": "Show futures paper fill history.",
       "auth_required": false,
       "dangerous": false,
-      "parameters": [
-        { "name": "--since", "type": "string", "required": false, "description": "Filter fills since timestamp" }
-      ],
+      "parameters": [],
       "example": "kraken futures paper fills"
     },
     {
@@ -3883,8 +4132,15 @@
       "description": "Set API credentials.",
       "auth_required": false,
       "dangerous": false,
-      "parameters": [],
-      "example": "kraken auth set"
+      "parameters": [
+        { "name": "--api-key", "type": "string", "required": true, "description": "Kraken API key" },
+        { "name": "--api-secret", "type": "string", "required": false, "description": "Kraken API secret; prefer a protected stdin or file source" },
+        { "name": "--futures-api-key", "type": "string", "required": false, "description": "Kraken Futures API key" },
+        { "name": "--futures-api-secret", "type": "string", "required": false, "description": "Kraken Futures API secret; prefer a protected stdin or file source" },
+        { "name": "--futures-api-secret-stdin", "type": "boolean", "required": false, "description": "Read the Futures API secret from stdin" },
+        { "name": "--futures-api-secret-file", "type": "string", "required": false, "description": "Read the Futures API secret from a file" }
+      ],
+      "example": "kraken auth set --api-key <KEY> --api-secret-stdin"
     },
     {
       "name": "auth-show",
@@ -3917,6 +4173,42 @@
       "example": "kraken auth reset"
     },
     {
+      "name": "feedback",
+      "command": "kraken feedback <TYPE>",
+      "group": "feedback",
+      "description": "Submit product feedback (feature-request, friction, or bug) to the local DuckDB store. Body via --input-string or --input-file (max 8192 UTF-8 bytes). Soft body structure recommendations are in `kraken feedback --help`.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "TYPE",
+          "type": "string",
+          "values": ["feature-request", "friction", "bug"],
+          "required": true,
+          "description": "Feedback category"
+        },
+        {
+          "name": "--input-string",
+          "type": "string",
+          "required": false,
+          "description": "Inline feedback body (mutually exclusive with --input-file; max 8192 bytes)"
+        },
+        {
+          "name": "--input-file",
+          "type": "string",
+          "required": false,
+          "description": "Path to UTF-8 file with feedback body (mutually exclusive with --input-string)"
+        },
+        {
+          "name": "--llm-model",
+          "type": "string",
+          "required": false,
+          "description": "Optional LLM / agent model identity"
+        }
+      ],
+      "example": "kraken feedback bug --input-string \"order buy rejected with unclear error\" --llm-model claude-opus-4 -o json"
+    },
+    {
       "name": "setup",
       "command": "kraken setup",
       "group": "utility",
@@ -3935,6 +4227,347 @@
       "dangerous": false,
       "parameters": [],
       "example": "kraken shell"
+    },
+    {
+      "name": "workspace-create",
+      "command": "kraken workspace create <NAME>",
+      "group": "workspace",
+      "description": "Create AND fund a workspace account in one step: writes the contract (workspace.json) and seeds the journal with the capital epoch. Capital is fixed at create; 'workspace reset' returns to it. Refuses the name 'default' (the real Kraken account) and --mode live while workspace-scoped credentials are unavailable. --mode is required.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "positional": true,
+          "description": "Workspace name (one path-safe segment)"
+        },
+        {
+          "name": "--capital",
+          "type": "decimal",
+          "required": true,
+          "description": "Starting capital, denominated in --currency"
+        },
+        {
+          "name": "--currency",
+          "type": "string",
+          "required": false,
+          "description": "Capital currency (default: USD)"
+        },
+        {
+          "name": "--mode",
+          "type": "string",
+          "required": true,
+          "description": "Execution mode: paper or live (live refused until scoped credentials land). Required - an account's mode is never implied."
+        },
+        {
+          "name": "--fee-rate",
+          "type": "decimal",
+          "required": false,
+          "description": "Fee rate as a decimal (default: 0.0026 = 0.26%)"
+        },
+        {
+          "name": "--slippage-rate",
+          "type": "decimal",
+          "required": false,
+          "description": "Slippage rate as a decimal (default: 0.0)"
+        },
+        {
+          "name": "--allow-pairs",
+          "type": "string[]",
+          "required": false,
+          "description": "Restrict trading to these pairs (comma-separated or repeatable); omit for unrestricted, pass an empty value to deny all"
+        }
+      ],
+      "example": "kraken workspace create btc-momentum --capital 10000 --mode paper -o json"
+    },
+    {
+      "name": "workspace-list",
+      "command": "kraken workspace list",
+      "group": "workspace",
+      "description": "List every account; the synthesized 'default' row is the real Kraken account (venue-held capital).",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [],
+      "example": "kraken workspace list -o json"
+    },
+    {
+      "name": "workspace-show",
+      "command": "kraken workspace show [NAME]",
+      "group": "workspace",
+      "description": "Show a workspace's contract: capital, currency, mode, fee and slippage rates.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "positional": true,
+          "description": "Workspace name (defaults to the active workspace, else 'default')"
+        }
+      ],
+      "example": "kraken workspace show btc-momentum -o json"
+    },
+    {
+      "name": "workspace-status",
+      "command": "kraken workspace status [NAME]",
+      "group": "workspace",
+      "description": "Account summary with marked equity and P&L. Paper workspaces mark off live prices (no auth); 'default' reports the venue trade balance (auth required).",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "positional": true,
+          "description": "Workspace name (defaults to the active workspace, else 'default')"
+        }
+      ],
+      "example": "kraken workspace status btc-momentum -o json"
+    },
+    {
+      "name": "workspace-balance",
+      "command": "kraken workspace balance [NAME]",
+      "group": "workspace",
+      "description": "Account balances folded from the workspace journal (offline). For 'default' delegates to the venue Balance call (auth required).",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "positional": true,
+          "description": "Workspace name (defaults to the active workspace, else 'default')"
+        }
+      ],
+      "example": "kraken workspace balance btc-momentum -o json"
+    },
+    {
+      "name": "workspace-reset",
+      "command": "kraken workspace reset [NAME]",
+      "group": "workspace",
+      "description": "Return a paper workspace to its starting capital: a new Reset epoch on the journal. History survives, but open orders and balances are superseded - destructive, requires confirmation.",
+      "auth_required": false,
+      "dangerous": true,
+      "parameters": [
+        { "name": "name", "type": "string", "required": false, "positional": true, "description": "Workspace name (defaults to the active workspace)" },
+        { "name": "--capital", "type": "string", "required": false, "description": "Re-parameterize on reset: new starting capital, updating the contract (alias: --balance). Omit to return to the created capital" },
+        { "name": "--currency", "type": "string", "required": false, "description": "New capital currency" },
+        { "name": "--fee-rate", "type": "string", "required": false, "description": "New fee rate as a decimal" },
+        { "name": "--slippage-rate", "type": "string", "required": false, "description": "New slippage rate as a decimal (alias: --slippage)" }
+      ],
+      "example": "kraken workspace reset btc-momentum -o json"
+    },
+    {
+      "name": "workspace-promote",
+      "command": "kraken workspace promote [NAME]",
+      "group": "workspace",
+      "description": "Evaluate the paper-to-live promotion checklist for a workspace: sealed experiment, at least 2 passing sessions with a passing live session among them, manual trades disclosed, scoped credentials. Promotion remains refused while workspace-scoped credentials are unavailable; the validation envelope carries the full checklist in a 'checklist' field.",
+      "auth_required": false,
+      "dangerous": true,
+      "parameters": [
+        { "name": "name", "type": "string", "required": false, "positional": true, "description": "Workspace name (defaults to the active workspace)" }
+      ],
+      "example": "kraken workspace promote btc-momentum -o json"
+    },
+    {
+      "name": "workspace-report",
+      "command": "kraken workspace report [NAME]",
+      "group": "workspace",
+      "description": "Account-first report: one row per session with opening/closing equity, P&L, fills, and verdict taken verbatim from the scorecard anchor (never recomputed), plus the manual segment, reset epochs, venue drift, and digit-exact totals. A session that cannot be scored is a named error row, never an omission; a still-recording session is disclosed and excluded from every sum.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "name", "type": "string", "required": false, "positional": true, "description": "Workspace name (defaults to the active workspace)" }
+      ],
+      "example": "kraken workspace report btc-momentum -o json"
+    },
+    {
+      "name": "session-stop",
+      "command": "kraken session stop",
+      "group": "workspace",
+      "description": "Stop a session's recorder and close its window. Against the real account, first reconciles the journal from venue history (fills the mirror missed enter under their venue txids, idempotently) and adopts the venue balance snapshot. Idempotent on an already-stopped session.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--session", "type": "string", "required": false, "description": "Which session: latest (default), an ordinal (s3), or a label" }
+      ],
+      "example": "kraken session stop -o json"
+    },
+    {
+      "name": "session-list",
+      "command": "kraken session list",
+      "group": "workspace",
+      "description": "List the scope's sessions with derived status (recording, stopped, aborted, damaged), label, experiment, and window times. Offline: no prices fetched.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [],
+      "example": "kraken session list -o json"
+    },
+    {
+      "name": "session-show",
+      "command": "kraken session show",
+      "group": "workspace",
+      "description": "Show one session: its window (opening equity anchor, start/end), derived status, and a valuation — the stored summary for a closed window, a live valuation for an open one.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--session", "type": "string", "required": false, "description": "Which session: latest (default), an ordinal (s3), or a label" }
+      ],
+      "example": "kraken session show -o json"
+    },
+    {
+      "name": "session-note",
+      "command": "kraken session note",
+      "group": "workspace",
+      "description": "Append a decision (the why) to the ACTIVE session's decision log — the log explain-pnl joins to fills. Refuses when no session is recording.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--kind", "type": "string", "required": true, "values": ["buy", "sell", "skip", "alert"], "description": "What kind of decision this records" },
+        { "name": "--symbol", "type": "string", "required": false, "description": "The trading pair the decision concerns" },
+        { "name": "--reason", "type": "string", "required": true, "description": "Free-text rationale for the decision" },
+        { "name": "--order-id", "type": "string", "required": false, "description": "An order this decision references" }
+      ],
+      "example": "kraken session note --kind skip --reason \"spread too wide\" -o json"
+    },
+    {
+      "name": "session-decisions",
+      "command": "kraken session decisions",
+      "group": "workspace",
+      "description": "Read a session's decision log verbatim, with a count — the counter a looping agent gates its rounds on without knowing the on-disk layout. Offline; an empty log is count 0, never an error.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--session", "type": "string", "required": false, "description": "Which session: latest (default), an ordinal (s3), or a label" }
+      ],
+      "example": "kraken session decisions --session latest -o json"
+    },
+    {
+      "name": "session-state-get",
+      "command": "kraken session state get",
+      "group": "workspace",
+      "description": "Read a session's typed state cell — the durable cursor a long-running agent loop grounds on each firing (round, legs_done, zone, last_action_at, note). A resumption aid, not history: deliberately outside the replay/scoring evidence, so it never appears in replay or explain pnl. An unset cell reads as an empty cursor with a null updated_at, never an error.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--session", "type": "string", "required": false, "description": "Which session: latest (default), an ordinal (s3), or a label" }
+      ],
+      "example": "kraken session state get -o json"
+    },
+    {
+      "name": "session-state-set",
+      "command": "kraken session state set",
+      "group": "workspace",
+      "description": "Replace the ACTIVE session's state cell with the given typed fields (unset flags clear their cases). Refuses when no session is recording; a typo'd field or zone refuses instead of steering the loop silently. This is a resumption cursor, not history — it is deliberately outside the replay/scoring evidence, so a set never appears in replay or explain pnl; record a transition worth a post-mortem with 'kraken session note'.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        { "name": "--round", "type": "integer", "required": false, "description": "The last COMPLETED round; a firing acts as round+1 and writes it back" },
+        { "name": "--legs-done", "type": "string", "required": false, "description": "Pairs already executed in the round in flight (comma-separated)" },
+        { "name": "--zone", "type": "string", "required": false, "values": ["above", "within", "below"], "description": "Price zone for crossing-based strategies" },
+        { "name": "--last-action-at", "type": "string", "required": false, "description": "Instant of the loop's last order (RFC 3339)" },
+        { "name": "--note", "type": "string", "required": false, "description": "Free-text context for a human reading the artifact" }
+      ],
+      "example": "kraken session state set --round 3 --zone above -o json"
+    },
+    {
+      "name": "paper-init",
+      "command": "kraken paper init [NAME]",
+      "group": "paper",
+      "description": "Create AND fund a paper workspace - 'kraken workspace create --mode paper' under another name (one implementation). Takes the workspace name positionally or from KRAKEN_WORKSPACE; with neither it funds the global paper account ('global') and says so on stderr. --balance is an alias for --capital.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "positional": true,
+          "description": "Workspace name to create (defaults to the active workspace, else the global paper account)"
+        },
+        {
+          "name": "--capital",
+          "type": "decimal",
+          "required": false,
+          "description": "Starting capital (default: 10000; alias: --balance)"
+        },
+        {
+          "name": "--currency",
+          "type": "string",
+          "required": false,
+          "description": "Capital currency (default: USD)"
+        },
+        {
+          "name": "--fee-rate",
+          "type": "decimal",
+          "required": false,
+          "description": "Fee rate as a decimal (default: 0.0026 = 0.26%)"
+        },
+        {
+          "name": "--slippage-rate",
+          "type": "decimal",
+          "required": false,
+          "description": "Slippage rate as a decimal (default: 0.0)"
+        }
+      ],
+      "example": "kraken paper init sandbox --capital 10000 -o json"
+    },
+    {
+      "name": "paper-reset",
+      "command": "kraken paper reset [NAME]",
+      "group": "paper",
+      "description": "Return the paper workspace to its starting capital - 'kraken workspace reset' under another name (one implementation). Destructive, requires confirmation.",
+      "auth_required": false,
+      "dangerous": true,
+      "parameters": [
+        { "name": "name", "type": "string", "required": false, "positional": true, "description": "Workspace name (defaults to the active workspace)" },
+        { "name": "--capital", "type": "string", "required": false, "description": "Re-parameterize on reset: new starting capital, updating the contract (alias: --balance). Omit to return to the created capital" },
+        { "name": "--currency", "type": "string", "required": false, "description": "New capital currency" },
+        { "name": "--fee-rate", "type": "string", "required": false, "description": "New fee rate as a decimal" },
+        { "name": "--slippage-rate", "type": "string", "required": false, "description": "New slippage rate as a decimal (alias: --slippage)" }
+      ],
+      "example": "kraken paper reset sandbox -o json"
+    },
+    {
+      "name": "paper-balance",
+      "command": "kraken paper balance [NAME]",
+      "group": "paper",
+      "description": "Workspace balances folded from the journal - 'kraken workspace balance' under another name (one implementation). Always addresses a paper workspace, never the real account.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "positional": true,
+          "description": "Workspace name (defaults to the active workspace, else the global paper account)"
+        }
+      ],
+      "example": "kraken paper balance sandbox -o json"
+    },
+    {
+      "name": "paper-status",
+      "command": "kraken paper status [NAME]",
+      "group": "paper",
+      "description": "Workspace summary with marked equity and P&L - 'kraken workspace status' under another name (one implementation). Always addresses a paper workspace, never the real account.",
+      "auth_required": false,
+      "dangerous": false,
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": false,
+          "positional": true,
+          "description": "Workspace name (defaults to the active workspace, else the global paper account)"
+        }
+      ],
+      "example": "kraken paper status sandbox -o json"
     }
   ]
 }

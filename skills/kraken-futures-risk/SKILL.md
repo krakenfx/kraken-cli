@@ -147,9 +147,10 @@ kraken futures cancel-after 300 -o json 2>/dev/null
 
 ## Hard Rules
 
-- Never increase leverage without explicit human approval.
+- `futures set-leverage` and `futures set-pnl-preference` are flagged dangerous. Never change either without explicit human approval — a leverage change also alters the margin requirement on open positions, in both directions.
 - Monitor margin ratio continuously during live sessions.
 - Alert when margin ratio exceeds 0.7 (conservative threshold).
 - Alert when unrealized loss exceeds a pre-defined stop-loss level.
 - Check funding rates before opening new positions to understand carry cost.
 - Use `--reduce-only` when closing positions to prevent accidental reversals.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

@@ -43,3 +43,5 @@ Parse NDJSON line by line. Do not treat stream output as one JSON object.
 - Ticker: last price, bid, ask
 - Orderbook: near-book depth and imbalance
 - OHLC: trend and volatility windows
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

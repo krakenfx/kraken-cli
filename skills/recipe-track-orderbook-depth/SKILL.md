@@ -28,3 +28,5 @@ Monitor order book depth for a pair and detect bid-ask imbalance as a liquidity 
 5. Parse each update and recalculate imbalance
 6. Alert when imbalance crosses threshold
 7. Optionally compare across pairs (one call per pair): `kraken orderbook BTCUSD --count 10 -o json 2>/dev/null` then `kraken orderbook ETHUSD --count 10 -o json 2>/dev/null`
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

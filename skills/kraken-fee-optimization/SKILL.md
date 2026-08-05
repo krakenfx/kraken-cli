@@ -106,3 +106,4 @@ kraken order batch orders.json --pair BTCUSD -o json 2>/dev/null
 - Order placement commands are dangerous. Never execute without explicit human approval.
 - Always `--validate` before submitting live orders.
 - Post-only orders can be rejected; handle rejection gracefully and retry.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

@@ -175,3 +175,4 @@ Switch between paper and live by replacing `futures paper` with `futures order`.
 - Use `--reduce-only` when closing positions to prevent accidental flips.
 - Enable `cancel-after` for any automated session.
 - Test strategies with `kraken futures paper` before going live.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

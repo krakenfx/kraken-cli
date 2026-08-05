@@ -1,0 +1,36 @@
+[package]
+name = "kraken-replay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Explain-pnl decomposition and paced timeline playback for kraken-cli"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+chrono = { workspace = true }
+kraken-core = { workspace = true }
+kraken-paper = { workspace = true }
+kraken-recording = { workspace = true }
+kraken-session = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+kraken-session = { workspace = true, features = ["fixtures"] }
+# Pins the P&L decomposition identity over random fill sequences.
+proptest = { workspace = true }
+tempfile = { workspace = true }
+# test-util's paused clock keeps the pacing tests instant and deterministic.
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+
+[lints]
+workspace = true

@@ -15,9 +15,10 @@ kraken <command> [args...] -o json 2>/dev/null
 Rules:
 - Always pass `-o json`.
 - Treat `stdout` as the only machine data channel.
-- Treat `stderr` as diagnostics only.
+- Treat `stderr` as diagnostics only (structured JSON logs; off by default bar warnings, `-v`/`RUST_LOG` for more).
 - Exit code `0` means success.
-- Non-zero exit means failure and `stdout` should contain a JSON error envelope.
+- Exit code `1` means runtime failure and `stdout` contains a JSON error envelope.
+- Exit code `2` means the parser rejected the arguments (unknown flag, value outside a documented set). With `-o json`, `stdout` carries a `{"error":"validation"}` envelope and `stderr` is empty; without it, usage text goes to `stderr`. Check values against the `values` arrays in `agents/tool-catalog.json` before invoking.
 
 ## Authentication
 
@@ -68,7 +69,8 @@ The authoritative list of dangerous commands is in `agents/tool-catalog.json` (e
 - `kraken withdraw`, `kraken wallet-transfer`
 - `kraken order cancel-all`, `kraken futures cancel-all`
 - `kraken earn allocate/deallocate`
-- `kraken subaccount transfer`
+- `kraken subaccount transfer`, `kraken subaccount create`
+- `kraken futures set-leverage`, `kraken futures set-pnl-preference` (margin and payout settings)
 - All WebSocket order mutations (`ws add-order`, `ws amend-order`, `ws cancel-order`, `ws batch-add`, `ws batch-cancel`)
 
 This list is non-exhaustive. Always check the `dangerous` field in `tool-catalog.json`.
@@ -92,12 +94,22 @@ Common categories:
 
 For full envelopes and retry guidance: `agents/error-catalog.json`.
 
+## Feedback
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a skill/contract mismatch — submit feedback:
+
+```bash
+kraken feedback bug --input-string "..." --llm-model <your-model> -o json
+```
+
+Types: `feature-request`, `friction`, `bug`. Soft body recommendations are in `kraken feedback --help`. Submitting uploads feedback to Kraken over HTTPS; a local DuckDB copy is written only on success. Do not include API keys, secrets, or personal data. See `docs/feedback-ingest.md`.
+
 ## Context Window Efficiency
 
 Prefer narrower responses:
 - Use limits like `--count`, `--depth`, `--offset`, `--limit` where available.
 - Prefer pair-scoped calls over broad list calls.
-- Prefer WebSocket NDJSON for streaming instead of high-frequency polling.
+- Prefer WebSocket JSONL for streaming instead of high-frequency polling.
 
 ## High-Value Patterns
 
@@ -118,10 +130,13 @@ kraken order buy BTCUSD 0.001 --type limit --price 50000 -o json
 Spot paper trading loop:
 
 ```bash
-kraken paper init --balance 10000 -o json
+kraken workspace create sandbox --capital 10000 --mode paper --slippage-rate 0.001 -o json
+export KRAKEN_WORKSPACE=sandbox
 kraken paper buy BTCUSD 0.01 -o json
-kraken paper status -o json
+kraken workspace status -o json
 ```
+
+Fee rate (default 0.26%) and slippage rate (default 0.0) are set at `workspace create` and fixed for the account's life. `paper init/reset/status/balance` are aliases of the workspace commands.
 
 Futures paper trading loop:
 
@@ -132,12 +147,22 @@ kraken futures paper positions -o json
 kraken futures paper status -o json
 ```
 
+Market memory capture (no auth):
+
+```bash
+kraken record --symbols BTC/USD --channels trades,book --tape my-tape -o json
+# Ctrl-C / SIGTERM finalizes the tape: window_end + integrity counters land in its metadata
+kraken tape list -o json
+```
+
+Tapes live in the shared library (`tapes/` under the config dir); one writer per tape — a concurrent recorder gets a `validation` envelope. Replay a finalized tape into a paper session with `kraken session start --from tape:my-tape --speed 10`. Add `--monitor` to `ws`/`streamd`/`record` for stderr JSONL health lines (latency, trade gaps, staleness), routable by `type`.
+
 ## MCP Server
 
 For MCP-compatible clients (Claude Desktop, ChatGPT, Codex, Gemini CLI, Cursor, VS Code, Windsurf), use the built-in MCP server:
 
 ```bash
-kraken mcp -s market,account,paper,futures-paper
+kraken mcp -s market,account,paper,feedback,futures-paper
 ```
 
 This exposes CLI commands as structured MCP tools over stdio. No subprocess wrappers needed.
@@ -148,8 +173,10 @@ Security note:
 - Do not expose or share this server outside systems you control.
 - Always use `https://` and `wss://` endpoints.
 
+Streaming commands (`session start`, bare `kraken playground`, `record`, `replay`, `streamd`, `ws ping`) are CLI-only and never appear as MCP tools. Every other session verb (order, note, state, stop, show, score, explain) is a tool; opening a session takes a shell.
+
 ## Tool Discovery
 
 Use these machine-readable files:
-- `agents/tool-catalog.json`: full command catalog (151 commands with parameter schemas and `dangerous` flags)
+- `agents/tool-catalog.json`: full command catalog (174 commands with parameter schemas and `dangerous` flags)
 - `agents/error-catalog.json`: error categories and retry policy

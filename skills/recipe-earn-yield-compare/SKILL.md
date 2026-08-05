@@ -31,3 +31,5 @@ Compare available staking/earn strategies across assets to find the best risk-ad
 6. Check current allocations: `kraken earn allocations --hide-zero-allocations --converted-asset USD -o json 2>/dev/null`
 7. Identify reallocation opportunities (move from lower to higher yield)
 8. If user approves, deallocate from lower yield and allocate to higher yield
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

@@ -114,3 +114,4 @@ INFO=$(kraken withdrawal info BTC "my-btc-address" 0.5 -o json 2>/dev/null)
 - Use `--verified true` when listing addresses to confirm approval status.
 - Check fees before every withdrawal; network fees fluctuate.
 - Cancel pending withdrawals promptly if the user changes their mind: the window is short.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

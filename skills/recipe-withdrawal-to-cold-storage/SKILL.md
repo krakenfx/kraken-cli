@@ -29,3 +29,5 @@ Withdraw crypto to a pre-approved hardware wallet address with fee checks and st
 6. Execute withdrawal (requires explicit human approval): `kraken withdraw BTC "cold-storage-btc" 0.5 -o json 2>/dev/null`
 7. Track withdrawal status: `kraken withdrawal status --asset BTC -o json 2>/dev/null`
 8. Verify balance reduction: `kraken balance -o json 2>/dev/null`
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

@@ -1,3 +1,20 @@
 # Machine-readable catalogs: collapse in diffs, exclude from language stats.
 agents/tool-catalog.json linguist-generated
 agents/error-catalog.json linguist-generated
+
+.internal/ export-ignore
+.internal/** export-ignore
+.agents/ export-ignore
+.agents/** export-ignore
+.codex/ export-ignore
+.codex/** export-ignore
+.gitlab-ci.yml export-ignore
+ci/ export-ignore
+ci/** export-ignore
+docs/ export-ignore
+docs/** export-ignore
+scripts/ci/ export-ignore
+scripts/ci/** export-ignore
+scripts/release/ export-ignore
+scripts/release/** export-ignore
+renovate.json5 export-ignore

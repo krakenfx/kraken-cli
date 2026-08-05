@@ -115,3 +115,5 @@ kraken trades-history -o json 2>/dev/null      # 2 points (heavy call)
 ```
 
 Leave headroom for retries and unexpected calls.
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

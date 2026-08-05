@@ -1,0 +1,38 @@
+[package]
+name = "kraken-lab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Autoresearch Lab read models for kraken-cli: marked equity curve, fill ledger, scorecards"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+chrono = { workspace = true }
+humantime = { workspace = true }
+kraken-core = { workspace = true }
+kraken-paper = { workspace = true }
+kraken-recording = { workspace = true }
+kraken-replay = { workspace = true }
+kraken-session = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+# Snapshot-pins the serialized command contracts (scorecard, curve, verdict),
+# so an unintended shape change surfaces as a reviewable diff, not a silent one.
+insta = { version = "1.48.0", features = ["json"] }
+kraken-session = { workspace = true, features = ["fixtures"] }
+# Pins fold determinism and prefix/no-lookahead over random inputs.
+proptest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

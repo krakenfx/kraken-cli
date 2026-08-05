@@ -1,19 +1,19 @@
 # kraken-cli Skills
 
-49 goal-oriented skill packages for AI agents that operate `kraken-cli`.
+55 goal-oriented skill packages for AI agents that operate `kraken-cli`.
 
 See the full [Skills Index](INDEX.md) for the complete categorized list.
 
 ## Skill Types
 
-- **Core** (5): Shared contract, autonomy levels, rate limits, order types, error recovery
+- **Core** (7): Setup, shared contract, autonomy levels, MCP integration, rate limits, order types, error recovery
 - **Market Data** (4): Price reads, multi-pair screening, alerts, WebSocket streaming
-- **Spot Trading** (6): Order execution, stops, fees, paper testing, paper-to-live promotion, risk controls
+- **Spot Trading** (7): Order execution, stops, fees, paper testing, paper-to-live promotion, playground sessions, risk controls
 - **Futures** (5): Trading lifecycle, risk management, liquidation guard, basis trades, funding carry
 - **Strategies** (4): DCA, grid trading, rebalancing, TWAP execution
 - **Funding & Earn** (3): Deposits/withdrawals, staking, tax exports
 - **Portfolio & Account** (2): Balance analysis, subaccount management
-- **Recipes** (20): Multi-step workflows combining multiple skills
+- **Recipes** (23): Multi-step workflows combining multiple skills, including playground drivers
 
 ## OpenClaw Setup
 

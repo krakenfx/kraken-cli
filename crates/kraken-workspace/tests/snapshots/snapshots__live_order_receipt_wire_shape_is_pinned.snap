@@ -1,0 +1,22 @@
+---
+source: crates/kraken-workspace/tests/snapshots.rs
+expression: "OrderReceipt\n{\n    core: receipt_core(TradeMode::Live, ReceiptStatus::Submitted), venue:\n    Some(serde_json::json!({\n        \"descr\": { \"order\": \"buy 0.01000000 XBTUSD @ limit 50000.0\" }, \"txid\":\n        [\"OTEST1-RCPT0-000001\"]\n    })), paper: None,\n}"
+---
+{
+  "mode": "live",
+  "status": "submitted",
+  "order_id": "OTEST1-RCPT0-000001",
+  "pair": "BTC/USD",
+  "side": "buy",
+  "type": "limit",
+  "volume": "0.01",
+  "price": "50000",
+  "venue": {
+    "descr": {
+      "order": "buy 0.01000000 XBTUSD @ limit 50000.0"
+    },
+    "txid": [
+      "OTEST1-RCPT0-000001"
+    ]
+  }
+}

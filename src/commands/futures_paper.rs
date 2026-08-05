@@ -1,275 +1,335 @@
 use std::collections::{HashMap, HashSet};
 
 use clap::Subcommand;
-use serde_json::{json, Value};
+use enum_dispatch::enum_dispatch;
+use serde_json::{Value, json};
 
+use super::Execute;
+use crate::cli::AppContext;
 use crate::client::FuturesClient;
 use crate::errors::{KrakenError, Result};
 use crate::futures_paper::{
-    self, compute_liquidation_price, compute_unrealized_pnl, FuturesOrderType, FuturesPaperState,
-    MarketSnapshot, OrderParams, Side, TriggerSignal, DEFAULT_FUTURES_TAKER_FEE_RATE,
-    DEFAULT_MAINTENANCE_MARGIN_RATE, MAX_LEVERAGE,
+    self, DEFAULT_FUTURES_TAKER_FEE_RATE, DEFAULT_MAINTENANCE_MARGIN_RATE, FuturesOrderType,
+    FuturesPaperState, MAX_LEVERAGE, MarketSnapshot, OrderParams, PositionSide, TriggerSignal,
+    compute_liquidation_price, compute_unrealized_pnl,
 };
 use crate::output::CommandOutput;
 
+#[enum_dispatch(Execute)]
 #[derive(Debug, Subcommand)]
 pub(crate) enum FuturesPaperCommand {
     /// Initialize futures paper trading account.
-    Init {
-        /// Starting collateral balance (default: 10000).
-        #[arg(long, default_value = "10000")]
-        balance: f64,
-        /// Collateral currency (default: USD).
-        #[arg(long, default_value = "USD")]
-        currency: String,
-        /// Fee rate as a decimal (default: 0.0005 = 0.05%).
-        #[arg(long)]
-        fee_rate: Option<f64>,
-    },
+    Init(Init),
     /// Reset futures paper account.
-    Reset {
-        #[arg(long)]
-        balance: Option<f64>,
-        #[arg(long)]
-        currency: Option<String>,
-        #[arg(long)]
-        fee_rate: Option<f64>,
-    },
+    Reset(Reset),
     /// Show futures paper collateral balance.
-    Balance,
+    Balance(Balance),
     /// Show futures paper account summary.
-    Status,
+    Status(Status),
     /// Place a futures paper buy (long) order.
-    Buy {
-        /// Futures symbol (e.g. PF_XBTUSD).
-        symbol: String,
-        /// Order size.
-        size: String,
-        /// Order type (default: limit).
-        #[arg(long, default_value = "limit", value_parser = ["limit", "market", "post", "stop", "take-profit", "ioc", "trailing-stop", "fok"])]
-        r#type: String,
-        /// Limit price.
-        #[arg(long)]
-        price: Option<String>,
-        /// Stop/trigger price.
-        #[arg(long)]
-        stop_price: Option<String>,
-        /// Trigger signal: mark, index, or last.
-        #[arg(long, value_parser = ["mark", "index", "last"])]
-        trigger_signal: Option<String>,
-        /// Client order ID.
-        #[arg(long)]
-        client_order_id: Option<String>,
-        /// Reduce-only flag.
-        #[arg(long)]
-        reduce_only: bool,
-        /// Leverage override for this order.
-        #[arg(long)]
-        leverage: Option<String>,
-        /// Trailing stop max deviation.
-        #[arg(long)]
-        trailing_stop_max_deviation: Option<String>,
-        /// Trailing stop deviation unit (percent or quote_currency).
-        #[arg(long)]
-        trailing_stop_deviation_unit: Option<String>,
-    },
+    Buy(Buy),
     /// Place a futures paper sell (short) order.
-    Sell {
-        /// Futures symbol (e.g. PF_XBTUSD).
-        symbol: String,
-        /// Order size.
-        size: String,
-        /// Order type (default: limit).
-        #[arg(long, default_value = "limit", value_parser = ["limit", "market", "post", "stop", "take-profit", "ioc", "trailing-stop", "fok"])]
-        r#type: String,
-        #[arg(long)]
-        price: Option<String>,
-        #[arg(long)]
-        stop_price: Option<String>,
-        #[arg(long, value_parser = ["mark", "index", "last"])]
-        trigger_signal: Option<String>,
-        #[arg(long)]
-        client_order_id: Option<String>,
-        #[arg(long)]
-        reduce_only: bool,
-        #[arg(long)]
-        leverage: Option<String>,
-        #[arg(long)]
-        trailing_stop_max_deviation: Option<String>,
-        #[arg(long)]
-        trailing_stop_deviation_unit: Option<String>,
-    },
+    Sell(Sell),
     /// Show open futures paper orders.
-    Orders,
+    Orders(Orders),
     /// Get status of a specific order.
-    OrderStatus {
-        /// Order ID to query.
-        order_id: String,
-    },
+    OrderStatus(OrderStatus),
     /// Edit a resting futures paper order.
-    EditOrder {
-        /// Order ID to edit.
-        #[arg(long)]
-        order_id: String,
-        /// New order size.
-        #[arg(long)]
-        size: Option<String>,
-        /// New limit price.
-        #[arg(long)]
-        price: Option<String>,
-        /// New stop price.
-        #[arg(long)]
-        stop_price: Option<String>,
-    },
+    EditOrder(EditOrder),
     /// Cancel a futures paper order.
-    Cancel {
-        /// Exchange order ID.
-        #[arg(long, required_unless_present = "cli_ord_id")]
-        order_id: Option<String>,
-        /// Client order ID.
-        #[arg(long, required_unless_present = "order_id")]
-        cli_ord_id: Option<String>,
-    },
+    Cancel(Cancel),
     /// Cancel all futures paper orders.
-    CancelAll {
-        /// Filter by symbol.
-        #[arg(long)]
-        symbol: Option<String>,
-    },
+    CancelAll(CancelAll),
     /// Place a batch of futures paper orders (JSON array).
-    BatchOrder {
-        /// Orders as JSON array or path to JSON file (prefix with @).
-        orders_json: String,
-    },
+    BatchOrder(BatchOrder),
     /// Show open futures paper positions.
-    Positions,
+    Positions(Positions),
     /// Show futures paper fill history.
-    Fills,
+    Fills(Fills),
     /// Show futures paper account history.
-    History,
+    History(History),
     /// Get current leverage preferences.
-    Leverage {
-        #[arg(long)]
-        symbol: Option<String>,
-    },
+    Leverage(Leverage),
     /// Set leverage preference for a symbol.
-    SetLeverage {
-        /// Futures symbol.
-        symbol: String,
-        /// Max leverage value.
-        leverage: String,
-    },
+    SetLeverage(SetLeverage),
 }
 
-pub(crate) async fn execute(
-    cmd: &FuturesPaperCommand,
-    client: &FuturesClient,
-    verbose: bool,
-) -> Result<CommandOutput> {
-    match cmd {
-        FuturesPaperCommand::Init {
+#[derive(Debug, clap::Args)]
+pub(crate) struct Init {
+    /// Starting collateral balance (default: 10000).
+    #[arg(long, default_value = "10000")]
+    balance: f64,
+    /// Collateral currency (default: USD).
+    #[arg(long, default_value = "USD")]
+    currency: String,
+    /// Fee rate as a decimal (default: 0.0005 = 0.05%).
+    #[arg(long)]
+    fee_rate: Option<f64>,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Reset {
+    #[arg(long)]
+    balance: Option<f64>,
+    #[arg(long)]
+    currency: Option<String>,
+    #[arg(long)]
+    fee_rate: Option<f64>,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Balance {}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Status {}
+
+// Buy and sell share one order surface; each side keeps a thin wrapper because
+// enum_dispatch needs a distinct type per variant. The flatten field comes
+// first so the positionals (symbol, size) keep their order.
+#[derive(Debug, clap::Args)]
+pub(crate) struct Buy {
+    #[command(flatten)]
+    order: OrderRequest,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Sell {
+    #[command(flatten)]
+    order: OrderRequest,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct OrderRequest {
+    /// Futures symbol (e.g. PF_XBTUSD).
+    symbol: String,
+    /// Order size.
+    size: String,
+    /// Order type (default: limit).
+    #[arg(long, default_value = "limit")]
+    r#type: FuturesOrderType,
+    /// Limit price.
+    #[arg(long)]
+    price: Option<String>,
+    /// Stop/trigger price.
+    #[arg(long)]
+    stop_price: Option<String>,
+    /// Trigger signal: mark, index, or last.
+    #[arg(long)]
+    trigger_signal: Option<TriggerSignal>,
+    /// Client order ID.
+    #[arg(long)]
+    client_order_id: Option<String>,
+    /// Reduce-only flag.
+    #[arg(long)]
+    reduce_only: bool,
+    /// Leverage override for this order.
+    #[arg(long)]
+    leverage: Option<String>,
+    /// Trailing stop max deviation.
+    #[arg(long)]
+    trailing_stop_max_deviation: Option<String>,
+    /// Trailing stop deviation unit (percent or quote_currency).
+    #[arg(long)]
+    trailing_stop_deviation_unit: Option<String>,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Orders {}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct OrderStatus {
+    /// Order ID to query.
+    order_id: String,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct EditOrder {
+    /// Order ID to edit.
+    #[arg(long)]
+    order_id: String,
+    /// New order size.
+    #[arg(long)]
+    size: Option<String>,
+    /// New limit price.
+    #[arg(long)]
+    price: Option<String>,
+    /// New stop price.
+    #[arg(long)]
+    stop_price: Option<String>,
+}
+
+// order_id/cli_ord_id are a required_unless_present pair; clap resolves those
+// by sibling field id, so both fields must stay in this one struct.
+#[derive(Debug, clap::Args)]
+pub(crate) struct Cancel {
+    /// Exchange order ID.
+    #[arg(long, required_unless_present = "cli_ord_id")]
+    order_id: Option<String>,
+    /// Client order ID.
+    #[arg(long, required_unless_present = "order_id")]
+    cli_ord_id: Option<String>,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct CancelAll {
+    /// Filter by symbol.
+    #[arg(long)]
+    symbol: Option<String>,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct BatchOrder {
+    /// Orders as JSON array or path to JSON file (prefix with @).
+    orders_json: String,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Positions {}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Fills {}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct History {}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Leverage {
+    #[arg(long)]
+    symbol: Option<String>,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct SetLeverage {
+    /// Futures symbol.
+    symbol: String,
+    /// Max leverage value.
+    leverage: String,
+}
+
+// Only the leaves that fetch live market data build an HTTP client, so
+// `init`/`reset` and pure state reads stay fully offline.
+impl Execute for Init {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        let Self {
             balance,
             currency,
             fee_rate,
-        } => execute_init(*balance, currency, *fee_rate),
-        FuturesPaperCommand::Reset {
-            balance,
-            currency,
-            fee_rate,
-        } => execute_reset(*balance, currency.as_deref(), *fee_rate),
-        FuturesPaperCommand::Balance => execute_balance(client, verbose).await,
-        FuturesPaperCommand::Status => execute_status(client, verbose).await,
-        FuturesPaperCommand::Buy {
-            symbol,
-            size,
-            r#type,
-            price,
-            stop_price,
-            trigger_signal,
-            client_order_id,
-            reduce_only,
-            leverage,
-            trailing_stop_max_deviation,
-            trailing_stop_deviation_unit,
-        } => {
-            execute_order(
-                Side::Long,
-                symbol,
-                size,
-                r#type,
-                price,
-                stop_price,
-                trigger_signal,
-                client_order_id,
-                *reduce_only,
-                leverage,
-                trailing_stop_max_deviation,
-                trailing_stop_deviation_unit,
-                client,
-                verbose,
-            )
-            .await
-        }
-        FuturesPaperCommand::Sell {
-            symbol,
-            size,
-            r#type,
-            price,
-            stop_price,
-            trigger_signal,
-            client_order_id,
-            reduce_only,
-            leverage,
-            trailing_stop_max_deviation,
-            trailing_stop_deviation_unit,
-        } => {
-            execute_order(
-                Side::Short,
-                symbol,
-                size,
-                r#type,
-                price,
-                stop_price,
-                trigger_signal,
-                client_order_id,
-                *reduce_only,
-                leverage,
-                trailing_stop_max_deviation,
-                trailing_stop_deviation_unit,
-                client,
-                verbose,
-            )
-            .await
-        }
-        FuturesPaperCommand::Orders => execute_orders(),
-        FuturesPaperCommand::OrderStatus { order_id } => execute_order_status(order_id),
-        FuturesPaperCommand::EditOrder {
-            order_id,
-            size,
-            price,
-            stop_price,
-        } => execute_edit_order(order_id, size, price, stop_price),
-        FuturesPaperCommand::Cancel {
-            order_id,
-            cli_ord_id,
-        } => execute_cancel(order_id.as_deref(), cli_ord_id.as_deref()),
-        FuturesPaperCommand::CancelAll { symbol } => execute_cancel_all(symbol.as_deref()),
-        FuturesPaperCommand::BatchOrder { orders_json } => {
-            execute_batch_order(orders_json, client, verbose).await
-        }
-        FuturesPaperCommand::Positions => execute_positions(client, verbose).await,
-        FuturesPaperCommand::Fills => execute_fills(),
-        FuturesPaperCommand::History => execute_history(),
-        FuturesPaperCommand::Leverage { symbol } => execute_leverage(symbol.as_deref()),
-        FuturesPaperCommand::SetLeverage { symbol, leverage } => {
-            execute_set_leverage(symbol, leverage)
-        }
+        } = self;
+        execute_init(balance, &currency, fee_rate)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+impl Execute for Reset {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        let Self {
+            balance,
+            currency,
+            fee_rate,
+        } = self;
+        execute_reset(balance, currency.as_deref(), fee_rate)
+    }
+}
+
+impl Execute for Balance {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        execute_balance(ctx.futures()?).await
+    }
+}
+
+impl Execute for Status {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        execute_status(ctx.futures()?).await
+    }
+}
+
+impl Execute for Buy {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        execute_order(PositionSide::Long, self.order, ctx.futures()?).await
+    }
+}
+
+impl Execute for Sell {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        execute_order(PositionSide::Short, self.order, ctx.futures()?).await
+    }
+}
+
+impl Execute for Orders {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        execute_orders()
+    }
+}
+
+impl Execute for OrderStatus {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        execute_order_status(&self.order_id)
+    }
+}
+
+impl Execute for EditOrder {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        let Self {
+            order_id,
+            size,
+            price,
+            stop_price,
+        } = self;
+        execute_edit_order(&order_id, &size, &price, &stop_price)
+    }
+}
+
+impl Execute for Cancel {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        let Self {
+            order_id,
+            cli_ord_id,
+        } = self;
+        execute_cancel(order_id.as_deref(), cli_ord_id.as_deref())
+    }
+}
+
+impl Execute for CancelAll {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        execute_cancel_all(self.symbol.as_deref())
+    }
+}
+
+impl Execute for BatchOrder {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        execute_batch_order(&self.orders_json, ctx.futures()?).await
+    }
+}
+
+impl Execute for Positions {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        execute_positions(ctx.futures()?).await
+    }
+}
+
+impl Execute for Fills {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        execute_fills()
+    }
+}
+
+impl Execute for History {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        execute_history()
+    }
+}
+
+impl Execute for Leverage {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        execute_leverage(self.symbol.as_deref())
+    }
+}
+
+impl Execute for SetLeverage {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        let Self { symbol, leverage } = self;
+        execute_set_leverage(&symbol, &leverage)
+    }
+}
 
 fn fp_json(mut data: Value) -> Value {
     if let Some(obj) = data.as_object_mut() {
@@ -321,11 +381,8 @@ fn validate_symbol(symbol: &str) -> Result<()> {
     Ok(())
 }
 
-async fn fetch_known_perpetual_symbols(
-    client: &FuturesClient,
-    verbose: bool,
-) -> Result<HashSet<String>> {
-    let data = client.public_get("instruments", &[], verbose).await?;
+async fn fetch_known_perpetual_symbols(client: &FuturesClient) -> Result<HashSet<String>> {
+    let data = client.public_get("instruments", &[]).await?;
     let instruments = data
         .get("instruments")
         .and_then(|v| v.as_array())
@@ -352,14 +409,10 @@ fn validate_symbol_exists(symbol: &str, known_symbols: &HashSet<String>) -> Resu
     Ok(())
 }
 
-async fn fetch_ticker(
-    client: &FuturesClient,
-    symbol: &str,
-    verbose: bool,
-) -> Result<MarketSnapshot> {
+async fn fetch_ticker(client: &FuturesClient, symbol: &str) -> Result<MarketSnapshot> {
     validate_symbol(symbol)?;
     let endpoint = format!("tickers/{}", symbol.to_uppercase());
-    let data = client.public_get(&endpoint, &[], verbose).await?;
+    let data = client.public_get(&endpoint, &[]).await?;
     let ticker = data
         .get("ticker")
         .ok_or_else(|| KrakenError::Parse("Missing ticker data".into()))?;
@@ -396,10 +449,9 @@ async fn fetch_ticker(
 async fn fetch_orderbook_levels(
     client: &FuturesClient,
     symbol: &str,
-    verbose: bool,
 ) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
     let params = [("symbol", symbol)];
-    match client.public_get("orderbook", &params, verbose).await {
+    match client.public_get("orderbook", &params).await {
         Ok(data) => {
             let mut asks = Vec::new();
             let mut bids = Vec::new();
@@ -409,12 +461,12 @@ async fn fetch_orderbook_levels(
                     let mut out = Vec::new();
                     if let Some(arr) = book.get(key).and_then(|v| v.as_array()) {
                         for level in arr {
-                            if let Some(arr) = level.as_array() {
-                                if arr.len() >= 2 {
-                                    let price = arr[0].as_f64().unwrap_or(0.0);
-                                    let size = arr[1].as_f64().unwrap_or(0.0);
-                                    out.push((price, size));
-                                }
+                            if let Some(arr) = level.as_array()
+                                && arr.len() >= 2
+                            {
+                                let price = arr[0].as_f64().unwrap_or(0.0);
+                                let size = arr[1].as_f64().unwrap_or(0.0);
+                                out.push((price, size));
                             }
                         }
                     }
@@ -429,10 +481,10 @@ async fn fetch_orderbook_levels(
     }
 }
 
-async fn fetch_funding_rate(client: &FuturesClient, symbol: &str, verbose: bool) -> Result<f64> {
+async fn fetch_funding_rate(client: &FuturesClient, symbol: &str) -> Result<f64> {
     let params = [("symbol", symbol)];
     let data = client
-        .public_get("historical-funding-rates", &params, verbose)
+        .public_get("historical-funding-rates", &params)
         .await?;
     let rates = data
         .get("rates")
@@ -445,11 +497,7 @@ async fn fetch_funding_rate(client: &FuturesClient, symbol: &str, verbose: bool)
         .ok_or_else(|| KrakenError::Parse("No funding rate entries".into()))
 }
 
-async fn reconcile_best_effort(
-    state: &mut FuturesPaperState,
-    client: &FuturesClient,
-    verbose: bool,
-) {
+async fn reconcile_best_effort(state: &mut FuturesPaperState, client: &FuturesClient) {
     let symbols: Vec<String> = state
         .positions
         .iter()
@@ -467,7 +515,7 @@ async fn reconcile_best_effort(
     let mut last_prices = HashMap::new();
     let mut index_prices = HashMap::new();
     for sym in &symbols {
-        if let Ok(snap) = fetch_ticker(client, sym, verbose).await {
+        if let Ok(snap) = fetch_ticker(client, sym).await {
             if snap.mark > 0.0 {
                 mark_prices.insert(sym.clone(), snap.mark);
             }
@@ -490,7 +538,7 @@ async fn reconcile_best_effort(
 
     let mut funding_rates = HashMap::new();
     for sym in &position_symbols {
-        if let Ok(rate) = fetch_funding_rate(client, sym, verbose).await {
+        if let Ok(rate) = fetch_funding_rate(client, sym).await {
             funding_rates.insert(sym.clone(), rate);
         }
     }
@@ -509,13 +557,9 @@ async fn reconcile_best_effort(
     );
 
     if let Err(e) = futures_paper::save_state(state) {
-        crate::output::warn(&format!("Could not save reconciled state: {e}"));
+        tracing::warn!(error = %e, "could not save reconciled state");
     }
 }
-
-// ---------------------------------------------------------------------------
-// Command handlers
-// ---------------------------------------------------------------------------
 
 fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<CommandOutput> {
     if !balance.is_finite() || balance <= 0.0 {
@@ -566,19 +610,19 @@ fn execute_reset(
     currency: Option<&str>,
     fee_rate: Option<f64>,
 ) -> Result<CommandOutput> {
-    if let Some(b) = balance {
-        if !b.is_finite() || b <= 0.0 {
-            return Err(KrakenError::Validation(
-                "Starting balance must be a finite positive number".into(),
-            ));
-        }
+    if let Some(b) = balance
+        && (!b.is_finite() || b <= 0.0)
+    {
+        return Err(KrakenError::Validation(
+            "Starting balance must be a finite positive number".into(),
+        ));
     }
-    if let Some(r) = fee_rate {
-        if !r.is_finite() || !(0.0..=1.0).contains(&r) {
-            return Err(KrakenError::Validation(
-                "Fee rate must be between 0.0 and 1.0".into(),
-            ));
-        }
+    if let Some(r) = fee_rate
+        && (!r.is_finite() || !(0.0..=1.0).contains(&r))
+    {
+        return Err(KrakenError::Validation(
+            "Fee rate must be between 0.0 and 1.0".into(),
+        ));
     }
 
     let _lock = futures_paper::StateLock::acquire()?;
@@ -607,12 +651,12 @@ fn execute_reset(
     ))
 }
 
-async fn execute_balance(client: &FuturesClient, verbose: bool) -> Result<CommandOutput> {
+async fn execute_balance(client: &FuturesClient) -> Result<CommandOutput> {
     let _lock = futures_paper::StateLock::acquire()?;
     let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client, verbose).await;
+    reconcile_best_effort(&mut state, client).await;
 
-    let mark_prices = build_mark_prices(&state, client, verbose).await;
+    let mark_prices = build_mark_prices(&state, client).await;
     let upnl = state.unrealized_pnl(&mark_prices);
     let used = state.used_margin();
     let available = state.available_margin(&mark_prices);
@@ -645,12 +689,12 @@ async fn execute_balance(client: &FuturesClient, verbose: bool) -> Result<Comman
     ))
 }
 
-async fn execute_status(client: &FuturesClient, verbose: bool) -> Result<CommandOutput> {
+async fn execute_status(client: &FuturesClient) -> Result<CommandOutput> {
     let _lock = futures_paper::StateLock::acquire()?;
     let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client, verbose).await;
+    reconcile_best_effort(&mut state, client).await;
 
-    let mark_prices = build_mark_prices(&state, client, verbose).await;
+    let mark_prices = build_mark_prices(&state, client).await;
     let upnl = state.unrealized_pnl(&mark_prices);
     let equity = state.collateral + upnl;
     let pnl_from_start = equity - state.starting_collateral;
@@ -698,31 +742,32 @@ async fn execute_status(client: &FuturesClient, verbose: bool) -> Result<Command
     ))
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn execute_order(
-    side: Side,
-    symbol: &str,
-    size_str: &str,
-    order_type_str: &str,
-    price_str: &Option<String>,
-    stop_price_str: &Option<String>,
-    trigger_signal_str: &Option<String>,
-    client_order_id: &Option<String>,
-    reduce_only: bool,
-    leverage_str: &Option<String>,
-    trailing_max_str: &Option<String>,
-    trailing_unit: &Option<String>,
+    side: PositionSide,
+    order: OrderRequest,
     client: &FuturesClient,
-    verbose: bool,
 ) -> Result<CommandOutput> {
-    validate_symbol(symbol)?;
-    let known_symbols = fetch_known_perpetual_symbols(client, verbose).await?;
-    validate_symbol_exists(symbol, &known_symbols)?;
+    let OrderRequest {
+        symbol,
+        size: size_str,
+        r#type: order_type,
+        price: price_str,
+        stop_price: stop_price_str,
+        trigger_signal,
+        client_order_id,
+        reduce_only,
+        leverage: leverage_str,
+        trailing_stop_max_deviation: trailing_max_str,
+        trailing_stop_deviation_unit: trailing_unit,
+    } = order;
+
+    validate_symbol(&symbol)?;
+    let known_symbols = fetch_known_perpetual_symbols(client).await?;
+    validate_symbol_exists(&symbol, &known_symbols)?;
 
     let size: f64 = size_str
         .parse()
         .map_err(|_| KrakenError::Validation(format!("Invalid size: {size_str}")))?;
-    let order_type = FuturesOrderType::from_str_cli(order_type_str)?;
     let price: Option<f64> = price_str
         .as_ref()
         .map(|p| {
@@ -736,10 +781,6 @@ async fn execute_order(
             p.parse()
                 .map_err(|_| KrakenError::Validation(format!("Invalid stop price: {p}")))
         })
-        .transpose()?;
-    let trigger_signal = trigger_signal_str
-        .as_ref()
-        .map(|s| TriggerSignal::from_str_cli(s))
         .transpose()?;
     let leverage: Option<f64> = leverage_str
         .as_ref()
@@ -757,28 +798,29 @@ async fn execute_order(
         })
         .transpose()?;
 
-    if let Some(ref unit) = trailing_unit {
-        if unit != "percent" && unit != "quote_currency" {
-            return Err(KrakenError::Validation(format!(
-                "Invalid trailing-stop-deviation-unit '{unit}'. Use 'percent' or 'quote_currency'."
-            )));
-        }
+    if let Some(unit) = &trailing_unit
+        && unit != "percent"
+        && unit != "quote_currency"
+    {
+        return Err(KrakenError::Validation(format!(
+            "Invalid trailing-stop-deviation-unit '{unit}'. Use 'percent' or 'quote_currency'."
+        )));
     }
 
-    if let Some(lev) = leverage {
-        if !lev.is_finite() || !(1.0..=MAX_LEVERAGE).contains(&lev) {
-            return Err(KrakenError::Validation(format!(
-                "Leverage must be between 1.0 and {MAX_LEVERAGE:.0}"
-            )));
-        }
+    if let Some(lev) = leverage
+        && (!lev.is_finite() || !(1.0..=MAX_LEVERAGE).contains(&lev))
+    {
+        return Err(KrakenError::Validation(format!(
+            "Leverage must be between 1.0 and {MAX_LEVERAGE:.0}"
+        )));
     }
 
     let _lock = futures_paper::StateLock::acquire()?;
     let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client, verbose).await;
+    reconcile_best_effort(&mut state, client).await;
 
-    let mut snapshot = fetch_ticker(client, symbol, verbose).await?;
-    let (ask_levels, bid_levels) = fetch_orderbook_levels(client, symbol, verbose).await;
+    let mut snapshot = fetch_ticker(client, &symbol).await?;
+    let (ask_levels, bid_levels) = fetch_orderbook_levels(client, &symbol).await;
     snapshot.ask_levels = ask_levels;
     snapshot.bid_levels = bid_levels;
 
@@ -790,11 +832,11 @@ async fn execute_order(
         price,
         stop_price,
         trigger_signal,
-        client_order_id: client_order_id.clone(),
+        client_order_id,
         reduce_only,
         leverage,
         trailing_stop_max_deviation: trailing_max,
-        trailing_stop_deviation_unit: trailing_unit.clone(),
+        trailing_stop_deviation_unit: trailing_unit,
     };
 
     let result = state.place_order(params, &snapshot)?;
@@ -819,7 +861,7 @@ async fn execute_order(
         ("Mode".into(), "[FUTURES PAPER] Simulated Trading".into()),
         ("Order ID".into(), result.order_id.clone()),
         ("Symbol".into(), symbol.to_uppercase()),
-        ("Side".into(), side.to_string()),
+        ("PositionSide".into(), side.to_string()),
         ("Status".into(), result.status.to_string()),
     ];
 
@@ -858,7 +900,7 @@ fn execute_orders() -> Result<CommandOutput> {
     let headers = vec![
         "[FP] Order ID".into(),
         "Symbol".into(),
-        "Side".into(),
+        "PositionSide".into(),
         "Type".into(),
         "Size".into(),
         "Price".into(),
@@ -931,7 +973,7 @@ fn execute_order_status(order_id: &str) -> Result<CommandOutput> {
         ("Mode".into(), "[FUTURES PAPER] Simulated Trading".into()),
         ("Order ID".into(), order.id.clone()),
         ("Symbol".into(), order.symbol.clone()),
-        ("Side".into(), order.side.to_string()),
+        ("PositionSide".into(), order.side.to_string()),
         ("Type".into(), order.order_type.to_string()),
         ("Size".into(), format!("{:.8}", order.size)),
         (
@@ -1059,11 +1101,7 @@ fn execute_cancel_all(symbol: Option<&str>) -> Result<CommandOutput> {
     ))
 }
 
-async fn execute_batch_order(
-    orders_json: &str,
-    client: &FuturesClient,
-    verbose: bool,
-) -> Result<CommandOutput> {
+async fn execute_batch_order(orders_json: &str, client: &FuturesClient) -> Result<CommandOutput> {
     let json_str = if let Some(path) = orders_json.strip_prefix('@') {
         std::fs::read_to_string(path).map_err(|e| {
             KrakenError::Io(std::io::Error::new(
@@ -1080,7 +1118,7 @@ async fn execute_batch_order(
 
     let _lock = futures_paper::StateLock::acquire()?;
     let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client, verbose).await;
+    reconcile_best_effort(&mut state, client).await;
 
     let mut snapshots = HashMap::new();
     let symbols: Vec<String> = parsed
@@ -1094,15 +1132,15 @@ async fn execute_batch_order(
         .into_iter()
         .collect();
 
-    let known_symbols = fetch_known_perpetual_symbols(client, verbose).await?;
+    let known_symbols = fetch_known_perpetual_symbols(client).await?;
     for sym in &symbols {
         validate_symbol(sym)?;
         validate_symbol_exists(sym, &known_symbols)?;
     }
 
     for sym in &symbols {
-        if let Ok(mut snap) = fetch_ticker(client, sym, verbose).await {
-            let (ask_levels, bid_levels) = fetch_orderbook_levels(client, sym, verbose).await;
+        if let Ok(mut snap) = fetch_ticker(client, sym).await {
+            let (ask_levels, bid_levels) = fetch_orderbook_levels(client, sym).await;
             snap.ask_levels = ask_levels;
             snap.bid_levels = bid_levels;
             snapshots.insert(sym.clone(), snap);
@@ -1193,12 +1231,12 @@ fn parse_batch_row(v: &Value) -> Result<OrderParams> {
         .and_then(|s| s.as_str())
         .ok_or_else(|| KrakenError::Validation("Batch row missing 'side'".into()))?;
     let side = match side_str {
-        "buy" | "long" => Side::Long,
-        "sell" | "short" => Side::Short,
+        "buy" | "long" => PositionSide::Long,
+        "sell" | "short" => PositionSide::Short,
         _ => {
             return Err(KrakenError::Validation(format!(
                 "Invalid side '{side_str}'. Use buy/long or sell/short."
-            )))
+            )));
         }
     };
     let size = parse_batch_f64(v, "size")?
@@ -1214,7 +1252,7 @@ fn parse_batch_row(v: &Value) -> Result<OrderParams> {
             None => {
                 return Err(KrakenError::Validation(
                     "trigger_signal must be a string (mark, index, or last)".into(),
-                ))
+                ));
             }
         },
         None => None,
@@ -1224,12 +1262,13 @@ fn parse_batch_row(v: &Value) -> Result<OrderParams> {
         .get("trailing_stop_deviation_unit")
         .and_then(|s| s.as_str())
         .map(|s| s.to_string());
-    if let Some(ref unit) = trailing_stop_deviation_unit {
-        if unit != "percent" && unit != "quote_currency" {
-            return Err(KrakenError::Validation(format!(
-                "Invalid trailing_stop_deviation_unit '{unit}'. Use 'percent' or 'quote_currency'."
-            )));
-        }
+    if let Some(ref unit) = trailing_stop_deviation_unit
+        && unit != "percent"
+        && unit != "quote_currency"
+    {
+        return Err(KrakenError::Validation(format!(
+            "Invalid trailing_stop_deviation_unit '{unit}'. Use 'percent' or 'quote_currency'."
+        )));
     }
 
     Ok(OrderParams {
@@ -1254,16 +1293,16 @@ fn parse_batch_row(v: &Value) -> Result<OrderParams> {
     })
 }
 
-async fn execute_positions(client: &FuturesClient, verbose: bool) -> Result<CommandOutput> {
+async fn execute_positions(client: &FuturesClient) -> Result<CommandOutput> {
     let _lock = futures_paper::StateLock::acquire()?;
     let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client, verbose).await;
+    reconcile_best_effort(&mut state, client).await;
 
-    let mark_prices = build_mark_prices(&state, client, verbose).await;
+    let mark_prices = build_mark_prices(&state, client).await;
 
     let headers = vec![
         "[FP] Symbol".into(),
-        "Side".into(),
+        "PositionSide".into(),
         "Size".into(),
         "Entry".into(),
         "Mark".into(),
@@ -1339,7 +1378,7 @@ fn execute_fills() -> Result<CommandOutput> {
         "[FP] Fill ID".into(),
         "Order ID".into(),
         "Symbol".into(),
-        "Side".into(),
+        "PositionSide".into(),
         "Size".into(),
         "Price".into(),
         "Fee".into(),
@@ -1367,7 +1406,7 @@ fn execute_fills() -> Result<CommandOutput> {
                         .map(|p| format!("{p:+.2}"))
                         .unwrap_or_else(|| "—".into()),
                     f.fill_type.clone(),
-                    f.filled_at.clone(),
+                    kraken_recording::format_instant(f.filled_at),
                 ]
             })
             .collect()
@@ -1426,7 +1465,7 @@ fn execute_history() -> Result<CommandOutput> {
                     h.symbol.clone().unwrap_or_else(|| "—".into()),
                     format!("{:+.4}", h.amount),
                     h.details.clone(),
-                    h.timestamp.clone(),
+                    kraken_recording::format_instant(h.timestamp),
                 ]
             })
             .collect()
@@ -1529,7 +1568,6 @@ fn execute_set_leverage(symbol: &str, leverage_str: &str) -> Result<CommandOutpu
 async fn build_mark_prices(
     state: &FuturesPaperState,
     client: &FuturesClient,
-    verbose: bool,
 ) -> HashMap<String, f64> {
     let mut prices = HashMap::new();
     let symbols: Vec<String> = state
@@ -1541,10 +1579,10 @@ async fn build_mark_prices(
         .collect();
 
     for sym in symbols {
-        if let Ok(snap) = fetch_ticker(client, &sym, verbose).await {
-            if snap.mark > 0.0 {
-                prices.insert(sym, snap.mark);
-            }
+        if let Ok(snap) = fetch_ticker(client, &sym).await
+            && snap.mark > 0.0
+        {
+            prices.insert(sym, snap.mark);
         }
     }
     prices
@@ -1571,10 +1609,12 @@ mod tests {
     fn validate_unknown_symbol_rejected() {
         let result = validate_symbol("BTCUSD");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Unknown futures symbol"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown futures symbol")
+        );
     }
 
     #[test]
@@ -1596,10 +1636,12 @@ mod tests {
             .collect();
         let result = validate_symbol_exists("PF_FAKEUSD", &known);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Unknown perpetual symbol"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown perpetual symbol")
+        );
     }
 
     #[test]
@@ -1622,10 +1664,12 @@ mod tests {
         assert!(validate_symbol("PF_NOSUCHASSET").is_ok());
         let result = validate_symbol_exists("PF_NOSUCHASSET", &known);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("not found in available futures instruments"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("not found in available futures instruments")
+        );
     }
 
     #[test]

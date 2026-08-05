@@ -69,9 +69,9 @@ kraken <command> [args...] -o json 2>/dev/null
 
 Rules:
 - Always pass `-o json` for structured output.
-- Redirect stderr: `2>/dev/null` or `2>debug.log`.
-- stdout contains only valid JSON (success) or a JSON error envelope (failure).
-- Exit code 0 = success, non-zero = failure.
+- Redirect stderr: `2>/dev/null` or `2>debug.log`. Diagnostics there are structured JSON (JSONL), off by default bar warnings/errors; enable detail with `-v` or `RUST_LOG`.
+- stdout contains only valid JSON (success) or a JSON error envelope (runtime failure).
+- Exit code 0 = success, 1 = runtime failure with a JSON envelope on stdout, 2 = argument/usage error from the parser. With `-o json`, exit 2 puts a `{"error":"validation"}` envelope on stdout (stderr stays empty); without it, clap's usage text goes to stderr. Validate flag values against the `values` arrays in `agents/tool-catalog.json` before invoking.
 
 ### Basic examples
 
@@ -90,9 +90,9 @@ kraken order buy BTCUSD 0.001 --type limit --price 50000 -o json
 kraken order cancel TXID123 -o json
 
 # Spot paper trading (no auth)
-kraken paper init --balance 10000 -o json
+kraken workspace create sandbox --capital 10000 --mode paper -o json
 kraken paper buy BTCUSD 0.01 -o json
-kraken paper status -o json
+kraken workspace status sandbox -o json
 
 # Futures paper trading (no auth)
 kraken futures paper init --balance 10000 -o json
@@ -164,7 +164,7 @@ stdout contains the API response as JSON. Structure varies by command.
 
 ### Error response
 
-On non-zero exit, stdout contains a JSON error envelope:
+On exit 1, stdout contains a JSON error envelope:
 
 ```json
 {"error": "auth", "message": "Authentication failed: EAPI:Invalid key"}
@@ -172,9 +172,11 @@ On non-zero exit, stdout contains a JSON error envelope:
 
 The `error` field is a stable category code. The `message` field is human-readable and not stable.
 
+Argument and usage errors exit 2. When `-o json` is requested they render the same `{"error":"validation"}` envelope on stdout; otherwise the parser prints usage text on stderr. Catch them up front by checking values against the `values` arrays in `agents/tool-catalog.json`.
+
 ### WebSocket streaming
 
-WebSocket commands emit NDJSON (one JSON object per line):
+WebSocket commands emit JSONL (one JSON object per line):
 
 ```bash
 kraken ws ticker BTC/USD -o json | while read -r line; do
@@ -194,7 +196,7 @@ Route on the `error` field, not on message strings.
 | `rate_limit` | Yes | Error returned immediately (no CLI retry). Includes `suggestion` (tier-specific guidance), `docs_url` (Kraken documentation link), and `retryable` flag. Read `suggestion` and `docs_url` to understand the limit and adapt your strategy. |
 | `validation` | No | Fix input. Check types, required fields, allowed values. |
 | `config` | No | Check config file or environment variables. |
-| `websocket` | Yes | Reconnect with paced exponential backoff and reconnect safety budget. CLI retries up to 12 times per stream lifecycle. |
+| `websocket` | Yes | Streams reconnect with paced exponential backoff (capped at 30s, plus jitter) until interrupted; a subscription rejected again on a fresh token is dropped from the replay so the rest keeps streaming. One-shot methods do not retry past their own timeout. |
 | `io` | No | Check file paths and permissions. |
 | `parse` | No | Log raw response. Possible API maintenance. |
 
@@ -223,6 +225,18 @@ fi
 ```
 
 For the full error catalog with backoff strategies and example envelopes, see `agents/error-catalog.json`.
+
+## Feedback
+
+When the CLI's interface or responses do not match what you are trying to do — including a mismatch between a skill and this CLI version's contract — submit feedback. Submitting uploads the text (and metadata such as CLI version, instance id, and optional `--llm-model`) to Kraken over HTTPS. A local DuckDB copy under the Kraken config directory is written only after a successful upload. A failed upload fails the command and writes nothing locally. Do not include API keys, secrets, passwords, or personal data in the body. Architecture, limits, and retention: `docs/feedback-ingest.md`.
+
+```bash
+kraken feedback bug --input-string "description; steps; versions" --llm-model <your-model> -o json
+kraken feedback friction --input-file ./notes.txt -o json
+kraken feedback feature-request --input-string "I need X because Y" -o json
+```
+
+Types: `feature-request`, `friction`, `bug`. Soft recommendations for body content (and the 8192-byte limit) are documented in `kraken feedback --help`.
 
 ## Rate Limiting
 
@@ -254,18 +268,19 @@ Two independent paper engines cover spot and futures. No API keys, no account, n
 ### Spot Paper
 
 ```bash
-kraken paper init --balance 10000 -o json   # Create paper account
+kraken workspace create sandbox --capital 10000 --mode paper --slippage-rate 0.001 -o json   # Create AND fund the account
+export KRAKEN_WORKSPACE=sandbox
 kraken paper buy BTCUSD 0.01 -o json        # Market buy
 kraken paper sell BTCUSD 0.005 --type limit --price 70000 -o json  # Limit sell
-kraken paper status -o json                 # Check portfolio
+kraken workspace status -o json             # Check portfolio
 kraken paper orders -o json                 # Check open orders
 kraken paper history -o json                # Trade history
-kraken paper reset -o json                  # Reset account
+kraken workspace reset -o json --yes        # Return to starting capital
 ```
 
 Switch between paper and live by changing the prefix: `kraken paper buy` vs `kraken order buy`.
 
-A 0.26% taker fee is applied to all fills (Kraken Starter tier default). Limit orders fill at the limit price when the live market crosses the order price.
+A 0.26% taker fee is applied to all fills (Kraken Starter tier default, configurable with `--fee-rate`). Optional slippage simulation is available via `--slippage-rate` (default 0.0). Market buys fill at `ask * (1 + slippage_rate)`, sells at `bid * (1 - slippage_rate)`. Limit orders fill at the limit price when the live market crosses the order price. Use `kraken workspace status -o json` to check current fee and slippage rates; `paper init/reset/status/balance` remain as aliases of the workspace commands.
 
 ### Futures Paper
 
@@ -288,11 +303,33 @@ Switch between paper and live by replacing `futures paper` with `futures order`:
 
 Spot paper and futures paper are fully independent. Resetting one does not affect the other.
 
+## Market Memory & Stream Reliability
+
+Recording and streaming are CLI-only surfaces — a request/response MCP tool cannot host a live stream (see [Integration](#integration)). Agents run them as background processes and read the lifecycle from stderr; `kraken tape list` is a regular MCP tool in the market service.
+
+```bash
+kraken record --symbols BTC/USD --channels trades,book --tape my-tape --to duckdb,jsonl -o json &
+RECORDER=$!
+# ... let the window run ...
+kill -TERM $RECORDER   # graceful stop: every backend finalizes
+```
+
+The lifecycle contract, as stderr JSONL (stdout stays empty unless `--to` includes `stdout`):
+
+- `{"event":"record","type":"started","tape":"<path>","format":"duckdb",...}` — one line per backend, emitted after locks and schema are ensured, before any socket opens.
+- `{"event":"record","type":"summary","tapes":[...]}` — only for a capture that actually finalized. SIGINT and SIGTERM both finalize: the tape metadata gains `window_end`, `events_dropped`, `frames_unparsed`, and `reconnect_count`.
+- One writer per tape: a second `record` on the same tape exits 1 with a `validation` envelope (`tape '<path>' is in use by another process`). Readers coexist; `kraken tape list -o json` reports `in_use` and `state` per backend.
+- Re-recording an existing tape appends to it and extends its window.
+
+Add `--monitor` to `ws`, `streamd`, or `record` for reliability diagnostics as stderr JSONL, routable by `type`: periodic `health` (connection status, per-channel latency percentiles, trade-gap counters, staleness ages), `alert` (stale data, heartbeat timeout), and a final `summary`. Tune with `--monitor-health-interval`, `--monitor-stale-after`, and `--monitor-heartbeat-timeout` (seconds).
+
+A finalized tape is a replay source: `kraken session start --from tape:my-tape --speed 10` replays it into a paper session. The [market memory walkthrough](examples/03-market-memory.md) covers the interactive loop.
+
 ## Command Groups Overview
 
 | Group | Auth | Commands | Description |
 |-------|------|----------|-------------|
-| market | No | 10 | Public market data: ticker, orderbook, OHLC, trades, spreads |
+| market | No | 11 | Public market data plus the local tape-library catalog |
 | account | Yes | 18 | Balances, orders, trades, ledgers, positions, export, L3 orderbook |
 | trade | Yes | 9 | Order placement, amendment, cancellation (spot, xStocks, forex) |
 | funding | Yes | 10 | Deposits, withdrawals, wallet transfers |
@@ -302,17 +339,18 @@ Spot paper and futures paper are fully independent. Resetting one does not affec
 | futures-paper | No | 17 | Futures paper trading: all 8 order types, leverage, margin, liquidation |
 | futures-ws | Mixed | 9 | Futures WebSocket streaming |
 | websocket | Mixed | 15 | Spot WebSocket v2 streaming and request/response |
-| paper | No | 10 | Spot paper trading simulation |
+| paper | No | 16 | Spot paper trading simulation, P&L explanation, and the Autoresearch Lab |
+| workspace | No | 15 | Strategy workspaces and recorded sessions: isolated accounts, session windows, decision logs, reports, promotion |
 | auth | No | 4 | Credential management (set, show, test, reset) |
 | utility | No | 2 | Interactive setup and REPL shell |
 
-Total: 151 commands. For the full machine-readable catalog, see `agents/tool-catalog.json`.
+Catalog: 174 request/response commands. See `agents/tool-catalog.json`; CLI-only streams are listed under [Integration](#integration).
 
 `kraken mcp` is a runtime mode that starts an MCP server, not a tool-callable command. It is not included in the catalog.
 
 ## Dangerous Commands
 
-The catalog marks 34 commands as `dangerous: true`. These move real money, cancel real orders, or mutate account state. Gate every one with confirmation logic.
+The catalog marks 41 commands as `dangerous: true`. Four of them (`order buy/sell/cancel/cancel-all`) also carry `paper_safe: true` — inside a paper workspace (KRAKEN_WORKSPACE set to a paper account) they execute simulated fills and need no confirmation; against the real account they stay gated. These move real money, cancel real orders, or mutate account state. Gate every one with confirmation logic.
 
 The authoritative source is the `dangerous` field in `agents/tool-catalog.json`.
 
@@ -323,8 +361,9 @@ Common dangerous command groups:
 | Spot orders | `order buy`, `order sell`, `order batch`, `order amend`, `order edit`, `order cancel`, `order cancel-batch`, `order cancel-all`, `order cancel-after` |
 | Funding | `withdraw`, `withdrawal cancel`, `wallet-transfer` |
 | Earn | `earn allocate`, `earn deallocate` |
-| Subaccounts | `subaccount transfer` |
-| Futures | `futures order buy/sell`, `futures edit-order`, `futures cancel`, `futures cancel-all`, `futures cancel-after`, `futures batch-order`, `futures transfer`, `futures wallet-transfer`, `futures set-subaccount-status` |
+| Subaccounts | `subaccount transfer`, `subaccount create` |
+| Futures | `futures order buy/sell`, `futures edit-order`, `futures cancel`, `futures cancel-all`, `futures cancel-after`, `futures batch-order`, `futures transfer`, `futures wallet-transfer`, `futures set-subaccount-status`, `futures set-leverage`, `futures set-pnl-preference` |
+| Account data | `export-retrieve`, `export-delete` |
 | WebSocket | `ws add-order`, `ws amend-order`, `ws cancel-order`, `ws cancel-all`, `ws cancel-after`, `ws batch-add`, `ws batch-cancel` |
 
 ### Agent Autonomy Levels
@@ -384,7 +423,7 @@ import json
 with open("agents/tool-catalog.json") as f:
     catalog = json.load(f)
 
-# All 151 commands with full parameter schemas
+# All 174 commands with full parameter schemas
 commands = catalog["commands"]
 
 # Filter to safe read-only commands
@@ -429,7 +468,9 @@ Configure your MCP client:
 }
 ```
 
-**Service groups**: `market`, `account`, `trade`, `funding`, `earn`, `subaccount`, `futures`, `futures-paper`, `paper`, `auth`, or `all`. Default exposed groups are `market,account,paper`.
+**Service groups**: `market`, `account`, `trade`, `funding`, `earn`, `subaccount`, `futures`, `futures-paper`, `paper`, `auth`, `feedback`, or `all`. Default exposed groups are `market,account,paper,feedback`.
+
+**Streaming commands are CLI-only.** `session start` (and bare `kraken playground`, its demo composition), `record`, `replay`, the `streamd` verbs, and `ws ping` never appear as MCP tools — a request/response tool cannot host a live stream. An MCP-only agent gets the whole loop *around* a session (order, note, state, stop, show, score, explain), but opening one takes a shell: background `kraken session start … -o json &` and parse the `session_started` line for the handle.
 
 **Behavior:**
 - Streaming groups (`websocket`, `futures-ws`) are excluded in MCP v1 (REST-only tools).
@@ -462,7 +503,7 @@ Configure your MCP client:
 
 | File | Format | Description |
 |------|--------|-------------|
-| `agents/tool-catalog.json` | JSON | All 151 commands with parameters, types, safety flags, and examples |
-| `agents/error-catalog.json` | JSON | 9 error categories with retry guidance |
+| `agents/tool-catalog.json` | JSON | All 174 commands with parameters, types, safety flags, and examples |
+| `agents/error-catalog.json` | JSON | 10 error categories with retry guidance |
 | `agents/examples/` | Shell | Runnable workflow examples |
 | `skills/` | SKILL.md | Goal-oriented workflow skills for agents |

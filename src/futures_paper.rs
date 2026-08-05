@@ -2,9 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::config;
@@ -15,17 +14,13 @@ pub(crate) const DEFAULT_MAINTENANCE_MARGIN_RATE: f64 = 0.02;
 pub(crate) const MAX_LEVERAGE: f64 = 200.0;
 const FUNDING_INTERVAL_HOURS: i64 = 8;
 
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum Side {
+pub(crate) enum PositionSide {
     Long,
     Short,
 }
 
-impl Side {
+impl PositionSide {
     pub(crate) fn opposite(self) -> Self {
         match self {
             Self::Long => Self::Short,
@@ -34,7 +29,7 @@ impl Side {
     }
 }
 
-impl std::fmt::Display for Side {
+impl std::fmt::Display for PositionSide {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Long => f.write_str("long"),
@@ -43,7 +38,12 @@ impl std::fmt::Display for Side {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// clap's default kebab renaming of these variants (market, limit, post, stop,
+// take-profit, ioc, trailing-stop, fok) is the single CLI/paper token table:
+// `Display` and `from_str_cli` read it through `ValueEnum`, so a new variant
+// needs no extra mapping there. The serde form (variant names) is separate and
+// pinned by persisted paper state files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 pub(crate) enum FuturesOrderType {
     Market,
     Limit,
@@ -57,36 +57,51 @@ pub(crate) enum FuturesOrderType {
 
 impl FuturesOrderType {
     pub(crate) fn from_str_cli(s: &str) -> Result<Self> {
-        match s {
-            "market" => Ok(Self::Market),
-            "limit" => Ok(Self::Limit),
-            "post" => Ok(Self::Post),
-            "stop" => Ok(Self::Stop),
-            "take-profit" => Ok(Self::TakeProfit),
-            "ioc" => Ok(Self::Ioc),
-            "trailing-stop" => Ok(Self::TrailingStop),
-            "fok" => Ok(Self::Fok),
-            _ => Err(KrakenError::Validation(format!(
-                "Invalid order type '{s}'. Valid: limit, market, post, stop, take-profit, ioc, trailing-stop, fok"
-            ))),
+        <Self as clap::ValueEnum>::from_str(s, false).map_err(|_| {
+            KrakenError::Validation(format!(
+                "Invalid order type '{s}'. Valid: {}",
+                cli_tokens::<Self>()
+            ))
+        })
+    }
+
+    /// Futures REST `orderType` token; distinct from the CLI/paper token (Display).
+    pub(crate) fn as_api_wire(self) -> &'static str {
+        match self {
+            Self::Market => "mkt",
+            Self::Limit => "lmt",
+            Self::Post => "post",
+            Self::Stop => "stp",
+            Self::TakeProfit => "take_profit",
+            Self::Ioc => "ioc",
+            Self::TrailingStop => "trailing_stop",
+            Self::Fok => "fok",
         }
     }
 }
 
 impl std::fmt::Display for FuturesOrderType {
+    #[expect(
+        clippy::expect_used,
+        reason = "to_possible_value is None only for #[value(skip)] variants; this enum has none"
+    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Self::Market => "market",
-            Self::Limit => "limit",
-            Self::Post => "post",
-            Self::Stop => "stop",
-            Self::TakeProfit => "take-profit",
-            Self::Ioc => "ioc",
-            Self::TrailingStop => "trailing-stop",
-            Self::Fok => "fok",
-        };
-        f.write_str(s)
+        f.write_str(
+            clap::ValueEnum::to_possible_value(self)
+                .expect("no skipped variants")
+                .get_name(),
+        )
     }
+}
+
+/// Comma-joined clap tokens of a value enum, for validation error messages.
+fn cli_tokens<E: clap::ValueEnum>() -> String {
+    E::value_variants()
+        .iter()
+        .filter_map(clap::ValueEnum::to_possible_value)
+        .map(|v| v.get_name().to_owned())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,7 +127,7 @@ impl std::fmt::Display for OrderStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 pub(crate) enum TriggerSignal {
     Mark,
     Index,
@@ -121,36 +136,34 @@ pub(crate) enum TriggerSignal {
 
 impl TriggerSignal {
     pub(crate) fn from_str_cli(s: &str) -> Result<Self> {
-        match s {
-            "mark" => Ok(Self::Mark),
-            "index" => Ok(Self::Index),
-            "last" => Ok(Self::Last),
-            _ => Err(KrakenError::Validation(format!(
-                "Invalid trigger signal '{s}'. Valid: mark, index, last"
-            ))),
-        }
+        <Self as clap::ValueEnum>::from_str(s, false).map_err(|_| {
+            KrakenError::Validation(format!(
+                "Invalid trigger signal '{s}'. Valid: {}",
+                cli_tokens::<Self>()
+            ))
+        })
     }
 }
 
 impl std::fmt::Display for TriggerSignal {
+    #[expect(
+        clippy::expect_used,
+        reason = "to_possible_value is None only for #[value(skip)] variants; this enum has none"
+    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Mark => f.write_str("mark"),
-            Self::Index => f.write_str("index"),
-            Self::Last => f.write_str("last"),
-        }
+        f.write_str(
+            clap::ValueEnum::to_possible_value(self)
+                .expect("no skipped variants")
+                .get_name(),
+        )
     }
 }
-
-// ---------------------------------------------------------------------------
-// Data types
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct FuturesPaperOrder {
     pub(crate) id: String,
     pub(crate) symbol: String,
-    pub(crate) side: Side,
+    pub(crate) side: PositionSide,
     pub(crate) size: f64,
     pub(crate) filled_size: f64,
     pub(crate) order_type: FuturesOrderType,
@@ -165,21 +178,21 @@ pub(crate) struct FuturesPaperOrder {
     pub(crate) trailing_stop_max_deviation: Option<f64>,
     pub(crate) trailing_stop_deviation_unit: Option<String>,
     pub(crate) trailing_anchor: Option<f64>,
-    pub(crate) created_at: String,
-    pub(crate) updated_at: String,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct FuturesPaperPosition {
     pub(crate) symbol: String,
-    pub(crate) side: Side,
+    pub(crate) side: PositionSide,
     pub(crate) size: f64,
     pub(crate) entry_price: f64,
     pub(crate) leverage: f64,
     pub(crate) unrealized_funding: f64,
-    pub(crate) last_funding_time: Option<String>,
-    pub(crate) created_at: String,
-    pub(crate) updated_at: String,
+    pub(crate) last_funding_time: Option<DateTime<Utc>>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,14 +200,14 @@ pub(crate) struct FuturesPaperFill {
     pub(crate) id: String,
     pub(crate) order_id: String,
     pub(crate) symbol: String,
-    pub(crate) side: Side,
+    pub(crate) side: PositionSide,
     pub(crate) size: f64,
     pub(crate) price: f64,
     pub(crate) fee: f64,
     pub(crate) realized_pnl: Option<f64>,
     pub(crate) fill_type: String,
     pub(crate) client_order_id: Option<String>,
-    pub(crate) filled_at: String,
+    pub(crate) filled_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,12 +217,8 @@ pub(crate) struct FuturesPaperHistoryEvent {
     pub(crate) symbol: Option<String>,
     pub(crate) amount: f64,
     pub(crate) details: String,
-    pub(crate) timestamp: String,
+    pub(crate) timestamp: DateTime<Utc>,
 }
-
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct FuturesPaperState {
@@ -224,10 +233,9 @@ pub(crate) struct FuturesPaperState {
     pub(crate) leverage_preferences: HashMap<String, f64>,
     #[serde(default = "default_next_id")]
     next_id: u64,
-    pub(crate) created_at: String,
-    pub(crate) updated_at: String,
-    #[serde(default)]
-    pub(crate) last_reconciled_at: Option<String>,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
+    pub(crate) last_reconciled_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub(crate) maintenance_margin_fallback_used: bool,
 }
@@ -238,7 +246,7 @@ fn default_next_id() -> u64 {
 
 impl FuturesPaperState {
     pub(crate) fn new(collateral: f64, currency: &str, fee_rate: f64) -> Self {
-        let now = Utc::now().to_rfc3339();
+        let now = Utc::now();
         Self {
             collateral,
             currency: currency.to_uppercase(),
@@ -250,7 +258,7 @@ impl FuturesPaperState {
             history: Vec::new(),
             leverage_preferences: HashMap::new(),
             next_id: 1,
-            created_at: now.clone(),
+            created_at: now,
             updated_at: now,
             last_reconciled_at: None,
             maintenance_margin_fallback_used: false,
@@ -276,10 +284,6 @@ impl FuturesPaperState {
         self.next_id += 1;
         id
     }
-
-    // -----------------------------------------------------------------------
-    // Margin calculations
-    // -----------------------------------------------------------------------
 
     pub(crate) fn position_margin(&self) -> f64 {
         self.positions
@@ -311,10 +315,6 @@ impl FuturesPaperState {
         (self.collateral + upnl - self.used_margin()).max(0.0)
     }
 
-    // -----------------------------------------------------------------------
-    // Leverage resolution
-    // -----------------------------------------------------------------------
-
     pub(crate) fn resolve_leverage(
         &self,
         order_leverage: Option<f64>,
@@ -335,10 +335,6 @@ impl FuturesPaperState {
             "No leverage specified for {symbol}. Use --leverage or set a preference with 'futures paper set-leverage'."
         )))
     }
-
-    // -----------------------------------------------------------------------
-    // Order placement
-    // -----------------------------------------------------------------------
 
     pub(crate) fn place_order(
         &mut self,
@@ -374,8 +370,8 @@ impl FuturesPaperState {
         market: &MarketSnapshot,
     ) -> Result<OrderPlacementResult> {
         let fill_price = match params.side {
-            Side::Long => market.ask,
-            Side::Short => market.bid,
+            PositionSide::Long => market.ask,
+            PositionSide::Short => market.bid,
         };
         if fill_price <= 0.0 || !fill_price.is_finite() {
             return Err(KrakenError::Validation("Invalid market price".into()));
@@ -403,7 +399,7 @@ impl FuturesPaperState {
         );
 
         self.collateral -= fee;
-        self.updated_at = Utc::now().to_rfc3339();
+        self.updated_at = Utc::now();
 
         Ok(OrderPlacementResult {
             order_id,
@@ -449,11 +445,11 @@ impl FuturesPaperState {
             trailing_stop_max_deviation: None,
             trailing_stop_deviation_unit: None,
             trailing_anchor: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
         self.open_orders.push(order);
-        self.updated_at = Utc::now().to_rfc3339();
+        self.updated_at = Utc::now();
 
         Ok(OrderPlacementResult {
             order_id,
@@ -474,8 +470,8 @@ impl FuturesPaperState {
             .ok_or_else(|| KrakenError::Validation("Post-only orders require --price".into()))?;
 
         let crosses = match params.side {
-            Side::Long => price >= market.ask,
-            Side::Short => price <= market.bid,
+            PositionSide::Long => price >= market.ask,
+            PositionSide::Short => price <= market.bid,
         };
         if crosses {
             return Err(KrakenError::Validation(
@@ -506,8 +502,8 @@ impl FuturesPaperState {
         self.validate_reduce_only(params)?;
 
         let contra_levels = match params.side {
-            Side::Long => &market.ask_levels,
-            Side::Short => &market.bid_levels,
+            PositionSide::Long => &market.ask_levels,
+            PositionSide::Short => &market.bid_levels,
         };
         let executable_size =
             compute_executable_depth(contra_levels, params.side, price, params.size);
@@ -522,8 +518,8 @@ impl FuturesPaperState {
         }
 
         let fill_price = match params.side {
-            Side::Long => market.ask,
-            Side::Short => market.bid,
+            PositionSide::Long => market.ask,
+            PositionSide::Short => market.bid,
         };
 
         let margin_delta =
@@ -548,7 +544,7 @@ impl FuturesPaperState {
         );
 
         self.collateral -= fee;
-        self.updated_at = Utc::now().to_rfc3339();
+        self.updated_at = Utc::now();
 
         let status = if (executable_size - params.size).abs() < 1e-12 {
             OrderStatus::Filled
@@ -584,8 +580,8 @@ impl FuturesPaperState {
         self.validate_reduce_only(params)?;
 
         let contra_levels = match params.side {
-            Side::Long => &market.ask_levels,
-            Side::Short => &market.bid_levels,
+            PositionSide::Long => &market.ask_levels,
+            PositionSide::Short => &market.bid_levels,
         };
         let executable_size =
             compute_executable_depth(contra_levels, params.side, price, params.size);
@@ -603,8 +599,8 @@ impl FuturesPaperState {
         }
 
         let fill_price = match params.side {
-            Side::Long => market.ask,
-            Side::Short => market.bid,
+            PositionSide::Long => market.ask,
+            PositionSide::Short => market.bid,
         };
 
         let margin_delta = self.compute_margin_delta(params, fill_price, leverage);
@@ -628,7 +624,7 @@ impl FuturesPaperState {
         );
 
         self.collateral -= fee;
-        self.updated_at = Utc::now().to_rfc3339();
+        self.updated_at = Utc::now();
 
         Ok(OrderPlacementResult {
             order_id,
@@ -707,11 +703,11 @@ impl FuturesPaperState {
             trailing_stop_max_deviation: params.trailing_stop_max_deviation,
             trailing_stop_deviation_unit: resolved_trailing_unit,
             trailing_anchor,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
         self.open_orders.push(order);
-        self.updated_at = Utc::now().to_rfc3339();
+        self.updated_at = Utc::now();
 
         Ok(OrderPlacementResult {
             order_id,
@@ -723,10 +719,6 @@ impl FuturesPaperState {
             )),
         })
     }
-
-    // -----------------------------------------------------------------------
-    // Validation helpers
-    // -----------------------------------------------------------------------
 
     fn validate_reduce_only(&self, params: &OrderParams) -> Result<()> {
         if !params.reduce_only {
@@ -790,17 +782,13 @@ impl FuturesPaperState {
         Ok(())
     }
 
-    // -----------------------------------------------------------------------
-    // Fill application and position netting
-    // -----------------------------------------------------------------------
-
     #[allow(clippy::too_many_arguments)]
     fn apply_fill(
         &mut self,
         fill_id: &str,
         order_id: &str,
         symbol: &str,
-        side: Side,
+        side: PositionSide,
         size: f64,
         price: f64,
         fee: f64,
@@ -821,7 +809,7 @@ impl FuturesPaperState {
             realized_pnl,
             fill_type: fill_type.to_string(),
             client_order_id,
-            filled_at: Utc::now().to_rfc3339(),
+            filled_at: Utc::now(),
         };
         self.fills.push(fill.clone());
         fill
@@ -830,7 +818,7 @@ impl FuturesPaperState {
     fn net_position(
         &mut self,
         symbol: &str,
-        fill_side: Side,
+        fill_side: PositionSide,
         fill_size: f64,
         fill_price: f64,
         leverage: f64,
@@ -860,7 +848,7 @@ impl FuturesPaperState {
                         self.positions.remove(idx);
                     } else {
                         self.positions[idx].size = remaining;
-                        self.positions[idx].updated_at = Utc::now().to_rfc3339();
+                        self.positions[idx].updated_at = Utc::now();
                     }
 
                     self.record_history(
@@ -897,7 +885,7 @@ impl FuturesPaperState {
 
                     self.positions[idx].size = total_size;
                     self.positions[idx].entry_price = new_entry;
-                    self.positions[idx].updated_at = Utc::now().to_rfc3339();
+                    self.positions[idx].updated_at = Utc::now();
                     None
                 }
                 None => {
@@ -911,12 +899,12 @@ impl FuturesPaperState {
     fn open_new_position(
         &mut self,
         symbol: &str,
-        side: Side,
+        side: PositionSide,
         size: f64,
         price: f64,
         leverage: f64,
     ) {
-        let now = Utc::now().to_rfc3339();
+        let now = Utc::now();
         self.positions.push(FuturesPaperPosition {
             symbol: symbol.to_string(),
             side,
@@ -924,15 +912,11 @@ impl FuturesPaperState {
             entry_price: price,
             leverage,
             unrealized_funding: 0.0,
-            last_funding_time: Some(now.clone()),
-            created_at: now.clone(),
+            last_funding_time: Some(now),
+            created_at: now,
             updated_at: now,
         });
     }
-
-    // -----------------------------------------------------------------------
-    // Order management
-    // -----------------------------------------------------------------------
 
     pub(crate) fn edit_order(
         &mut self,
@@ -999,8 +983,8 @@ impl FuturesPaperState {
             self.open_orders[idx].stop_price = Some(sp);
         }
         self.open_orders[idx].reserved_margin = new_reserved;
-        self.open_orders[idx].updated_at = Utc::now().to_rfc3339();
-        self.updated_at = Utc::now().to_rfc3339();
+        self.open_orders[idx].updated_at = Utc::now();
+        self.updated_at = Utc::now();
         Ok(())
     }
 
@@ -1013,7 +997,7 @@ impl FuturesPaperState {
             (Some(_), Some(_)) => {
                 return Err(KrakenError::Validation(
                     "Provide exactly one of --order-id or --cli-ord-id".into(),
-                ))
+                ));
             }
             (Some(oid), None) => self.find_open_order_idx(oid)?,
             (None, Some(cid)) => self
@@ -1026,7 +1010,7 @@ impl FuturesPaperState {
             (None, None) => {
                 return Err(KrakenError::Validation(
                     "Provide --order-id or --cli-ord-id".into(),
-                ))
+                ));
             }
         };
 
@@ -1037,7 +1021,7 @@ impl FuturesPaperState {
             0.0,
             &format!("User cancelled order {}", order.id),
         );
-        self.updated_at = Utc::now().to_rfc3339();
+        self.updated_at = Utc::now();
         Ok(order)
     }
 
@@ -1056,7 +1040,7 @@ impl FuturesPaperState {
                 &format!("User cancelled order {} (cancel-all)", order.id),
             );
         }
-        self.updated_at = Utc::now().to_rfc3339();
+        self.updated_at = Utc::now();
         cancelled
     }
 
@@ -1104,10 +1088,6 @@ impl FuturesPaperState {
             })
     }
 
-    // -----------------------------------------------------------------------
-    // Reconciliation: triggers, liquidation, funding
-    // -----------------------------------------------------------------------
-
     pub(crate) fn reconcile(
         &mut self,
         mark_prices: &HashMap<String, f64>,
@@ -1125,8 +1105,8 @@ impl FuturesPaperState {
         self.reconcile_liquidations(mark_prices, maintenance_rates, &mut liquidations);
         self.reconcile_funding(funding_rates, mark_prices, &mut funding_events);
 
-        self.last_reconciled_at = Some(Utc::now().to_rfc3339());
-        self.updated_at = Utc::now().to_rfc3339();
+        self.last_reconciled_at = Some(Utc::now());
+        self.updated_at = Utc::now();
 
         ReconcileResult {
             fills,
@@ -1162,8 +1142,8 @@ impl FuturesPaperState {
             };
 
             let is_marketable = match order.side {
-                Side::Long => limit_price >= last,
-                Side::Short => limit_price <= last,
+                PositionSide::Long => limit_price >= last,
+                PositionSide::Short => limit_price <= last,
             };
             if is_marketable {
                 matched_indices.push(i);
@@ -1254,8 +1234,8 @@ impl FuturesPaperState {
             };
             if let Some(ref mut anchor) = order.trailing_anchor {
                 match order.side {
-                    Side::Long => *anchor = anchor.min(current),
-                    Side::Short => *anchor = anchor.max(current),
+                    PositionSide::Long => *anchor = anchor.min(current),
+                    PositionSide::Short => *anchor = anchor.max(current),
                 }
             }
         }
@@ -1276,12 +1256,12 @@ impl FuturesPaperState {
 
             let should_trigger = match order.order_type {
                 FuturesOrderType::Stop => match order.side {
-                    Side::Long => order.stop_price.map(|sp| price >= sp).unwrap_or(false),
-                    Side::Short => order.stop_price.map(|sp| price <= sp).unwrap_or(false),
+                    PositionSide::Long => order.stop_price.map(|sp| price >= sp).unwrap_or(false),
+                    PositionSide::Short => order.stop_price.map(|sp| price <= sp).unwrap_or(false),
                 },
                 FuturesOrderType::TakeProfit => match order.side {
-                    Side::Long => order.stop_price.map(|sp| price <= sp).unwrap_or(false),
-                    Side::Short => order.stop_price.map(|sp| price >= sp).unwrap_or(false),
+                    PositionSide::Long => order.stop_price.map(|sp| price <= sp).unwrap_or(false),
+                    PositionSide::Short => order.stop_price.map(|sp| price >= sp).unwrap_or(false),
                 },
                 FuturesOrderType::TrailingStop => check_trailing_stop_trigger(order, price),
                 _ => false,
@@ -1382,8 +1362,8 @@ impl FuturesPaperState {
 
             let liq_price = compute_liquidation_price(pos, maint_rate);
             let is_liquidated = match pos.side {
-                Side::Long => mark <= liq_price,
-                Side::Short => mark >= liq_price,
+                PositionSide::Long => mark <= liq_price,
+                PositionSide::Short => mark >= liq_price,
             };
 
             if is_liquidated {
@@ -1399,7 +1379,7 @@ impl FuturesPaperState {
             self.collateral += pnl;
 
             let fill_id = self.next_id();
-            let order_id = format!("LIQ-{}", &fill_id);
+            let order_id = format!("LIQ-{}", fill_id);
 
             let fill = FuturesPaperFill {
                 id: fill_id,
@@ -1412,7 +1392,7 @@ impl FuturesPaperState {
                 realized_pnl: Some(pnl),
                 fill_type: "liquidation".to_string(),
                 client_order_id: None,
-                filled_at: Utc::now().to_rfc3339(),
+                filled_at: Utc::now(),
             };
             self.fills.push(fill.clone());
             liquidations.push(fill);
@@ -1445,13 +1425,7 @@ impl FuturesPaperState {
                 _ => continue,
             };
 
-            let last_funding = pos
-                .last_funding_time
-                .as_ref()
-                .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-                .map(|dt| dt.with_timezone(&chrono::Utc));
-
-            let intervals_elapsed = match last_funding {
+            let intervals_elapsed = match pos.last_funding_time {
                 Some(last) => {
                     let hours = (now - last).num_hours();
                     hours / FUNDING_INTERVAL_HOURS
@@ -1472,13 +1446,13 @@ impl FuturesPaperState {
             let total_funding = funding_per_interval * intervals_elapsed as f64;
 
             let amount = match pos.side {
-                Side::Long => -total_funding,
-                Side::Short => total_funding,
+                PositionSide::Long => -total_funding,
+                PositionSide::Short => total_funding,
             };
 
             pos.unrealized_funding += amount;
-            pos.last_funding_time = Some(now.to_rfc3339());
-            pos.updated_at = now.to_rfc3339();
+            pos.last_funding_time = Some(now);
+            pos.updated_at = now;
 
             let event_id = format!("FP-{:05}", id_base + id_offset);
             id_offset += 1;
@@ -1490,7 +1464,7 @@ impl FuturesPaperState {
                 details: format!(
                     "{intervals_elapsed} interval(s) at rate {rate:.6}, notional {notional:.2}"
                 ),
-                timestamp: now.to_rfc3339(),
+                timestamp: now,
             };
 
             self.collateral += amount;
@@ -1514,19 +1488,15 @@ impl FuturesPaperState {
             symbol: symbol.map(|s| s.to_string()),
             amount,
             details: details.to_string(),
-            timestamp: Utc::now().to_rfc3339(),
+            timestamp: Utc::now(),
         });
     }
 }
 
-// ---------------------------------------------------------------------------
-// Pure computation helpers
-// ---------------------------------------------------------------------------
-
 pub(crate) fn compute_unrealized_pnl(pos: &FuturesPaperPosition, mark_price: f64) -> f64 {
     match pos.side {
-        Side::Long => (mark_price - pos.entry_price) * pos.size,
-        Side::Short => (pos.entry_price - mark_price) * pos.size,
+        PositionSide::Long => (mark_price - pos.entry_price) * pos.size,
+        PositionSide::Short => (pos.entry_price - mark_price) * pos.size,
     }
 }
 
@@ -1535,21 +1505,25 @@ pub(crate) fn compute_liquidation_price(
     maintenance_margin_rate: f64,
 ) -> f64 {
     match pos.side {
-        Side::Long => pos.entry_price * (1.0 - (1.0 / pos.leverage) + maintenance_margin_rate),
-        Side::Short => pos.entry_price * (1.0 + (1.0 / pos.leverage) - maintenance_margin_rate),
+        PositionSide::Long => {
+            pos.entry_price * (1.0 - (1.0 / pos.leverage) + maintenance_margin_rate)
+        }
+        PositionSide::Short => {
+            pos.entry_price * (1.0 + (1.0 / pos.leverage) - maintenance_margin_rate)
+        }
     }
 }
 
-fn compute_realized_pnl(side: Side, entry: f64, exit: f64, size: f64) -> f64 {
+fn compute_realized_pnl(side: PositionSide, entry: f64, exit: f64, size: f64) -> f64 {
     match side {
-        Side::Long => (exit - entry) * size,
-        Side::Short => (entry - exit) * size,
+        PositionSide::Long => (exit - entry) * size,
+        PositionSide::Short => (entry - exit) * size,
     }
 }
 
 fn compute_executable_depth(
     levels: &[(f64, f64)],
-    side: Side,
+    side: PositionSide,
     limit_price: f64,
     max_size: f64,
 ) -> f64 {
@@ -1562,8 +1536,8 @@ fn compute_executable_depth(
             continue;
         }
         let acceptable = match side {
-            Side::Long => price <= limit_price,
-            Side::Short => price >= limit_price,
+            PositionSide::Long => price <= limit_price,
+            PositionSide::Short => price >= limit_price,
         };
         if !acceptable {
             break;
@@ -1611,8 +1585,8 @@ fn check_trailing_stop_trigger(order: &FuturesPaperOrder, mark: f64) -> bool {
     };
 
     match order.side {
-        Side::Long => mark >= anchor && deviation >= max_dev,
-        Side::Short => mark <= anchor && deviation >= max_dev,
+        PositionSide::Long => mark >= anchor && deviation >= max_dev,
+        PositionSide::Short => mark <= anchor && deviation >= max_dev,
     }
 }
 
@@ -1625,14 +1599,10 @@ fn validate_finite_positive(val: f64, name: &str) -> Result<()> {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Parameters and results
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone)]
 pub(crate) struct OrderParams {
     pub(crate) symbol: String,
-    pub(crate) side: Side,
+    pub(crate) side: PositionSide,
     pub(crate) size: f64,
     pub(crate) order_type: FuturesOrderType,
     pub(crate) price: Option<f64>,
@@ -1690,75 +1660,24 @@ pub(crate) fn futures_paper_state_path() -> Result<PathBuf> {
         .join("futures_state.json"))
 }
 
-const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
-const LOCK_POLL_INTERVAL: Duration = Duration::from_millis(50);
-
-fn lock_path() -> Result<PathBuf> {
-    Ok(futures_paper_state_path()?.with_extension("json.lock"))
-}
-
-fn lock_token() -> String {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    format!("{}:{timestamp}", std::process::id())
-}
-
-/// Advisory lock guard. Acquiring creates a `.lock` file atomically; dropping
-/// removes it only if the guard still owns the lock file.
+/// Advisory lock over the futures paper state file. A thin wrapper around the
+/// shared [`FileLock`](kraken_recording::FileLock) that preserves the no-argument
+/// `acquire()` call site used throughout the futures-paper commands. Overlapping
+/// futures-paper commands are a conflict: the loser is rejected with
+/// `validation`, not queued.
 pub(crate) struct StateLock {
-    path: PathBuf,
-    token: String,
+    // Held purely for its `Drop`; the inner `FileLock` owns the lock lifecycle.
+    #[allow(dead_code)]
+    inner: kraken_recording::FileLock,
 }
 
 impl StateLock {
     pub(crate) fn acquire() -> Result<Self> {
-        let path = lock_path()?;
-        let token = lock_token();
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let start = Instant::now();
-        loop {
-            match fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&path)
-            {
-                Ok(mut f) => {
-                    if let Err(e) = f.write_all(token.as_bytes()).and_then(|()| f.sync_all()) {
-                        let _ = fs::remove_file(&path);
-                        return Err(KrakenError::Io(e));
-                    }
-                    return Ok(StateLock { path, token });
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    if start.elapsed() > LOCK_TIMEOUT {
-                        return Err(KrakenError::Validation(
-                            format!(
-                                "Futures paper state is locked by another process. Try again shortly. If a previous command crashed, remove '{}'.",
-                                path.display()
-                            ),
-                        ));
-                    }
-                    std::thread::sleep(LOCK_POLL_INTERVAL);
-                }
-                Err(e) => return Err(KrakenError::Io(e)),
-            }
-        }
-    }
-}
-
-impl Drop for StateLock {
-    fn drop(&mut self) {
-        let still_owned = fs::read_to_string(&self.path)
-            .ok()
-            .as_deref()
-            .is_some_and(|contents| contents == self.token);
-        if still_owned {
-            let _ = fs::remove_file(&self.path);
-        }
+        let inner = kraken_recording::FileLock::acquire(
+            &futures_paper_state_path()?,
+            "Futures paper state",
+        )?;
+        Ok(Self { inner })
     }
 }
 
@@ -1789,10 +1708,6 @@ pub(crate) fn save_state(state: &FuturesPaperState) -> Result<()> {
     fs::rename(&tmp, &path)?;
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -1830,14 +1745,14 @@ mod tests {
         let mut s = test_state();
         s.positions.push(FuturesPaperPosition {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             entry_price: 50000.0,
             leverage: 10.0,
             unrealized_funding: 0.0,
             last_funding_time: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         });
         s.reset(None, None, None);
         assert!(s.positions.is_empty());
@@ -1873,7 +1788,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -1889,7 +1804,7 @@ mod tests {
         assert_eq!(result.status, OrderStatus::Filled);
         assert_eq!(result.fills.len(), 1);
         assert_eq!(s.positions.len(), 1);
-        assert_eq!(s.positions[0].side, Side::Long);
+        assert_eq!(s.positions[0].side, PositionSide::Long);
         assert!((s.positions[0].size - 1.0).abs() < 1e-10);
     }
 
@@ -1900,7 +1815,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Short,
+            side: PositionSide::Short,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -1915,7 +1830,7 @@ mod tests {
         let result = s.place_order(params, &snap).unwrap();
         assert_eq!(result.status, OrderStatus::Filled);
         assert_eq!(s.positions.len(), 1);
-        assert_eq!(s.positions[0].side, Side::Short);
+        assert_eq!(s.positions[0].side, PositionSide::Short);
     }
 
     #[test]
@@ -1926,7 +1841,7 @@ mod tests {
         let snap1 = market_snapshot(49900.0, 50000.0);
         let params1 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -1943,7 +1858,7 @@ mod tests {
         let snap2 = market_snapshot(51900.0, 52000.0);
         let params2 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -1971,7 +1886,7 @@ mod tests {
         let snap1 = market_snapshot(49900.0, 50000.0);
         let params1 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Short,
+            side: PositionSide::Short,
             size: 2.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -1984,13 +1899,13 @@ mod tests {
             trailing_stop_deviation_unit: None,
         };
         s.place_order(params1, &snap1).unwrap();
-        assert_eq!(s.positions[0].side, Side::Short);
+        assert_eq!(s.positions[0].side, PositionSide::Short);
         assert!((s.positions[0].size - 2.0).abs() < 1e-10);
 
         let snap2 = market_snapshot(48900.0, 49000.0);
         let params2 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2005,7 +1920,7 @@ mod tests {
         let result = s.place_order(params2, &snap2).unwrap();
 
         assert_eq!(s.positions.len(), 1);
-        assert_eq!(s.positions[0].side, Side::Short);
+        assert_eq!(s.positions[0].side, PositionSide::Short);
         assert!((s.positions[0].size - 1.0).abs() < 1e-10);
         assert!(result.fills[0].realized_pnl.is_some());
         let pnl = result.fills[0].realized_pnl.unwrap();
@@ -2020,7 +1935,7 @@ mod tests {
         let snap1 = market_snapshot(49900.0, 50000.0);
         let p1 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Short,
+            side: PositionSide::Short,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2037,7 +1952,7 @@ mod tests {
         let snap2 = market_snapshot(47900.0, 48000.0);
         let p2 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 3.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2052,7 +1967,7 @@ mod tests {
         let result = s.place_order(p2, &snap2).unwrap();
 
         assert_eq!(s.positions.len(), 1);
-        assert_eq!(s.positions[0].side, Side::Long);
+        assert_eq!(s.positions[0].side, PositionSide::Long);
         assert!((s.positions[0].size - 2.0).abs() < 1e-10);
         assert!(result.fills[0].realized_pnl.is_some());
     }
@@ -2064,7 +1979,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Post,
             price: Some(50100.0),
@@ -2096,7 +2011,7 @@ mod tests {
         };
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Fok,
             price: Some(50000.0),
@@ -2127,7 +2042,7 @@ mod tests {
         };
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Ioc,
             price: Some(50000.0),
@@ -2152,7 +2067,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2166,10 +2081,12 @@ mod tests {
         };
         let result = s.place_order(params, &snap);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Insufficient margin"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Insufficient margin")
+        );
     }
 
     #[test]
@@ -2178,7 +2095,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2202,7 +2119,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2228,7 +2145,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(48000.0),
@@ -2255,7 +2172,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(48000.0),
@@ -2296,7 +2213,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(48000.0),
@@ -2326,7 +2243,7 @@ mod tests {
         for _ in 0..3 {
             let params = OrderParams {
                 symbol: "PF_XBTUSD".into(),
-                side: Side::Long,
+                side: PositionSide::Long,
                 size: 0.1,
                 order_type: FuturesOrderType::Limit,
                 price: Some(48000.0),
@@ -2346,12 +2263,13 @@ mod tests {
         s.cancel_all(None);
         assert!(s.open_orders.is_empty());
         assert_eq!(s.history.len(), history_before + 3);
-        assert!(s
-            .history
-            .iter()
-            .rev()
-            .take(3)
-            .all(|h| h.event_type == "order_cancelled" && h.details.contains("cancel-all")));
+        assert!(
+            s.history
+                .iter()
+                .rev()
+                .take(3)
+                .all(|h| h.event_type == "order_cancelled" && h.details.contains("cancel-all"))
+        );
     }
 
     #[test]
@@ -2363,7 +2281,7 @@ mod tests {
 
         let p1 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(48000.0),
@@ -2379,7 +2297,7 @@ mod tests {
 
         let p2 = OrderParams {
             symbol: "PF_ETHUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(3000.0),
@@ -2407,7 +2325,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(48000.0),
@@ -2435,7 +2353,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Stop,
             price: None,
@@ -2459,14 +2377,14 @@ mod tests {
     fn unrealized_pnl_sign_correct() {
         let long_pos = FuturesPaperPosition {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             entry_price: 50000.0,
             leverage: 10.0,
             unrealized_funding: 0.0,
             last_funding_time: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         assert!(compute_unrealized_pnl(&long_pos, 51000.0) > 0.0);
@@ -2474,14 +2392,14 @@ mod tests {
 
         let short_pos = FuturesPaperPosition {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Short,
+            side: PositionSide::Short,
             size: 1.0,
             entry_price: 50000.0,
             leverage: 10.0,
             unrealized_funding: 0.0,
             last_funding_time: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
 
         assert!(compute_unrealized_pnl(&short_pos, 49000.0) > 0.0);
@@ -2492,14 +2410,14 @@ mod tests {
     fn liquidation_price_computation() {
         let pos = FuturesPaperPosition {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             entry_price: 50000.0,
             leverage: 10.0,
             unrealized_funding: 0.0,
             last_funding_time: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         };
         let liq = compute_liquidation_price(&pos, 0.02);
         let expected = 50000.0 * (1.0 - 0.1 + 0.02);
@@ -2511,14 +2429,14 @@ mod tests {
         let mut s = test_state();
         s.positions.push(FuturesPaperPosition {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             entry_price: 50000.0,
             leverage: 10.0,
             unrealized_funding: 0.0,
             last_funding_time: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         });
 
         let liq_price = compute_liquidation_price(&s.positions[0], 0.02);
@@ -2551,7 +2469,7 @@ mod tests {
         let batch = vec![
             OrderParams {
                 symbol: "PF_XBTUSD".into(),
-                side: Side::Long,
+                side: PositionSide::Long,
                 size: 0.3,
                 order_type: FuturesOrderType::Market,
                 price: None,
@@ -2565,7 +2483,7 @@ mod tests {
             },
             OrderParams {
                 symbol: "PF_XBTUSD".into(),
-                side: Side::Long,
+                side: PositionSide::Long,
                 size: 100.0,
                 order_type: FuturesOrderType::Market,
                 price: None,
@@ -2594,10 +2512,11 @@ mod tests {
     #[test]
     fn state_path_isolated_from_spot() {
         let futures_path = futures_paper_state_path().unwrap();
-        let spot_path = crate::paper::paper_state_path().unwrap();
+        let spot_path =
+            crate::commands::paper::global_events_path(&crate::config::config_dir().unwrap());
         assert_ne!(futures_path, spot_path);
         assert!(futures_path.to_string_lossy().contains("futures_state"));
-        assert!(spot_path.to_string_lossy().contains("state.json"));
+        assert!(spot_path.to_string_lossy().contains("journal.jsonl"));
     }
 
     #[test]
@@ -2608,7 +2527,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2639,21 +2558,21 @@ mod tests {
 
     #[test]
     fn empty_orderbook_returns_zero_depth() {
-        let depth = compute_executable_depth(&[], Side::Long, 50000.0, 1.0);
+        let depth = compute_executable_depth(&[], PositionSide::Long, 50000.0, 1.0);
         assert!((depth - 0.0).abs() < 1e-12);
     }
 
     #[test]
     fn depth_uses_correct_side_for_buy() {
         let ask_levels = vec![(50000.0, 0.5), (50100.0, 0.5)];
-        let depth = compute_executable_depth(&ask_levels, Side::Long, 50100.0, 2.0);
+        let depth = compute_executable_depth(&ask_levels, PositionSide::Long, 50100.0, 2.0);
         assert!((depth - 1.0).abs() < 1e-12);
     }
 
     #[test]
     fn depth_uses_correct_side_for_sell() {
         let bid_levels = vec![(49900.0, 0.5), (49800.0, 0.5)];
-        let depth = compute_executable_depth(&bid_levels, Side::Short, 49800.0, 2.0);
+        let depth = compute_executable_depth(&bid_levels, PositionSide::Short, 49800.0, 2.0);
         assert!((depth - 1.0).abs() < 1e-12);
     }
 
@@ -2664,7 +2583,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2688,7 +2607,7 @@ mod tests {
         let snap1 = market_snapshot(49900.0, 50000.0);
         let p1 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Short,
+            side: PositionSide::Short,
             size: 1.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2705,7 +2624,7 @@ mod tests {
         let snap2 = market_snapshot(47900.0, 48000.0);
         let p2 = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 3.0,
             order_type: FuturesOrderType::Market,
             price: None,
@@ -2720,7 +2639,7 @@ mod tests {
         s.place_order(p2, &snap2).unwrap();
 
         assert_eq!(s.positions.len(), 1);
-        assert_eq!(s.positions[0].side, Side::Long);
+        assert_eq!(s.positions[0].side, PositionSide::Long);
         assert!((s.positions[0].leverage - 5.0).abs() < 1e-10);
     }
 
@@ -2731,7 +2650,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(48000.0),
@@ -2760,7 +2679,7 @@ mod tests {
         let snap = market_snapshot(49900.0, 50000.0);
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 0.5,
             order_type: FuturesOrderType::Limit,
             price: Some(48000.0),
@@ -2787,7 +2706,7 @@ mod tests {
         s.open_orders.push(FuturesPaperOrder {
             id: "STOP-MARK".into(),
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             filled_size: 0.0,
             order_type: FuturesOrderType::Stop,
@@ -2802,8 +2721,8 @@ mod tests {
             trailing_stop_max_deviation: None,
             trailing_stop_deviation_unit: None,
             trailing_anchor: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         });
 
         let mut mark_prices = HashMap::new();
@@ -2842,20 +2761,20 @@ mod tests {
         s.leverage_preferences.insert("PF_XBTUSD".into(), 10.0);
         s.positions.push(FuturesPaperPosition {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Short,
+            side: PositionSide::Short,
             size: 1.0,
             entry_price: 50000.0,
             leverage: 10.0,
             unrealized_funding: 0.0,
             last_funding_time: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         });
 
         s.open_orders.push(FuturesPaperOrder {
             id: "TS-1".into(),
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             filled_size: 0.0,
             order_type: FuturesOrderType::TrailingStop,
@@ -2870,8 +2789,8 @@ mod tests {
             trailing_stop_max_deviation: Some(500.0),
             trailing_stop_deviation_unit: Some("quote_currency".into()),
             trailing_anchor: Some(49000.0),
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         });
 
         let mut mark = HashMap::new();
@@ -2900,7 +2819,7 @@ mod tests {
         s.open_orders.push(FuturesPaperOrder {
             id: "STOP-RO".into(),
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             filled_size: 0.0,
             order_type: FuturesOrderType::Stop,
@@ -2915,8 +2834,8 @@ mod tests {
             trailing_stop_max_deviation: None,
             trailing_stop_deviation_unit: None,
             trailing_anchor: None,
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         });
 
         let mut mark = HashMap::new();
@@ -2939,17 +2858,17 @@ mod tests {
     #[test]
     fn funding_accrual_applies_when_rate_provided() {
         let mut s = test_state();
-        let past = (chrono::Utc::now() - chrono::Duration::hours(9)).to_rfc3339();
+        let past = chrono::Utc::now() - chrono::Duration::hours(9);
         s.positions.push(FuturesPaperPosition {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             entry_price: 50000.0,
             leverage: 10.0,
             unrealized_funding: 0.0,
             last_funding_time: Some(past),
-            created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         });
 
         let mark = HashMap::new();
@@ -2970,7 +2889,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(50500.0),
@@ -3014,7 +2933,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(45000.0),
@@ -3051,7 +2970,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Short,
+            side: PositionSide::Short,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(49800.0),
@@ -3091,7 +3010,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Limit,
             price: Some(55000.0),
@@ -3129,7 +3048,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Post,
             price: Some(50500.0),
@@ -3187,7 +3106,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::Stop,
             price: None,
@@ -3257,21 +3176,6 @@ mod tests {
     }
 
     #[test]
-    fn state_lock_drop_does_not_remove_replaced_lock() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("futures_state.json.lock");
-        fs::write(&path, "new-owner").unwrap();
-
-        let lock = StateLock {
-            path: path.clone(),
-            token: "old-owner".into(),
-        };
-        drop(lock);
-
-        assert_eq!(fs::read_to_string(&path).unwrap(), "new-owner");
-    }
-
-    #[test]
     fn trailing_stop_rejected_without_deviation() {
         let mut s = test_state();
         s.leverage_preferences.insert("PF_XBTUSD".into(), 10.0);
@@ -3279,7 +3183,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::TrailingStop,
             price: None,
@@ -3307,7 +3211,7 @@ mod tests {
 
         let params = OrderParams {
             symbol: "PF_XBTUSD".into(),
-            side: Side::Long,
+            side: PositionSide::Long,
             size: 1.0,
             order_type: FuturesOrderType::TrailingStop,
             price: None,

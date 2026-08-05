@@ -52,8 +52,12 @@ Use [GitHub Issues](https://github.com/krakenfx/kraken-cli/issues) for bug repor
 ## Code Style
 
 - Follow existing patterns in the codebase.
-- Run `cargo clippy -- -D warnings` before submitting.
-- No nightly-only features. The crate must build on stable Rust.
+- Before submitting, run the CI gates locally:
+  - `cargo clippy --all-targets -- -D warnings`
+  - `cargo +nightly fmt` (formatting uses nightly rustfmt for import grouping; see `rustfmt.toml`)
+  - `cargo sort` (keeps `Cargo.toml` tables alphabetized)
+  - `cargo test`
+- No nightly-only language features. The crate itself must build on stable Rust (MSRV in `Cargo.toml`); only `rustfmt` runs on nightly.
 
 ## License
 

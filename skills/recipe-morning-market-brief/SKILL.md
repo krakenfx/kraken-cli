@@ -27,3 +27,5 @@ Generate a concise morning summary covering market conditions and portfolio stat
 6. Check futures positions if applicable: `kraken futures positions -o json 2>/dev/null`
 7. Check earn allocations: `kraken earn allocations --hide-zero-allocations -o json 2>/dev/null`
 8. Present summary: price table, 24h change, portfolio value, open orders count, position P&L
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

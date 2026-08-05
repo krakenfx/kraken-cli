@@ -6,19 +6,19 @@ Machine-readable contracts for building AI agents on top of `kraken-cli`.
 
 `tool-catalog.json` is the canonical command contract.
 
-- Coverage: **151 commands** with parameters, types, defaults, and examples
+- Coverage: **174 commands** with parameters, types, defaults, and examples
 - Every command includes: group, description, auth requirement, `dangerous` flag, and parameter schemas
-- 34 commands are marked `dangerous: true` (orders, withdrawals, transfers, cancel-all, staking)
+- 41 commands are marked `dangerous: true` (orders, withdrawals, transfers, cancel-all, staking, account and margin settings)
 
 `error-catalog.json` is the error routing contract.
 
-- 9 error categories with retry/backoff guidance
+- 10 error categories with retry/backoff guidance
 
 ## Contents
 
 | File | Purpose |
 |------|---------|
-| `tool-catalog.json` | Canonical command catalog (151 commands) |
+| `tool-catalog.json` | Canonical command catalog (174 commands) |
 | `error-catalog.json` | Error categories with retry guidance |
 | `examples/` | Runnable shell examples |
 

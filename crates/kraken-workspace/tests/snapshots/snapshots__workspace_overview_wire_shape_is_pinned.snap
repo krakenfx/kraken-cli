@@ -1,0 +1,18 @@
+---
+source: crates/kraken-workspace/tests/snapshots.rs
+expression: overview
+---
+{
+  "name": "btc-momentum",
+  "mode": "paper",
+  "capital": "10000",
+  "currency": "USD",
+  "fee_rate": "0.0026",
+  "slippage_rate": "0",
+  "allowed_pairs": [
+    "BTC/USD",
+    "ETH/USD"
+  ],
+  "created_at": "2026-01-01T00:00:00Z",
+  "workspace_version": "1.0"
+}

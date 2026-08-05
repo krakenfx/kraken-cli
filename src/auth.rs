@@ -5,12 +5,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
-use hmac::{Hmac, Mac};
+use base64::engine::general_purpose::STANDARD as BASE64;
+use hmac::{Hmac, KeyInit, Mac};
+use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256, Sha512};
 
-use crate::config::SecretValue;
 use crate::errors::{KrakenError, Result};
 
 type HmacSha512 = Hmac<Sha512>;
@@ -49,10 +49,10 @@ pub(crate) fn spot_sign(
     uri_path: &str,
     nonce: u64,
     post_data: &str,
-    api_secret: &SecretValue,
+    api_secret: &SecretString,
 ) -> Result<String> {
     let secret_bytes = BASE64
-        .decode(api_secret.expose())
+        .decode(api_secret.expose_secret())
         .map_err(|e| KrakenError::Auth(format!("Failed to decode API secret: {e}")))?;
 
     // SHA256(nonce + post_data)
@@ -81,10 +81,10 @@ pub(crate) fn futures_sign(
     post_data: &str,
     nonce: &str,
     endpoint_path: &str,
-    api_secret: &SecretValue,
+    api_secret: &SecretString,
 ) -> Result<String> {
     let secret_bytes = BASE64
-        .decode(api_secret.expose())
+        .decode(api_secret.expose_secret())
         .map_err(|e| KrakenError::Auth(format!("Failed to decode Futures API secret: {e}")))?;
 
     // SHA256(postData + Nonce + endpointPath)
@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn spot_sign_deterministic() {
         // Known test vector: inputs chosen to produce a deterministic output.
-        let secret = SecretValue::new(BASE64.encode(b"test_secret_key_bytes_32_chars!!"));
+        let secret = SecretString::from(BASE64.encode(b"test_secret_key_bytes_32_chars!!"));
         let sig = spot_sign(
             "/0/private/Balance",
             1616492376594,
@@ -128,6 +128,12 @@ mod tests {
         )
         .expect("signing should succeed");
         assert!(!sig.is_empty());
+        // Known-answer test: pins the exact HMAC-SHA512(SHA256(..)) output so a
+        // dependency bump (sha2/hmac/digest) can never silently change signatures.
+        assert_eq!(
+            sig,
+            "4X7nFc5U3rLzrjRGXsNIB/JXCS90F60ILkC/Xg9iGTvULGGPsq9GZd9UbcOK+FFNznOehsW5l/LIv4Rm5+caIg=="
+        );
         // Verify determinism by signing twice
         let sig2 = spot_sign(
             "/0/private/Balance",
@@ -141,7 +147,7 @@ mod tests {
 
     #[test]
     fn futures_sign_deterministic() {
-        let secret = SecretValue::new(BASE64.encode(b"futures_secret_key_bytes_32ch!!"));
+        let secret = SecretString::from(BASE64.encode(b"futures_secret_key_bytes_32ch!!"));
         let sig = futures_sign("", "1234567890", "/api/v3/accounts", &secret)
             .expect("signing should succeed");
         assert!(!sig.is_empty());
@@ -152,7 +158,7 @@ mod tests {
 
     #[test]
     fn spot_sign_rejects_invalid_base64_secret() {
-        let secret = SecretValue::new("not-valid-base64!!!".to_string());
+        let secret = SecretString::from("not-valid-base64!!!".to_string());
         let result = spot_sign("/0/private/Balance", 123, "nonce=123", &secret);
         assert!(result.is_err());
     }

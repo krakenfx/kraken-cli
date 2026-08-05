@@ -1,0 +1,51 @@
+---
+source: crates/kraken-lab/tests/snapshots.rs
+expression: folded
+---
+{
+  "curve": {
+    "currency": "USD",
+    "points": [
+      {
+        "at": "2026-01-01T00:00:00Z",
+        "seq": 1,
+        "value": 10000.0,
+        "complete": true
+      },
+      {
+        "at": "2026-01-01T00:00:02Z",
+        "seq": 3,
+        "value": 9987.0,
+        "complete": true
+      },
+      {
+        "at": "2026-01-01T00:00:03Z",
+        "seq": 4,
+        "value": 10087.0,
+        "complete": true
+      }
+    ],
+    "unmarked": []
+  },
+  "fills": [
+    {
+      "id": "PAPER-00002",
+      "order_id": "PAPER-00001",
+      "pair": "BTCUSD",
+      "base": "BTC",
+      "quote": "USD",
+      "side": "buy",
+      "volume": "0.1",
+      "price": "50000",
+      "fee": "13.00000",
+      "cost": "5000.0",
+      "filled_at": "2026-01-01T00:00:02Z",
+      "reference_quote": {
+        "ask": "50000",
+        "bid": "50000"
+      }
+    }
+  ],
+  "epochs_skipped": 0,
+  "caveats": []
+}

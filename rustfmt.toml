@@ -1,0 +1,7 @@
+# group_imports is nightly-only: CI formats with `cargo +nightly fmt --check`,
+# and stable rustfmt silently skips the option (warning only).
+style_edition = "2024"
+unstable_features = true
+group_imports = "StdExternalCrate"
+newline_style = "Unix"
+use_field_init_shorthand = true

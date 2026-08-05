@@ -32,7 +32,8 @@ Time-Weighted Average Price (TWAP) splits a large order into N equal slices exec
 ## Paper TWAP Test
 
 ```bash
-kraken paper init --balance 50000 -o json 2>/dev/null
+kraken workspace create sandbox --capital 50000 --mode paper -o json 2>/dev/null
+export KRAKEN_WORKSPACE=sandbox
 
 # Simulate 5 slices of 0.01 BTC each, 60s apart
 kraken paper buy BTCUSD 0.01 -o json 2>/dev/null
@@ -43,7 +44,7 @@ kraken paper buy BTCUSD 0.01 -o json 2>/dev/null
 # repeat...
 
 kraken paper history -o json 2>/dev/null
-kraken paper status -o json 2>/dev/null
+kraken workspace status -o json 2>/dev/null
 ```
 
 ## Live TWAP Loop
@@ -67,7 +68,7 @@ done
 Use limit orders at the current best bid/ask for potentially better fills:
 
 ```bash
-PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].a[0]')
+PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].ask_price')
 kraken order buy BTCUSD $SLICE_VOL --type limit --price $PRICE -o json 2>/dev/null
 ```
 
@@ -97,3 +98,4 @@ The CLI does not pre-throttle requests. If a slice submission hits a rate limit,
 - Track cumulative fill volume and stop if total exceeds target (handle partial fills).
 - On error, pause the loop rather than skipping the slice; resume after recovery.
 - Log every slice for post-execution analysis.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

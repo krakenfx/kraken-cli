@@ -1,15 +1,14 @@
-/// Interactive REPL shell with command history.
-///
-/// Dispatches commands through the same `AppContext` path used by one-shot CLI
-/// invocations, ensuring output parity.
+/// Interactive shell using the same context and dispatch path as one-shot commands.
 use std::path::PathBuf;
 
-use clap::Parser;
-use rustyline::error::ReadlineError;
+use clap::parser::ValueSource;
+use clap::{CommandFactory, FromArgMatches};
 use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 
+use crate::AppContext;
+use crate::commands::dispatch;
 use crate::errors::{KrakenError, Result};
-use crate::{client, dispatch, AppContext};
 
 /// Run the interactive shell session.
 pub(crate) async fn run(ctx: &AppContext) -> Result<()> {
@@ -22,9 +21,12 @@ pub(crate) async fn run(ctx: &AppContext) -> Result<()> {
     println!("Kraken CLI interactive shell. Type 'help' or 'exit'.");
     println!();
 
+    // Global tracing cannot change mid-session, so explain ignored flags once.
+    let mut logging_flag_notice_shown = false;
+
+    let prompt = scope_prompt(ctx);
     loop {
-        let prompt = "kraken> ";
-        match rl.readline(prompt) {
+        match rl.readline(&prompt) {
             Ok(line) => {
                 let line = line.trim();
                 if line.is_empty() {
@@ -42,58 +44,49 @@ pub(crate) async fn run(ctx: &AppContext) -> Result<()> {
                     _ => {}
                 }
 
-                // Parse the line as if it were CLI args (prepend "kraken")
                 let args: Vec<String> = std::iter::once("kraken".to_string())
                     .chain(shell_words(line))
                     .collect();
 
-                match crate::Cli::try_parse_from(&args) {
-                    Ok(cli) => {
-                        let fmt = cli.output.unwrap_or(ctx.format);
-                        let api_url = match cli.api_url {
-                            Some(ref url) => match client::validate_url_scheme(url) {
-                                Ok(()) => Some(url.clone()),
-                                Err(e) => {
-                                    crate::output::render_error(fmt, &e);
-                                    continue;
-                                }
-                            },
-                            None => ctx.api_url.clone(),
-                        };
-                        let futures_url = match cli.futures_url {
-                            Some(ref url) => match client::validate_url_scheme(url) {
-                                Ok(()) => Some(url.clone()),
-                                Err(e) => {
-                                    crate::output::render_error(fmt, &e);
-                                    continue;
-                                }
-                            },
-                            None => ctx.futures_url.clone(),
-                        };
-                        let shell_ctx = AppContext {
-                            format: fmt,
-                            verbose: cli.verbose || ctx.verbose,
-                            api_url,
-                            futures_url,
-                            ws_public_url: ctx.ws_public_url.clone(),
-                            ws_auth_url: ctx.ws_auth_url.clone(),
-                            ws_l3_url: ctx.ws_l3_url.clone(),
-                            api_key: cli.api_key.or_else(|| ctx.api_key.clone()),
-                            api_secret: cli.api_secret.or_else(|| ctx.api_secret.clone()),
-                            otp: cli.otp.or_else(|| ctx.otp.clone()),
-                            force: cli.yes || ctx.force,
-                            secret_from_flag: false,
-                            mcp_mode: false,
-                        };
-                        if let Some(command) = cli.command {
-                            if let Err(e) = Box::pin(dispatch(&shell_ctx, command)).await {
-                                crate::output::render_error(shell_ctx.format, &e);
-                            }
-                        }
-                    }
+                // Only an explicit per-line flag may override the shell's resolved scope.
+                let matches = match crate::Cli::command().try_get_matches_from(&args) {
+                    Ok(m) => m,
                     Err(e) => {
                         eprintln!("{e}");
+                        continue;
                     }
+                };
+                let workspace_from_flag =
+                    matches.value_source("workspace") == Some(ValueSource::CommandLine);
+                let cli = match crate::Cli::from_arg_matches(&matches) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        continue;
+                    }
+                };
+
+                if !logging_flag_notice_shown && (cli.verbose || cli.log_format.is_some()) {
+                    eprintln!(
+                        "note: logging is configured once when the shell starts; \
+                         per-command --verbose/--log-format are ignored. Restart with \
+                         `kraken shell -v --log-format <fmt>` or set RUST_LOG instead."
+                    );
+                    logging_flag_notice_shown = true;
+                }
+                // Inherit startup values while preserving one-shot validation and precedence.
+                let shell_ctx =
+                    match AppContext::from_cli_with_fallback(&cli, ctx, workspace_from_flag) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            crate::output::render_error(cli.output.unwrap_or(ctx.format), &e);
+                            continue;
+                        }
+                    };
+                if let Some(command) = cli.command
+                    && let Err(e) = Box::pin(dispatch(&shell_ctx, command)).await
+                {
+                    crate::output::render_error(shell_ctx.format, &e);
                 }
             }
             Err(ReadlineError::Interrupted | ReadlineError::Eof) => break,
@@ -129,6 +122,10 @@ fn print_shell_help() {
     println!("  exit / quit - Exit the shell");
     println!();
     println!("Use --help on any command for details.");
+    println!(
+        "Logging (--verbose/--log-format) is set once at startup; \
+         start with `kraken shell -v --log-format <fmt>` or set RUST_LOG to change it."
+    );
 }
 
 /// Split a shell line into words, handling simple quoting.
@@ -172,9 +169,40 @@ fn shell_words(line: &str) -> Vec<String> {
     words
 }
 
+/// The prompt says which account this shell trades: the scoped
+/// workspace and its mode, or the real account. A workspace whose contract
+/// cannot be read still shows its name — the first command will surface the
+/// real error.
+fn scope_prompt(ctx: &AppContext) -> String {
+    match ctx.workspace.as_deref() {
+        None => "kraken [live]> ".to_string(),
+        Some(name) => match crate::commands::workspace_guard::active_manifest(ctx) {
+            Ok(Some(manifest)) => format!("kraken [{name}:{}]> ", manifest.mode),
+            _ => format!("kraken [{name}]> "),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use clap::Parser as _;
+
     use super::*;
+
+    /// The prompt is the shell's always-on mode visibility — pinned.
+    #[test]
+    fn prompt_names_the_scope_and_mode() {
+        let cli = crate::Cli::try_parse_from(["kraken"]).expect("bare invocation parses");
+        let ctx = AppContext::from_cli(&cli).expect("context resolves");
+        assert_eq!(scope_prompt(&ctx), "kraken [live]> ");
+
+        let scoped = ctx.rescope(Some("ghost".to_string()));
+        assert_eq!(
+            scope_prompt(&scoped),
+            "kraken [ghost]> ",
+            "an unreadable contract still names the scope"
+        );
+    }
 
     #[test]
     fn shell_words_basic() {

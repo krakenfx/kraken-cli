@@ -118,3 +118,4 @@ When helping a user choose a strategy:
 - Always show the lock type and any unbonding period before allocation.
 - For bonded strategies, warn the user that funds will be locked for the stated duration.
 - Check `can_allocate` and `can_deallocate` fields before attempting operations.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

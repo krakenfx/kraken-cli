@@ -102,3 +102,4 @@ kraken order sell BTCUSD 0.01 --type market -o json 2>/dev/null
 - Monitor funding rates continuously; a flip turns profit into loss.
 - Monitor margin on the futures leg; price moves require margin even when hedged.
 - Requires human approval for all entries and exits.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

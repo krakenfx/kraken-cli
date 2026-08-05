@@ -33,15 +33,15 @@ Public market data commands (ticker, orderbook, ohlc, trades, spreads, status) r
 
 ## Key Conventions
 
-- stdout is always valid JSON on success, or a JSON error envelope on failure.
-- The `error` field in error envelopes is a stable category code: `api`, `auth`, `network`, `rate_limit`, `validation`, `config`, `websocket`, `io`, `parse`.
-- WebSocket commands emit NDJSON (one JSON object per line).
+- stdout is valid JSON on success (exit 0), or a JSON error envelope on runtime failure (exit 1).
+- The `error` field in error envelopes is a stable category code: `api`, `auth`, `network`, `rate_limit`, `validation`, `config`, `websocket`, `io`, `timeout`, `parse`.
+- WebSocket commands emit JSONL (one JSON object per line).
 - Paper trading commands (`kraken paper ...` for spot, `kraken futures paper ...` for futures) use live prices but no real money. No auth needed.
-- Exit code 0 = success, non-zero = failure.
+- Exit code 0 = success, 1 = runtime failure (JSON envelope on stdout), 2 = argument/usage error from the parser. With `-o json`, exit 2 puts a `{"error":"validation"}` envelope on stdout (stderr stays empty); without it, clap's usage text goes to stderr. Validate argument values against the `values` arrays in `agents/tool-catalog.json` before invoking.
 
 ## Safety Rules
 
-1. Never execute any command marked `dangerous` without explicit user confirmation. The `dangerous` field in `agents/tool-catalog.json` is the authoritative list (34 commands).
+1. Never execute any command marked `dangerous` without explicit user confirmation. The `dangerous` field in `agents/tool-catalog.json` is the authoritative list (41 commands). Four of them (`order buy/sell/cancel/cancel-all`) also carry `paper_safe: true`: inside a paper workspace they execute simulated fills and need no confirmation.
 2. Use `--validate` flag to dry-run order commands before submitting.
 3. Use `kraken paper` (spot) or `kraken futures paper` (futures) commands for testing strategies safely.
 4. Gate all order placement, cancellation, withdrawal, transfer, and staking operations behind user approval.
@@ -57,6 +57,16 @@ kraken orderbook BTCUSD --count 10 -o json
 kraken ohlc BTCUSD --interval 60 -o json
 kraken trades BTCUSD --count 20 -o json
 ```
+
+### Record market data (no auth)
+
+```bash
+kraken record --symbols BTC/USD --channels trades,book --tape my-tape -o json  # runs until stopped; SIGTERM/Ctrl-C finalizes
+kraken tape list -o json                                                       # library: refs, state, in_use per backend
+kraken session start --from tape:my-tape --speed 10 -o json                    # replay a finalized tape into a paper session
+```
+
+Run `record` as a background process; lifecycle and `--monitor` health lines are stderr JSONL. One writer per tape: a concurrent recorder gets a `validation` envelope.
 
 ### Check account (auth required)
 
@@ -97,11 +107,14 @@ kraken futures order buy PF_XBTUSD 1 --type limit --price 50000 -o json
 ### Spot paper trading (no auth, safe)
 
 ```bash
-kraken paper init --balance 10000 -o json
+kraken workspace create sandbox --capital 10000 --mode paper --slippage-rate 0.001 -o json
+export KRAKEN_WORKSPACE=sandbox
 kraken paper buy BTCUSD 0.01 -o json
-kraken paper status -o json
-kraken paper reset -o json
+kraken workspace status -o json
+kraken workspace reset -o json --yes
 ```
+
+Fee rate (default 0.26%) and slippage rate (default 0.0) are set at `workspace create` and fixed for the account's life; `workspace reset` returns to the created capital. The `paper init/reset/status/balance` verbs still exist as aliases of the workspace commands (one implementation).
 
 ### Futures paper trading (no auth, safe)
 
@@ -132,5 +145,5 @@ Load `agents/tool-catalog.json` for the full machine-readable command contract. 
 
 - `AGENTS.md`: Complete agent integration guide
 - `CONTEXT.md`: Runtime-optimized context for tool-using agents
-- `agents/tool-catalog.json`: All 151 commands with parameters
+- `agents/tool-catalog.json`: All 174 commands with parameters
 - `agents/error-catalog.json`: Error categories with retry guidance

@@ -18,7 +18,7 @@ echo "$INIT" | jq '.'
 # Step 2: Get current price
 echo "Step 2: Get current $PAIR price"
 TICKER=$(kraken ticker "$PAIR" -o json 2>/dev/null)
-PRICE=$(echo "$TICKER" | jq -r ".\"$PAIR\".c[0] // .\"$PAIR\".last // \"unknown\"")
+PRICE=$(echo "$TICKER" | jq -r '.[].last_price // "unknown"')
 echo "  Current price: \$$PRICE"
 
 # Step 3: Market buy

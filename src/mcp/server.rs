@@ -1,29 +1,34 @@
-/// MCP server implementation using rmcp over stdio transport.
-///
-/// Implements ServerHandler to handle initialize, tools/list, and tools/call
-/// requests. Tool execution reuses existing CLI command handlers through the
-/// shared dispatch path.
-use std::borrow::Cow;
+//! MCP server (rmcp, stdio). Tool calls are rewritten to argv and re-enter the
+//! CLI's own clap parse + dispatch path, so tool and CLI behaviour cannot drift.
+
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, Implementation, InitializeRequestParams,
+    CallToolRequestParams, CallToolResult, ErrorData, Implementation, InitializeRequestParams,
     InitializeResult, ListToolsResult, PaginatedRequestParams, ServerCapabilities, Tool,
 };
 use rmcp::service::{RequestContext, RoleServer};
+use serde::Serialize;
 
-use super::registry::ToolRegistry;
-use crate::errors::KrakenError;
+use super::registry::{GateMode, ToolRegistry};
 use crate::AppContext;
+use crate::errors::KrakenError;
 
 pub(crate) struct KrakenMcpServer {
     registry: ToolRegistry,
     ctx: Arc<AppContext>,
     allow_dangerous: bool,
     instructions: String,
+    /// Serializes command execution across concurrent tool calls. The account
+    /// journal and its tape are single-writer (an exclusive file lock), so two
+    /// overlapping paper/session tool calls would otherwise race that lock and
+    /// one would fail "in use by another process". A long-lived server handles
+    /// requests concurrently, so it queues them here instead — the CLI's own
+    /// process-per-command isolation has no equivalent to reproduce.
+    exec_lock: tokio::sync::Mutex<()>,
 }
 
 impl KrakenMcpServer {
@@ -32,66 +37,66 @@ impl KrakenMcpServer {
         ctx: AppContext,
         allow_dangerous: bool,
         active_services: &[String],
+        workspace: Option<&kraken_workspace::WorkspaceManifest>,
     ) -> Self {
-        let instructions = build_instructions(active_services, allow_dangerous);
+        let instructions = build_instructions(active_services, allow_dangerous, workspace);
         Self {
             registry,
             ctx: Arc::new(ctx),
             allow_dangerous,
             instructions,
+            exec_lock: tokio::sync::Mutex::new(()),
         }
     }
 
     async fn dispatch_tool(
         &self,
         request: CallToolRequestParams,
-    ) -> Result<CallToolResult, rmcp::model::ErrorData> {
+    ) -> Result<CallToolResult, ErrorData> {
         let tool_name = &request.name;
         let entry = self
             .registry
             .get_by_name(tool_name)
-            .ok_or_else(|| rmcp::model::ErrorData {
-                code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                message: Cow::Owned(format!("Unknown tool: {tool_name}")),
-                data: None,
-            })?;
+            .ok_or_else(|| ErrorData::invalid_params(format!("Unknown tool: {tool_name}"), None))?;
 
-        enforce_dangerous_gate(entry.dangerous, self.allow_dangerous, &request.arguments)?;
+        enforce_dangerous_gate(entry.armed, self.allow_dangerous, &request.arguments)?;
 
-        let argv = build_argv(&entry.canonical_key, &request.arguments, &entry.clap_args);
+        let argv = build_argv(&entry.canonical_key, &request.arguments, &entry.clap_args)
+            .map_err(|why| ErrorData::invalid_params(why, None))?;
 
         let parsed = match crate::Cli::try_parse_from(&argv) {
             Ok(cli) => cli,
             Err(e) => {
-                return Err(rmcp::model::ErrorData {
-                    code: rmcp::model::ErrorCode::INVALID_PARAMS,
-                    message: Cow::Owned(format!("Argument validation failed: {e}")),
-                    data: None,
-                });
+                return Err(ErrorData::invalid_params(
+                    format!("Argument validation failed: {e}"),
+                    None,
+                ));
             }
         };
 
-        let command = parsed.command.ok_or(rmcp::model::ErrorData {
-            code: rmcp::model::ErrorCode::INVALID_PARAMS,
-            message: Cow::Borrowed("No command parsed from arguments"),
-            data: None,
-        })?;
+        let command = parsed
+            .command
+            .ok_or_else(|| ErrorData::invalid_params("No command parsed from arguments", None))?;
 
-        match crate::execute_command(&self.ctx, command).await {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&output.data).unwrap_or_default(),
-            )])),
-            Err(e) => {
-                let envelope = e.to_json_envelope();
-                Ok(CallToolResult::error(vec![Content::text(
-                    serde_json::to_string_pretty(&envelope).unwrap_or_default(),
-                )]))
-            }
+        // Serialize the execution itself: concurrent tool calls otherwise race
+        // the account's single-writer lock (see `exec_lock`). The async guard is
+        // held across the command's `.await` deliberately — that is the window
+        // being serialized — and released the moment it returns.
+        let _exec = self.exec_lock.lock().await;
+        // Return the payload as MCP structured content: clients that support it get
+        // typed JSON, and rmcp includes a text fallback for those that don't.
+        match crate::commands::execute_command(&self.ctx, command).await {
+            Ok(output) => Ok(CallToolResult::structured(output.data)),
+            Err(e) => Ok(CallToolResult::structured_error(e.to_json_envelope())),
         }
     }
 }
 
-fn build_instructions(active_services: &[String], allow_dangerous: bool) -> String {
+fn build_instructions(
+    active_services: &[String],
+    allow_dangerous: bool,
+    workspace: Option<&kraken_workspace::WorkspaceManifest>,
+) -> String {
     let svc_list = active_services.join(", ");
     let mode = if allow_dangerous {
         "autonomous"
@@ -100,6 +105,27 @@ fn build_instructions(active_services: &[String], allow_dangerous: bool) -> Stri
     };
 
     let mut text = format!("Kraken exchange CLI tools. Active services: {svc_list}. Mode: {mode}.");
+
+    // The resolved execution context, so an agent never has to guess which
+    // account its order tools address.
+    match workspace {
+        Some(m) if m.mode == kraken_workspace::WorkspaceMode::Paper => {
+            text.push_str(&format!(
+                " Workspace: {} (mode: paper) — a simulated account; order tools execute \
+                 paper fills and run without acknowledgment.",
+                m.name
+            ));
+        }
+        Some(m) => {
+            text.push_str(&format!(
+                " Workspace: {} (mode: {}) — treated as the real account.",
+                m.name, m.mode
+            ));
+        }
+        None => {
+            text.push_str(" No workspace: tools address the real Kraken account.");
+        }
+    }
 
     let all_services = [
         "market",
@@ -110,7 +136,9 @@ fn build_instructions(active_services: &[String], allow_dangerous: bool) -> Stri
         "subaccount",
         "futures",
         "paper",
+        "workspace",
         "auth",
+        "feedback",
     ];
     let missing: Vec<&str> = all_services
         .iter()
@@ -142,18 +170,96 @@ fn build_instructions(active_services: &[String], allow_dangerous: bool) -> Stri
 
 // --- MCP audit logging ---
 //
-// Emits structured JSON events to stderr for every tool invocation.
-// MCP uses stdio transport, so there is no TCP source address; the
-// audit trail identifies callers by agent client, instance ID, and PID.
-// To avoid sensitive data leakage, only argument metadata is logged.
+// Emits one JSON object per line (JSONL) to stderr for every tool invocation,
+// namespaced under an `mcp_audit` key so consumers can select audit records
+// (`jq 'select(.mcp_audit)'`) while the stream stays valid JSONL. MCP uses
+// stdio transport, so there is no TCP source address; the trail identifies
+// callers by agent client, instance ID, and PID. Only argument *metadata* is
+// recorded, never values, so no credentials or account data can leak.
 
 const MCP_TRANSPORT: &str = "stdio";
 
-fn audit_log(event: &serde_json::Value) {
-    eprintln!(
-        "[mcp audit] {}",
-        serde_json::to_string(event).unwrap_or_default()
-    );
+/// One line of the MCP audit stream: a single [`AuditRecord`] namespaced under
+/// an `mcp_audit` key.
+#[derive(Serialize)]
+struct AuditLine<'a> {
+    mcp_audit: AuditRecord<'a>,
+}
+
+/// The envelope every audit record shares — a timestamp and the transport —
+/// with the [`AuditEvent`] flattened so its fields sit alongside them.
+#[derive(Serialize)]
+struct AuditRecord<'a> {
+    ts: String,
+    transport: &'static str,
+    #[serde(flatten)]
+    event: AuditEvent<'a>,
+}
+
+/// The MCP audit events. `#[serde(tag = "event")]` writes the variant name into
+/// an `event` field (`session_start`, `tool_call`, …).
+#[derive(Serialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+enum AuditEvent<'a> {
+    /// An MCP session was opened (client `initialize`).
+    SessionStart {
+        server_version: &'static str,
+        agent: &'static str,
+        instance_id: &'static str,
+        pid: u32,
+    },
+    /// The server process started and is about to serve on stdio.
+    ServerStart {
+        server_version: &'static str,
+        tool_count: usize,
+        mode: &'static str,
+        pid: u32,
+    },
+    /// A tool invocation was received.
+    ToolCall {
+        tool: &'a str,
+        arg_keys: Vec<String>,
+        arg_count: usize,
+        agent: &'static str,
+        instance_id: &'static str,
+        pid: u32,
+    },
+    /// A tool invocation completed (executed or rejected).
+    ToolResult {
+        tool: &'a str,
+        status: &'static str,
+        error_code: Option<String>,
+        duration_ms: u64,
+    },
+}
+
+/// Render a wrapped audit line as a single JSONL string, or `None` if it cannot
+/// be serialized. Split out from [`audit_log`] so the JSONL contract can be
+/// asserted without capturing stderr.
+fn audit_line(line: &AuditLine<'_>) -> Option<String> {
+    match serde_json::to_string(line) {
+        Ok(rendered) => Some(rendered),
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to serialize MCP audit line");
+            None
+        }
+    }
+}
+
+/// Emit one audit event to stderr as an JSONL line, stamped with the current
+/// time and transport. Always-on: written directly rather than through
+/// `tracing`, whose default filter would drop it below the warning level.
+fn audit_log(event: AuditEvent<'_>) {
+    let line = AuditLine {
+        mcp_audit: AuditRecord {
+            ts: now_iso(),
+            transport: MCP_TRANSPORT,
+            event,
+        },
+    };
+    if let Some(rendered) = audit_line(&line) {
+        eprintln!("{rendered}");
+    }
 }
 
 fn now_iso() -> String {
@@ -169,7 +275,7 @@ fn argument_keys(args: &Option<serde_json::Map<String, serde_json::Value>>) -> V
     keys
 }
 
-fn audit_error_code(error: &rmcp::model::ErrorData) -> String {
+fn audit_error_code(error: &ErrorData) -> String {
     format!("{:?}", error.code)
 }
 
@@ -178,16 +284,13 @@ impl ServerHandler for KrakenMcpServer {
         &self,
         _request: InitializeRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<InitializeResult, rmcp::model::ErrorData> {
-        audit_log(&serde_json::json!({
-            "ts": now_iso(),
-            "event": "session_start",
-            "server_version": env!("CARGO_PKG_VERSION"),
-            "agent": crate::telemetry::agent_client(),
-            "instance_id": crate::telemetry::instance_id(),
-            "pid": std::process::id(),
-            "transport": MCP_TRANSPORT,
-        }));
+    ) -> Result<InitializeResult, ErrorData> {
+        audit_log(AuditEvent::SessionStart {
+            server_version: env!("CARGO_PKG_VERSION"),
+            agent: crate::telemetry::agent_client(),
+            instance_id: crate::telemetry::instance_id(),
+            pid: std::process::id(),
+        });
         Ok(
             InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
                 .with_server_info(
@@ -204,7 +307,7 @@ impl ServerHandler for KrakenMcpServer {
         &self,
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, rmcp::model::ErrorData> {
+    ) -> Result<ListToolsResult, ErrorData> {
         Ok(ListToolsResult {
             tools: self.registry.tool_definitions(),
             ..Default::default()
@@ -219,23 +322,20 @@ impl ServerHandler for KrakenMcpServer {
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, rmcp::model::ErrorData> {
+    ) -> Result<CallToolResult, ErrorData> {
         let tool_name = request.name.to_string();
         let started = Instant::now();
         let arg_keys = argument_keys(&request.arguments);
         let arg_count = arg_keys.len();
 
-        audit_log(&serde_json::json!({
-            "ts": now_iso(),
-            "event": "tool_call",
-            "tool": &tool_name,
-            "arg_keys": arg_keys,
-            "arg_count": arg_count,
-            "agent": crate::telemetry::agent_client(),
-            "instance_id": crate::telemetry::instance_id(),
-            "pid": std::process::id(),
-            "transport": MCP_TRANSPORT,
-        }));
+        audit_log(AuditEvent::ToolCall {
+            tool: &tool_name,
+            arg_keys,
+            arg_count,
+            agent: crate::telemetry::agent_client(),
+            instance_id: crate::telemetry::instance_id(),
+            pid: std::process::id(),
+        });
 
         let result = self.dispatch_tool(request).await;
 
@@ -244,29 +344,25 @@ impl ServerHandler for KrakenMcpServer {
             Err(e) => ("rejected", Some(audit_error_code(e))),
         };
 
-        audit_log(&serde_json::json!({
-            "ts": now_iso(),
-            "event": "tool_result",
-            "tool": &tool_name,
-            "status": status,
-            "error_code": error_code,
-            "duration_ms": started.elapsed().as_millis() as u64,
-            "transport": MCP_TRANSPORT,
-        }));
+        audit_log(AuditEvent::ToolResult {
+            tool: &tool_name,
+            status,
+            error_code,
+            duration_ms: started.elapsed().as_millis() as u64,
+        });
 
         result
     }
 }
 
-const DANGEROUS_GATE_ERROR: &str =
-    "This operation modifies account state. Set \"acknowledged\": true to proceed, \
+const DANGEROUS_GATE_ERROR: &str = "This operation modifies account state. Set \"acknowledged\": true to proceed, \
      or start the server with --allow-dangerous.";
 
 fn enforce_dangerous_gate(
     dangerous: bool,
     allow_dangerous: bool,
     arguments: &Option<serde_json::Map<String, serde_json::Value>>,
-) -> Result<(), rmcp::model::ErrorData> {
+) -> Result<(), ErrorData> {
     if !dangerous || allow_dangerous {
         return Ok(());
     }
@@ -280,11 +376,7 @@ fn enforce_dangerous_gate(
     if confirmed {
         Ok(())
     } else {
-        Err(rmcp::model::ErrorData {
-            code: rmcp::model::ErrorCode::INVALID_PARAMS,
-            message: Cow::Borrowed(DANGEROUS_GATE_ERROR),
-            data: None,
-        })
+        Err(ErrorData::invalid_params(DANGEROUS_GATE_ERROR, None))
     }
 }
 
@@ -292,7 +384,7 @@ fn build_argv(
     canonical_key: &str,
     arguments: &Option<serde_json::Map<String, serde_json::Value>>,
     arg_meta: &[super::registry::ArgMeta],
-) -> Vec<String> {
+) -> Result<Vec<String>, String> {
     let mut argv = vec![
         "kraken".to_string(),
         "-o".to_string(),
@@ -304,7 +396,7 @@ fn build_argv(
     argv.extend(command_parts.iter().map(|s| s.to_string()));
 
     let Some(args) = arguments else {
-        return argv;
+        return Ok(argv);
     };
 
     let mut positionals: Vec<(usize, Vec<String>)> = Vec::new();
@@ -315,13 +407,20 @@ fn build_argv(
             continue;
         }
 
-        let meta = arg_meta.iter().find(|m| m.id == *key);
+        // Match by id first, then by clap alias — an MCP call built against
+        // an older schema (e.g. `balance` for `--capital`) keeps working
+        // exactly like the CLI flag it maps to.
+        let meta = arg_meta
+            .iter()
+            .find(|m| m.id == *key)
+            .or_else(|| arg_meta.iter().find(|m| m.aliases.iter().any(|a| a == key)));
 
         match meta {
-            Some(m) if m.positional_index.is_some() => {
-                let idx = m.positional_index.unwrap();
-                let vals = json_to_strings(value);
-                positionals.push((idx, vals));
+            Some(&super::registry::ArgMeta {
+                positional_index: Some(idx),
+                ..
+            }) => {
+                positionals.push((idx, json_to_strings(value)));
             }
             Some(m) if m.is_bool_flag => {
                 let truthy = match value {
@@ -339,20 +438,33 @@ fn build_argv(
                 emit_flag_values(&mut flags, flag, value);
             }
             None => {
-                // Fail-closed: drop keys not in the tool's arg_meta.
-                // Prevents injection of global CLI flags (--api-key, --api-secret, etc.)
-                // that are excluded from MCP schemas but could be sent by malicious clients.
-                continue;
+                // Fail-closed AND loud: a key outside the tool's arg_meta is
+                // refused, never silently dropped — a renamed parameter must
+                // not default its way into a wrong-capital account, and a
+                // global-flag injection attempt (--api-key etc., excluded
+                // from MCP schemas) gets a refusal instead of a no-op.
+                let known: Vec<&str> = arg_meta.iter().map(|m| m.id.as_str()).collect();
+                return Err(format!(
+                    "unknown argument '{key}'; this tool accepts: {}",
+                    known.join(", ")
+                ));
             }
         }
     }
 
-    positionals.sort_by_key(|(idx, _)| *idx);
-    for (_, vals) in positionals {
-        argv.extend(vals);
-    }
+    // Flags first, then positionals behind a `--` end-of-options marker.
+    // Combined with the `--flag=value` form (see `emit_flag_values`), this keeps
+    // any value beginning with `-` (e.g. a negative number) from being misparsed
+    // as a flag when the argv is re-parsed by clap (`try_parse_from`).
     argv.extend(flags);
-    argv
+    positionals.sort_by_key(|(idx, _)| *idx);
+    if !positionals.is_empty() {
+        argv.push("--".to_string());
+        for (_, vals) in positionals {
+            argv.extend(vals);
+        }
+    }
+    Ok(argv)
 }
 
 fn json_to_strings(value: &serde_json::Value) -> Vec<String> {
@@ -369,38 +481,34 @@ fn json_to_strings(value: &serde_json::Value) -> Vec<String> {
     }
 }
 
+/// Emit a value-taking flag as a single `--flag=value` token.
+///
+/// The `=` form (rather than two `--flag` `value` tokens) makes a value that
+/// begins with `-` unambiguous when the argv is re-parsed by clap.
 fn emit_flag_values(flags: &mut Vec<String>, flag: &str, value: &serde_json::Value) {
     match value {
         serde_json::Value::Array(arr) => {
             for item in arr {
-                flags.push(format!("--{flag}"));
-                flags.push(match item {
+                let v = match item {
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
-                });
+                };
+                flags.push(format!("--{flag}={v}"));
             }
         }
-        serde_json::Value::String(s) => {
-            flags.push(format!("--{flag}"));
-            flags.push(s.clone());
-        }
-        serde_json::Value::Number(n) => {
-            flags.push(format!("--{flag}"));
-            flags.push(n.to_string());
-        }
-        serde_json::Value::Bool(b) => {
-            flags.push(format!("--{flag}"));
-            flags.push(b.to_string());
-        }
+        serde_json::Value::String(s) => flags.push(format!("--{flag}={s}")),
+        serde_json::Value::Number(n) => flags.push(format!("--{flag}={n}")),
+        serde_json::Value::Bool(b) => flags.push(format!("--{flag}={b}")),
         serde_json::Value::Null => {}
-        other => {
-            flags.push(format!("--{flag}"));
-            flags.push(other.to_string());
-        }
+        other => flags.push(format!("--{flag}={other}")),
     }
 }
 
-pub(crate) async fn run_server(services: &str, allow_dangerous: bool) -> crate::errors::Result<()> {
+pub(crate) async fn run_server(
+    ctx: &AppContext,
+    services: &str,
+    allow_dangerous: bool,
+) -> crate::errors::Result<()> {
     let parsed_services = super::parse_services(services)?;
     let active_services = super::apply_exclusions(&parsed_services);
 
@@ -412,48 +520,63 @@ pub(crate) async fn run_server(services: &str, allow_dangerous: bool) -> crate::
         ));
     }
 
-    let registry = ToolRegistry::build_with_options(&active_services, allow_dangerous)?;
-
-    let resolve_env = |env_name: &str| -> crate::errors::Result<Option<String>> {
-        let env_val = env::var(env_name).ok();
-        crate::client::resolve_url_override(None, env_val.as_deref())
+    // Resolve once so a long-lived server cannot change its safety gate
+    // between tool discovery and execution.
+    let workspace = crate::commands::workspace_guard::active_manifest(ctx)?;
+    let gate_mode = match &workspace {
+        Some(m) if m.mode == kraken_workspace::WorkspaceMode::Paper => GateMode::Paper,
+        // A named live workspace gates like the master account: fail closed.
+        _ => GateMode::Master,
     };
+    let registry = ToolRegistry::build_with_options(&active_services, allow_dangerous, gate_mode)?;
 
-    let api_url = resolve_env("KRAKEN_SPOT_URL")?;
-    let futures_url = resolve_env("KRAKEN_FUTURES_URL")?;
-    let ws_public_url = resolve_env("KRAKEN_WS_PUBLIC_URL")?;
-    let ws_auth_url = resolve_env("KRAKEN_WS_AUTH_URL")?;
-    let ws_l3_url = resolve_env("KRAKEN_WS_L3_URL")?;
-
-    let ctx = AppContext {
+    // Reuse the credentials and URLs already resolved by the CLI entry point
+    // (clap flags + env vars + config); only the MCP-specific runtime settings
+    // are overridden here.
+    let mcp_ctx = AppContext {
         format: crate::output::OutputFormat::Json,
-        verbose: false,
-        api_url,
-        futures_url,
-        ws_public_url,
-        ws_auth_url,
-        ws_l3_url,
-        api_key: None,
+        api_url: ctx.api_url.clone(),
+        futures_url: ctx.futures_url.clone(),
+        ws_public_url: ctx.ws_public_url.clone(),
+        ws_auth_url: ctx.ws_auth_url.clone(),
+        ws_l3_url: ctx.ws_l3_url.clone(),
+        ws_futures_url: ctx.ws_futures_url.clone(),
+        ws_reconnect_base_ms: ctx.ws_reconnect_base_ms,
+        spot_credentials: ctx.spot_credentials.clone(),
+        futures_credentials: ctx.futures_credentials.clone(),
         api_secret: None,
         otp: None,
+        workspace: ctx.workspace.clone(),
         force: true,
-        secret_from_flag: false,
+        accept_invalid_certs: ctx.accept_invalid_certs,
+        allow_any_url_host: ctx.allow_any_url_host,
         mcp_mode: true,
+        // The MCP server doesn't drive the streaming `stream::run` path.
+        monitor: None,
+        // Built once, reused across every tool call for this long-lived server.
+        spot_client: std::sync::OnceLock::new(),
+        futures_client: std::sync::OnceLock::new(),
     };
 
-    let server = KrakenMcpServer::new(registry, ctx, allow_dangerous, &active_services);
+    let server = KrakenMcpServer::new(
+        registry,
+        mcp_ctx,
+        allow_dangerous,
+        &active_services,
+        workspace.as_ref(),
+    );
 
     let mode_label = if allow_dangerous {
         "autonomous"
     } else {
         "guarded"
     };
-    eprintln!(
-        "kraken-cli MCP server v{} starting on stdio ({} tools, mode: {})",
-        env!("CARGO_PKG_VERSION"),
-        server.registry.tools().len(),
-        mode_label,
-    );
+    audit_log(AuditEvent::ServerStart {
+        server_version: env!("CARGO_PKG_VERSION"),
+        tool_count: server.registry.tools().len(),
+        mode: mode_label,
+        pid: std::process::id(),
+    });
 
     let transport = rmcp::transport::io::stdio();
 
@@ -482,6 +605,7 @@ mod tests {
         ArgMeta {
             id: id.into(),
             long: None,
+            aliases: Vec::new(),
             is_bool_flag: false,
             positional_index: Some(index),
         }
@@ -491,6 +615,7 @@ mod tests {
         ArgMeta {
             id: id.into(),
             long: Some(long.into()),
+            aliases: Vec::new(),
             is_bool_flag: false,
             positional_index: None,
         }
@@ -500,6 +625,7 @@ mod tests {
         ArgMeta {
             id: id.into(),
             long: Some(long.into()),
+            aliases: Vec::new(),
             is_bool_flag: true,
             positional_index: None,
         }
@@ -513,8 +639,6 @@ mod tests {
         args.insert(key.into(), value);
         Some(args)
     }
-
-    // --- dangerous gate tests ---
 
     #[test]
     fn dangerous_gate_allows_non_dangerous() {
@@ -530,12 +654,14 @@ mod tests {
 
     #[test]
     fn dangerous_gate_accepts_guarded_with_ack() {
-        assert!(enforce_dangerous_gate(
-            true,
-            false,
-            &args_with("acknowledged", serde_json::json!(true))
-        )
-        .is_ok());
+        assert!(
+            enforce_dangerous_gate(
+                true,
+                false,
+                &args_with("acknowledged", serde_json::json!(true))
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -554,12 +680,10 @@ mod tests {
         assert!(enforce_dangerous_gate(true, true, &None).is_ok());
     }
 
-    // --- instructions tests ---
-
     #[test]
     fn instructions_default_mode_lists_missing_services() {
         let active = vec!["market".into(), "account".into(), "paper".into()];
-        let text = build_instructions(&active, false);
+        let text = build_instructions(&active, false, None);
         assert!(text.contains("Active services: market, account, paper"));
         assert!(text.contains("Mode: guarded"));
         assert!(text.contains("Services not loaded: trade"));
@@ -579,22 +703,22 @@ mod tests {
             "subaccount",
             "futures",
             "paper",
+            "workspace",
             "auth",
+            "feedback",
         ]
         .iter()
         .map(|s| s.to_string())
         .collect();
-        let text = build_instructions(&active, true);
+        let text = build_instructions(&active, true, None);
         assert!(text.contains("Mode: autonomous"));
         assert!(!text.contains("Services not loaded"));
         assert!(!text.contains("acknowledged"));
     }
 
-    // --- build_argv tests ---
-
     #[test]
     fn build_argv_simple_command() {
-        let argv = build_argv("ticker", &None, &[]);
+        let argv = build_argv("ticker", &None, &[]).unwrap();
         assert_eq!(argv, vec!["kraken", "-o", "json", "--yes", "ticker"]);
     }
 
@@ -603,9 +727,8 @@ mod tests {
         let meta = vec![flag("count", "count")];
         let mut args = serde_json::Map::new();
         args.insert("count".into(), serde_json::json!("10"));
-        let argv = build_argv("orderbook", &Some(args), &meta);
-        assert!(argv.contains(&"--count".to_string()));
-        assert!(argv.contains(&"10".to_string()));
+        let argv = build_argv("orderbook", &Some(args), &meta).unwrap();
+        assert!(argv.contains(&"--count=10".to_string()));
     }
 
     #[test]
@@ -613,7 +736,7 @@ mod tests {
         let meta = vec![bool_flag("trades", "trades")];
         let mut args = serde_json::Map::new();
         args.insert("trades".into(), serde_json::json!(true));
-        let argv = build_argv("open-orders", &Some(args), &meta);
+        let argv = build_argv("open-orders", &Some(args), &meta).unwrap();
         assert!(argv.contains(&"--trades".to_string()));
     }
 
@@ -622,7 +745,7 @@ mod tests {
         let meta = vec![bool_flag("trades", "trades")];
         let mut args = serde_json::Map::new();
         args.insert("trades".into(), serde_json::json!(false));
-        let argv = build_argv("open-orders", &Some(args), &meta);
+        let argv = build_argv("open-orders", &Some(args), &meta).unwrap();
         assert!(!argv.contains(&"--trades".to_string()));
     }
 
@@ -631,16 +754,16 @@ mod tests {
         let meta = vec![pos("pairs", 0)];
         let mut args = serde_json::Map::new();
         args.insert("pairs".into(), serde_json::json!(["BTCUSD", "ETHUSD"]));
-        let argv = build_argv("ticker", &Some(args), &meta);
-        let cmd_idx = argv.iter().position(|a| a == "ticker").unwrap();
-        assert_eq!(argv[cmd_idx + 1], "BTCUSD");
-        assert_eq!(argv[cmd_idx + 2], "ETHUSD");
+        let argv = build_argv("ticker", &Some(args), &meta).unwrap();
+        let sep = argv.iter().position(|a| a == "--").unwrap();
+        assert_eq!(argv[sep + 1], "BTCUSD");
+        assert_eq!(argv[sep + 2], "ETHUSD");
         assert!(!argv.contains(&"--pairs".to_string()));
     }
 
     #[test]
     fn build_argv_nested_command() {
-        let argv = build_argv("order buy", &None, &[]);
+        let argv = build_argv("order buy", &None, &[]).unwrap();
         assert_eq!(argv, vec!["kraken", "-o", "json", "--yes", "order", "buy"]);
     }
 
@@ -649,17 +772,17 @@ mod tests {
         let meta = vec![flag("since", "since")];
         let mut args = serde_json::Map::new();
         args.insert("since".into(), serde_json::Value::Null);
-        let argv = build_argv("trades", &Some(args), &meta);
+        let argv = build_argv("trades", &Some(args), &meta).unwrap();
         assert!(!argv.contains(&"--since".to_string()));
     }
 
     #[test]
-    fn build_argv_positional_before_flags() {
+    fn build_argv_flags_precede_guarded_positionals() {
         let meta = vec![pos("pair", 0), flag("count", "count")];
         let mut args = serde_json::Map::new();
         args.insert("pair".into(), serde_json::json!("BTCUSD"));
         args.insert("count".into(), serde_json::json!("10"));
-        let argv = build_argv("orderbook", &Some(args), &meta);
+        let argv = build_argv("orderbook", &Some(args), &meta).unwrap();
         assert_eq!(
             argv,
             vec![
@@ -668,11 +791,25 @@ mod tests {
                 "json",
                 "--yes",
                 "orderbook",
-                "BTCUSD",
-                "--count",
-                "10"
+                "--count=10",
+                "--",
+                "BTCUSD"
             ]
         );
+    }
+
+    #[test]
+    fn build_argv_flag_value_with_leading_dash_round_trips() {
+        // Regression: a value beginning with '-' must survive the clap re-parse
+        // instead of being read as an unknown flag.
+        let meta = vec![pos("pair", 0), flag("since", "since")];
+        let mut args = serde_json::Map::new();
+        args.insert("pair".into(), serde_json::json!("BTCUSD"));
+        args.insert("since".into(), serde_json::json!("-1"));
+        let argv = build_argv("ohlc", &Some(args), &meta).unwrap();
+        assert!(argv.contains(&"--since=-1".to_string()));
+        let result = crate::Cli::try_parse_from(&argv);
+        assert!(result.is_ok(), "clap parse failed: {:?}", result.err());
     }
 
     #[test]
@@ -680,16 +817,13 @@ mod tests {
         let meta = vec![flag("pair", "pair")];
         let mut args = serde_json::Map::new();
         args.insert("pair".into(), serde_json::json!(["BTCUSD", "ETHUSD"]));
-        let argv = build_argv("volume", &Some(args), &meta);
-        let pair_positions: Vec<_> = argv
+        let argv = build_argv("volume", &Some(args), &meta).unwrap();
+        let pairs: Vec<_> = argv
             .iter()
-            .enumerate()
-            .filter(|(_, a)| *a == "--pair")
-            .map(|(i, _)| i)
+            .filter(|a| a.starts_with("--pair="))
+            .cloned()
             .collect();
-        assert_eq!(pair_positions.len(), 2);
-        assert_eq!(argv[pair_positions[0] + 1], "BTCUSD");
-        assert_eq!(argv[pair_positions[1] + 1], "ETHUSD");
+        assert_eq!(pairs, vec!["--pair=BTCUSD", "--pair=ETHUSD"]);
     }
 
     #[test]
@@ -697,9 +831,8 @@ mod tests {
         let meta = vec![flag("verified", "verified")];
         let mut args = serde_json::Map::new();
         args.insert("verified".into(), serde_json::json!(true));
-        let argv = build_argv("withdrawal addresses", &Some(args), &meta);
-        let idx = argv.iter().position(|a| a == "--verified").unwrap();
-        assert_eq!(argv[idx + 1], "true");
+        let argv = build_argv("withdrawal addresses", &Some(args), &meta).unwrap();
+        assert!(argv.contains(&"--verified=true".to_string()));
     }
 
     #[test]
@@ -709,11 +842,11 @@ mod tests {
         args.insert("amount".into(), serde_json::json!("100"));
         args.insert("asset".into(), serde_json::json!("XBT"));
         args.insert("key".into(), serde_json::json!("myaddr"));
-        let argv = build_argv("withdraw", &Some(args), &meta);
-        let cmd_idx = argv.iter().position(|a| a == "withdraw").unwrap();
-        assert_eq!(argv[cmd_idx + 1], "XBT");
-        assert_eq!(argv[cmd_idx + 2], "myaddr");
-        assert_eq!(argv[cmd_idx + 3], "100");
+        let argv = build_argv("withdraw", &Some(args), &meta).unwrap();
+        let sep = argv.iter().position(|a| a == "--").unwrap();
+        assert_eq!(argv[sep + 1], "XBT");
+        assert_eq!(argv[sep + 2], "myaddr");
+        assert_eq!(argv[sep + 3], "100");
     }
 
     #[test]
@@ -722,33 +855,50 @@ mod tests {
         let mut args = serde_json::Map::new();
         args.insert("pair".into(), serde_json::json!("BTCUSD"));
         args.insert("acknowledged".into(), serde_json::json!(true));
-        let argv = build_argv("ticker", &Some(args), &meta);
+        let argv = build_argv("ticker", &Some(args), &meta).unwrap();
         assert!(!argv.iter().any(|a| a.contains("acknowledged")));
     }
 
+    /// Unknown keys are refused LOUDLY, never silently dropped: a global
+    /// CLI flag injected past the schema (--api-key etc.) gets a refusal
+    /// instead of a no-op, and a renamed parameter can never default its
+    /// way into a wrong-capital account.
     #[test]
-    fn build_argv_unknown_keys_dropped() {
+    fn build_argv_unknown_keys_are_refused_not_dropped() {
         let meta = vec![pos("pair", 0)];
         let mut args = serde_json::Map::new();
         args.insert("pair".into(), serde_json::json!("BTCUSD"));
         args.insert("api_key".into(), serde_json::json!("attacker-key"));
-        args.insert("api_secret".into(), serde_json::json!("attacker-secret"));
-        args.insert("some_random_flag".into(), serde_json::json!("malicious"));
-        args.insert("verbose".into(), serde_json::json!(true));
-        let argv = build_argv("ticker", &Some(args), &meta);
-        assert!(!argv
-            .iter()
-            .any(|a| a.contains("api_key") || a.contains("api-key")));
-        assert!(!argv
-            .iter()
-            .any(|a| a.contains("api_secret") || a.contains("api-secret")));
-        assert!(!argv.iter().any(|a| a.contains("attacker")));
-        assert!(!argv.iter().any(|a| a.contains("malicious")));
-        assert!(!argv
-            .iter()
-            .any(|a| a.contains("some_random") || a.contains("some-random")));
-        assert!(!argv.iter().any(|a| a == "--verbose"));
-        assert!(argv.contains(&"BTCUSD".to_string()));
+        let err = build_argv("ticker", &Some(args), &meta).unwrap_err();
+        assert!(err.contains("unknown argument 'api_key'"), "{err}");
+        assert!(
+            err.contains("pair"),
+            "the refusal names what IS accepted: {err}"
+        );
+        assert!(
+            !err.contains("attacker"),
+            "the refusal never echoes the injected value: {err}"
+        );
+    }
+
+    /// A clap alias works through MCP exactly like the CLI flag it maps to
+    /// — a public-schema call with `balance` reaches `--capital`.
+    #[test]
+    fn build_argv_honors_clap_aliases() {
+        let meta = vec![ArgMeta {
+            id: "capital".into(),
+            long: Some("capital".into()),
+            aliases: vec!["balance".into()],
+            is_bool_flag: false,
+            positional_index: None,
+        }];
+        let mut args = serde_json::Map::new();
+        args.insert("balance".into(), serde_json::json!(12345));
+        let argv = build_argv("paper init", &Some(args), &meta).unwrap();
+        assert!(
+            argv.contains(&"--capital=12345".to_string()),
+            "alias maps to the canonical flag: {argv:?}"
+        );
     }
 
     #[test]
@@ -757,7 +907,7 @@ mod tests {
         let mut args = serde_json::Map::new();
         args.insert("pair".into(), serde_json::json!("BTCUSD"));
         args.insert("count".into(), serde_json::json!("10"));
-        let argv = build_argv("orderbook", &Some(args), &meta);
+        let argv = build_argv("orderbook", &Some(args), &meta).unwrap();
         let result = crate::Cli::try_parse_from(&argv);
         assert!(result.is_ok(), "clap parse failed: {:?}", result.err());
     }
@@ -767,7 +917,7 @@ mod tests {
         let meta = vec![flag("pair", "pair")];
         let mut args = serde_json::Map::new();
         args.insert("pair".into(), serde_json::json!(["BTCUSD"]));
-        let argv = build_argv("volume", &Some(args), &meta);
+        let argv = build_argv("volume", &Some(args), &meta).unwrap();
         let result = crate::Cli::try_parse_from(&argv);
         assert!(result.is_ok(), "clap parse failed: {:?}", result.err());
     }
@@ -777,12 +927,10 @@ mod tests {
         let meta = vec![pos("pairs", 0)];
         let mut args = serde_json::Map::new();
         args.insert("pairs".into(), serde_json::json!(["BTCUSD", "ETHUSD"]));
-        let argv = build_argv("ticker", &Some(args), &meta);
+        let argv = build_argv("ticker", &Some(args), &meta).unwrap();
         let result = crate::Cli::try_parse_from(&argv);
         assert!(result.is_ok(), "clap parse failed: {:?}", result.err());
     }
-
-    // --- audit metadata tests ---
 
     #[test]
     fn argument_keys_returns_sorted_keys() {
@@ -811,11 +959,7 @@ mod tests {
 
     #[test]
     fn audit_error_code_is_stable_string() {
-        let err = rmcp::model::ErrorData {
-            code: rmcp::model::ErrorCode::INVALID_PARAMS,
-            message: Cow::Borrowed("invalid"),
-            data: None,
-        };
+        let err = ErrorData::invalid_params("invalid", None);
         let code = audit_error_code(&err);
         assert!(!code.is_empty());
     }
@@ -827,15 +971,52 @@ mod tests {
     }
 
     #[test]
+    fn audit_line_is_jsonl_namespaced_under_mcp_audit() {
+        // No text prefix: the line must parse as a JSON object on its own so the
+        // stderr stream stays valid JSONL, with the record under `mcp_audit`.
+        let line = AuditLine {
+            mcp_audit: AuditRecord {
+                ts: "2026-07-01T00:00:00.000Z".parse().unwrap(),
+                transport: MCP_TRANSPORT,
+                event: AuditEvent::ToolCall {
+                    tool: "ticker",
+                    arg_keys: vec!["pair".to_string()],
+                    arg_count: 1,
+                    agent: "test-agent",
+                    instance_id: "abc123",
+                    pid: 42,
+                },
+            },
+        };
+        let rendered = audit_line(&line).expect("event serializes");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("audit line is valid JSON");
+        assert!(
+            parsed.is_object(),
+            "audit line must be a JSON object: {rendered}"
+        );
+
+        let record = &parsed["mcp_audit"];
+        assert!(
+            record.is_object(),
+            "record is nested under mcp_audit: {rendered}"
+        );
+        assert_eq!(record["event"], "tool_call");
+        assert_eq!(record["tool"], "ticker");
+        assert_eq!(record["transport"], "stdio");
+        assert_eq!(record["arg_count"], 1);
+    }
+
+    #[test]
     fn resolve_env_picks_up_spot_url() {
         let result =
-            crate::client::resolve_url_override(None, Some("https://api.kraken.com")).unwrap();
+            crate::client::resolve_url_override(Some("https://api.kraken.com"), false).unwrap();
         assert_eq!(result, Some("https://api.kraken.com".to_string()));
     }
 
     #[test]
     fn resolve_env_none_when_unset() {
-        let result = crate::client::resolve_url_override(None, None).unwrap();
+        let result = crate::client::resolve_url_override(None, false).unwrap();
         assert_eq!(result, None);
     }
 }

@@ -2,8 +2,11 @@
 dist/
 task.md
 .kai/
+.agents/
+.codex/
 .cursor/
 .idea/
+.vscode/
 docs/changelog/
 changelog/
 
@@ -12,11 +15,23 @@ changelog/
 .env.*
 .env.local
 config.toml
+# Keep the committed cargo build config (sets RUST_MIN_STACK for tests/CI)
+!.cargo/config.toml
 *.pem
 *.key
 *.crt
 *.p12
 *.pfx
+
+# Claude Code (dev-only, not shared with the team)
+.claude/skills/
+.claude/hooks/
+.claude/settings.local.json
+
+# Codex MR review local output
+.codex-home/
+.codex-review/
+codex-review/
 
 # OS
 .DS_Store

@@ -106,7 +106,7 @@ Limit orders may partially fill. Check order status:
 kraken query-orders <TXID> -o json 2>/dev/null
 ```
 
-Fields: `vol` (requested volume), `vol_exec` (filled volume), `status` (open, closed, canceled).
+Fields: `vol` (requested volume), `vol_exec` (filled volume), `status` (open, closed, canceled) — `query-orders` returns Kraken's raw wire fields, unlike `open-orders`/`closed-orders` which use the CLI schema (`volume`, `volume_executed`).
 
 If partially filled and the remaining volume is needed, amend or place a new order for the remaining amount.
 
@@ -133,3 +133,4 @@ An order stuck in `open` state that should have filled or been canceled:
 - Use `--cl-ord-id` for all orders in automated loops.
 - On auth errors, stop all activity and re-authenticate.
 - Log every error and recovery action for post-session audit.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

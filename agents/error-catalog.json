@@ -1,7 +1,12 @@
 {
-  "schema_version": "1.0.0",
-  "cli_version": "0.1.0",
+  "schema_version": "1.1.0",
+  "cli_version": "0.4.0",
   "description": "Error categories emitted by kraken-cli. Agents should route on the error field, not message strings.",
+  "usage_errors": {
+    "exit_code": 2,
+    "description": "Argument and flag errors caught by the CLI parser (unknown flags, values outside a parameter's documented set) exit 2. When -o json was requested, stdout carries a validation error envelope and stderr is empty; otherwise usage text goes to stderr.",
+    "agent_action": "Validate argument values against the values arrays in tool-catalog.json before invoking. On exit 2 with -o json, parse the validation envelope on stdout, fix the arguments, and re-run; without -o json, read stderr."
+  },
   "envelope_format": {
     "fields": {
       "error": "Error category string (matches a category below)",
@@ -13,8 +18,17 @@
       "retryable": "Boolean indicating the agent may retry after adjusting behavior",
       "docs_url": "Link to the relevant Kraken rate limit documentation page"
     },
-    "example": {"error": "auth", "message": "Authentication failed: EAPI:Invalid key"},
-    "example_rate_limit": {"error": "rate_limit", "message": "Spot REST API rate limit exceeded (EAPI:Rate limit exceeded).", "suggestion": "Wait 5-15 seconds...", "retryable": true, "docs_url": "https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/"}
+    "example": {
+      "error": "auth",
+      "message": "Authentication failed: EAPI:Invalid key"
+    },
+    "example_rate_limit": {
+      "error": "rate_limit",
+      "message": "Spot REST API rate limit exceeded (EAPI:Rate limit exceeded).",
+      "suggestion": "Wait 5-15 seconds...",
+      "retryable": true,
+      "docs_url": "https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/"
+    }
   },
   "categories": [
     {
@@ -23,8 +37,15 @@
       "retryable": false,
       "agent_action": "Log the error. Fix request parameters. Do not retry the same request.",
       "backoff_strategy": null,
-      "common_causes": ["Insufficient funds", "Unknown trading pair", "Order volume below minimum"],
-      "example_envelope": {"error": "api", "message": "EOrder:Insufficient funds"}
+      "common_causes": [
+        "Insufficient funds",
+        "Unknown trading pair",
+        "Order volume below minimum"
+      ],
+      "example_envelope": {
+        "error": "api",
+        "message": "EOrder:Insufficient funds"
+      }
     },
     {
       "category": "auth",
@@ -32,26 +53,63 @@
       "retryable": false,
       "agent_action": "Re-authenticate. Verify KRAKEN_API_KEY and KRAKEN_API_SECRET.",
       "backoff_strategy": null,
-      "common_causes": ["Invalid API key", "Wrong secret", "Key lacks endpoint permission", "OTP required", "Futures authenticationError", "Futures insufficientPrivileges"],
-      "example_envelope": {"error": "auth", "message": "Authentication failed: EAPI:Invalid key"}
+      "common_causes": [
+        "Invalid API key",
+        "Wrong secret",
+        "Key lacks endpoint permission",
+        "OTP required",
+        "Futures authenticationError",
+        "Futures insufficientPrivileges"
+      ],
+      "example_envelope": {
+        "error": "auth",
+        "message": "Authentication failed: EAPI:Invalid key"
+      }
     },
     {
       "category": "network",
       "description": "Network-level failure. Request could not reach the Kraken API.",
       "retryable": true,
       "agent_action": "Retry with exponential backoff. Check connectivity.",
-      "backoff_strategy": {"type": "exponential", "initial_delay_ms": 1000, "max_delay_ms": 30000, "max_retries": 5},
-      "common_causes": ["DNS failure", "Connection timeout", "TLS handshake failure", "Connection reset"],
-      "example_envelope": {"error": "network", "message": "Network error: error sending request"}
+      "backoff_strategy": {
+        "type": "exponential",
+        "initial_delay_ms": 1000,
+        "max_delay_ms": 30000,
+        "max_retries": 5
+      },
+      "common_causes": [
+        "DNS failure",
+        "Connection timeout",
+        "TLS handshake failure",
+        "Connection reset"
+      ],
+      "example_envelope": {
+        "error": "network",
+        "message": "Network error: error sending request"
+      }
     },
     {
       "category": "rate_limit",
       "description": "Throttled by Kraken's server-side rate limiter. The CLI returns this error immediately with no internal retry. The error includes a suggestion field with specific guidance and a docs_url linking to the relevant Kraken documentation.",
       "retryable": true,
       "agent_action": "Read the suggestion field for tier-specific limits and recommended changes. Read docs_url for full documentation. Decide whether to retry, reduce request frequency, or switch to WebSocket streaming.",
-      "backoff_strategy": {"type": "agent_controlled", "note": "CLI does not retry rate limit errors. The agent decides retry timing based on the suggestion and docs_url fields."},
-      "common_causes": ["Too many requests (Spot REST counter)", "Short-lived orders triggering trading engine penalty", "Futures endpoint cost budget exhausted", "Too many concurrent requests (throttle)"],
-      "example_envelope": {"error": "rate_limit", "message": "Spot REST API rate limit exceeded (EAPI:Rate limit exceeded).", "suggestion": "Wait 5-15 seconds before retrying. Reduce request frequency. Use WebSocket streaming instead of REST polling for real-time data.", "retryable": true, "docs_url": "https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/"}
+      "backoff_strategy": {
+        "type": "agent_controlled",
+        "note": "CLI does not retry rate limit errors. The agent decides retry timing based on the suggestion and docs_url fields."
+      },
+      "common_causes": [
+        "Too many requests (Spot REST counter)",
+        "Short-lived orders triggering trading engine penalty",
+        "Futures endpoint cost budget exhausted",
+        "Too many concurrent requests (throttle)"
+      ],
+      "example_envelope": {
+        "error": "rate_limit",
+        "message": "Spot REST API rate limit exceeded (EAPI:Rate limit exceeded).",
+        "suggestion": "Wait 5-15 seconds before retrying. Reduce request frequency. Use WebSocket streaming instead of REST polling for real-time data.",
+        "retryable": true,
+        "docs_url": "https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/"
+      }
     },
     {
       "category": "validation",
@@ -59,8 +117,15 @@
       "retryable": false,
       "agent_action": "Fix input parameters. Check types, required fields, allowed values.",
       "backoff_strategy": null,
-      "common_causes": ["Missing required argument", "Invalid pair format", "Invalid number"],
-      "example_envelope": {"error": "validation", "message": "Validation error: Invalid URL: invalid authority"}
+      "common_causes": [
+        "Missing required argument",
+        "Invalid pair format",
+        "Invalid number"
+      ],
+      "example_envelope": {
+        "error": "validation",
+        "message": "Validation error: Invalid URL: invalid authority"
+      }
     },
     {
       "category": "config",
@@ -68,17 +133,39 @@
       "retryable": false,
       "agent_action": "Check config file. For agents, prefer environment variables.",
       "backoff_strategy": null,
-      "common_causes": ["Invalid TOML syntax", "Missing config fields", "Missing or invalid credential values"],
-      "example_envelope": {"error": "config", "message": "Configuration error: TOML parse error"}
+      "common_causes": [
+        "Invalid TOML syntax",
+        "Missing config fields",
+        "Missing or invalid credential values"
+      ],
+      "example_envelope": {
+        "error": "config",
+        "message": "Configuration error: TOML parse error"
+      }
     },
     {
       "category": "websocket",
       "description": "WebSocket connection or protocol error.",
       "retryable": true,
-      "agent_action": "Reconnect with backoff. CLI retries up to 12 times per stream lifecycle with paced exponential backoff and reconnect safety budgeting.",
-      "backoff_strategy": {"type": "exponential", "initial_delay_ms": 1000, "max_delay_ms": 30000, "max_retries": 12},
-      "common_causes": ["Connection dropped", "Server closed connection", "Invalid subscription", "Auth failed on private feed"],
-      "example_envelope": {"error": "websocket", "message": "WebSocket error: Connection closed unexpectedly"}
+      "agent_action": "Streams self-heal: the CLI reconnects with paced exponential backoff (capped, jittered) until interrupted, and drops a subscription rejected again on a fresh token. For one-shot order methods the envelope's `verify_first` field is the verdict: `\"verify_first\": true` means the request may have reached the exchange — confirm via open-orders/query-orders before resubmitting. Envelopes without `verify_first` failed before anything was sent and are safe to retry. The message prose restates the verdict ('verify its state before retrying') for older parsers.",
+      "backoff_strategy": {
+        "type": "exponential",
+        "initial_delay_ms": 250,
+        "max_delay_ms": 30000,
+        "max_retries": null,
+        "note": "Streams reconnect until interrupted; there is no terminal retry cap. One-shot ws methods do not retry past their own timeout."
+      },
+      "common_causes": [
+        "Connection dropped",
+        "Server closed without replying (one-shot: verify order state before retrying)",
+        "Invalid subscription",
+        "Auth failed on private feed"
+      ],
+      "example_envelope": {
+        "error": "websocket",
+        "message": "WebSocket error: no reply arrived; the request may have reached the exchange — verify its state before retrying",
+        "verify_first": true
+      }
     },
     {
       "category": "io",
@@ -86,8 +173,35 @@
       "retryable": false,
       "agent_action": "Check file paths and permissions.",
       "backoff_strategy": null,
-      "common_causes": ["File not readable", "Directory does not exist", "Disk full", "State file corrupted"],
-      "example_envelope": {"error": "io", "message": "I/O error: Permission denied (os error 13)"}
+      "common_causes": [
+        "File not readable",
+        "Directory does not exist",
+        "Disk full",
+        "State file corrupted"
+      ],
+      "example_envelope": {
+        "error": "io",
+        "message": "I/O error: Permission denied (os error 13)"
+      }
+    },
+    {
+      "category": "timeout",
+      "description": "A local operation did not complete within its time budget (e.g. `kraken session stop` waited for the recorder to release its recording lock after SIGTERM).",
+      "retryable": true,
+      "agent_action": "Re-run the command. If it persists, check `kraken session show` — the recorder may still be flushing a large dataset, or may have ignored the signal.",
+      "backoff_strategy": {
+        "type": "agent_controlled",
+        "note": "The CLI does not auto-retry. The agent decides when to re-run based on whether the underlying operation is still making progress."
+      },
+      "common_causes": [
+        "Recorder still checkpointing a large dataset",
+        "Signalled process ignored SIGTERM",
+        "Slow disk"
+      ],
+      "example_envelope": {
+        "error": "timeout",
+        "message": "Timeout: session s3 recorder (pid 4242) was signalled but still holds its recording lock after 10s; it may still be flushing."
+      }
     },
     {
       "category": "parse",
@@ -95,8 +209,15 @@
       "retryable": false,
       "agent_action": "Log raw response. Possible API change or maintenance. Do not retry.",
       "backoff_strategy": null,
-      "common_causes": ["Unexpected response format", "HTML error page during maintenance", "Truncated response"],
-      "example_envelope": {"error": "parse", "message": "Parse error: expected value at line 1 column 1"}
+      "common_causes": [
+        "Unexpected response format",
+        "HTML error page during maintenance",
+        "Truncated response"
+      ],
+      "example_envelope": {
+        "error": "parse",
+        "message": "Parse error: expected value at line 1 column 1"
+      }
     }
   ]
 }

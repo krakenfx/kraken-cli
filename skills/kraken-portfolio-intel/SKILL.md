@@ -145,7 +145,7 @@ Download when ready:
 kraken export-retrieve <REPORT_ID> -o json 2>/dev/null
 ```
 
-Clean up old reports:
+Clean up old reports (`export-delete` is flagged dangerous — the report is gone and must be regenerated, so confirm with the user first):
 
 ```bash
 kraken export-delete <REPORT_ID> -o json 2>/dev/null
@@ -197,3 +197,5 @@ kraken futures positions -o json 2>/dev/null
 - Use `--without-count` on large history queries to skip count computation.
 - Filter by asset and time range to reduce response size.
 - Use exports for bulk data instead of paginating through REST.
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

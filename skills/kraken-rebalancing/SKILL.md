@@ -50,21 +50,22 @@ Set a minimum trade threshold (e.g., $50) to avoid placing tiny orders that wast
 ## Paper Rebalance Test
 
 ```bash
-kraken paper init --balance 10000 -o json 2>/dev/null
+kraken workspace create sandbox --capital 10000 --mode paper -o json 2>/dev/null
+export KRAKEN_WORKSPACE=sandbox
 
 # Initial buys to establish positions
 kraken paper buy BTCUSD 0.05 -o json 2>/dev/null
 kraken paper buy ETHUSD 1.0 -o json 2>/dev/null
 kraken paper buy SOLUSD 10 -o json 2>/dev/null
 
-kraken paper status -o json 2>/dev/null
+kraken workspace status -o json 2>/dev/null
 
 # After price drift, rebalance
 # Sell overweight asset, buy underweight asset
 kraken paper sell BTCUSD 0.005 -o json 2>/dev/null
 kraken paper buy SOLUSD 2 -o json 2>/dev/null
 
-kraken paper status -o json 2>/dev/null
+kraken workspace status -o json 2>/dev/null
 ```
 
 ## Live Rebalance Execution
@@ -102,7 +103,7 @@ Periodically compare current weights to targets. Trigger rebalance when any asse
 For lower fees, use limit orders instead of market:
 
 ```bash
-PRICE=$(kraken ticker SOLUSD -o json 2>/dev/null | jq -r '.[].a[0]')
+PRICE=$(kraken ticker SOLUSD -o json 2>/dev/null | jq -r '.[].ask_price')
 kraken order buy SOLUSD 2 --type limit --price $PRICE -o json 2>/dev/null
 ```
 
@@ -119,3 +120,4 @@ kraken open-orders -o json 2>/dev/null
 - Execute sells before buys to ensure sufficient quote currency.
 - Respect minimum order sizes for each pair (check pair info with `kraken pairs`).
 - Apply a minimum trade threshold to skip negligible adjustments.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

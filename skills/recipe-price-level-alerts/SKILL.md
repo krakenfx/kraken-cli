@@ -29,3 +29,5 @@ Define upper and lower price levels for a pair and get notified when they are cr
 6. Compare against lower level: if price <= lower, alert "BTCUSD broke below 55000"
 7. After alert fires, optionally stop monitoring or set new levels
 8. Agent delivers alert through its notification channel (chat, Slack, etc.)
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.
