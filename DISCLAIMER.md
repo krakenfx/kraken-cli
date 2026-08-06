@@ -44,3 +44,8 @@ Your API key and secret grant access to your Kraken account. Treat them like pas
 - Never pass `--api-secret` on the command line in shared environments (use environment variables or `--api-secret-stdin`).
 - Rotate keys regularly.
 - Use the most restrictive permissions possible for your use case.
+- Expose the CLI and its MCP tools only to the people (and agents) who should be able to operate the Kraken account. A shared machine, multi-user server, or shared agent session with credentials in the environment gives everyone on it full account access.
+
+## Data Collection
+
+`kraken feedback` uploads the feedback body you provide, plus metadata (`instance_id`, `agent_client`, CLI version, and related fields such as OS/arch and optional `--llm-model`), to Kraken over HTTPS so the product can be improved. Do not put API keys, secrets, passwords, or personal data in the feedback body. Separately, client-identity headers (`instance_id`, agent client, CLI version) already accompany ordinary Kraken API calls made by this CLI; they are not unique to feedback. Not running `kraken feedback` is the opt-out for uploading free-form feedback text. See `docs/feedback-ingest.md` for retention and limits.

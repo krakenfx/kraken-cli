@@ -1,0 +1,53 @@
+[package]
+name = "kraken-session"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Playground session contract and timeline read model for kraken-cli"
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+clap = ["dep:clap"]
+duckdb = ["kraken-recording/duckdb"]
+fixtures = ["dep:rust_decimal_macros"]
+
+[dependencies]
+chrono = { workspace = true }
+clap = { workspace = true, optional = true }
+kraken-core = { workspace = true }
+kraken-paper = { workspace = true }
+kraken-recording = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+# Tests use dec! even with the fixtures feature off.
+rust_decimal_macros = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
+
+# Feature-dependent integration targets are declared, not cfg'd out: a missing
+# feature skips the target loudly in `cargo test`, never silently.
+# The windowed-fold pins: every score anchors on this arithmetic. Declared
+# so it can never silently drop out of the target set again.
+[[test]]
+name = "session_window"
+
+[[test]]
+name = "session_roundtrip"
+required-features = ["fixtures"]
+
+[[test]]
+name = "duckdb_roundtrip"
+required-features = ["duckdb", "fixtures"]

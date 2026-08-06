@@ -18,7 +18,9 @@ const VALID_SERVICES: &[&str] = &[
     "futures",
     "websocket",
     "paper",
+    "workspace",
     "auth",
+    "feedback",
 ];
 
 // futures-ws tools are excluded because the group is absent from VALID_SERVICES,

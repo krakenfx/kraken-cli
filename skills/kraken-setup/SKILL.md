@@ -41,9 +41,10 @@ kraken --version
 Paper trading uses live prices with a simulated balance. No API keys required. Start here.
 
 ```bash
-kraken paper init --balance 10000 -o json
+kraken workspace create sandbox --capital 10000 --mode paper -o json
+export KRAKEN_WORKSPACE=sandbox
 kraken paper buy BTCUSD 0.01 -o json
-kraken paper status -o json
+kraken workspace status -o json
 ```
 
 Futures paper trading works the same way:
@@ -120,7 +121,7 @@ The CLI ships with a built-in MCP server. Point any MCP-compatible client (Claud
 
 See `skills/kraken-mcp-integration/SKILL.md` for the per-client config blocks and the full service reference.
 
-The default MCP config in every `kraken-cli` marketplace listing (Claude, Cursor, Codex, Gemini) is `-s market,paper`:
+The default MCP config in every `kraken-cli` marketplace listing (Claude, Cursor, Codex, Gemini) is `-s market,paper,feedback`:
 
 | Service | Auth | Why it's in the default |
 |---------|------|-------------------------|
@@ -149,3 +150,5 @@ progression.
 **Futures commands fail with `auth` but spot works**: futures needs its own key. Set `KRAKEN_FUTURES_API_KEY` and `KRAKEN_FUTURES_API_SECRET`.
 
 **MCP client shows no Kraken tools**: confirm `kraken` is on the PATH the client sees (MCP clients often launch from a minimal shell). Then see `kraken-mcp-integration` troubleshooting.
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

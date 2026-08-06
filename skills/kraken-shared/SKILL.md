@@ -26,6 +26,10 @@ Rules:
 - Treat `stderr` as diagnostics.
 - Exit code `0` means success.
 - Non-zero exit means failure with JSON envelope in `stdout`.
+- Streaming commands (`session start`, `record`, `ws`, `streamd`) emit JSONL: match lines by their `"type"` field (e.g. scan for `"type":"session_started"` to get the session handle) — never assume a line position, because live market frames interleave on `stdout`.
+- Probe capability, not version, at the start of a loop: `kraken session --help >/dev/null 2>&1` exits `0` on a build that speaks this contract and `2` on an older one — `kraken --version` cannot tell them apart across a vocabulary change.
+- Market-data field names are readable (`last_price`, not `c[0]`). Only `ticker` still keys on Kraken's INTERNAL pair name (`XXBTZUSD`, not `BTCUSD`) — reach its fields with `.[]` or `to_entries`, never a hardcoded key. `ohlc`/`trades`/`spreads` reshape to `{pair, …}`: fold the named row array (`.candles`/`.trades`/`.spreads`) directly, never the whole object — `ohlc` keeps a sibling `last` cursor that poisons naive iteration. `orderbook` drops the wrapper to top-level `.asks`/`.bids`.
+- Validate every number a READ produces before it gates an order or lands in a reason. On an empty or failed read, record `kraken session note --kind alert --reason "READ failed: ..."` and end the step — never interpolate a failed read into a reason, or the decision log fills with plausible-looking false evidence.
 
 ## Authentication
 
@@ -54,7 +58,7 @@ Route on `.error`:
 
 ## Safety
 
-The catalog marks 32 commands as `dangerous: true`. Always check the `dangerous` field in `agents/tool-catalog.json` before executing a command.
+The catalog marks 41 commands as `dangerous: true`. Always check the `dangerous` field in `agents/tool-catalog.json` before executing a command.
 
 Require explicit human approval before:
 - live buy or sell orders (spot and futures)
@@ -68,5 +72,8 @@ Require explicit human approval before:
 Use paper trading for dry runs:
 
 ```bash
-kraken paper init --balance 10000 -o json
+kraken workspace create sandbox --capital 10000 --mode paper -o json
+export KRAKEN_WORKSPACE=sandbox
 ```
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

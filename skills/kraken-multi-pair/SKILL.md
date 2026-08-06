@@ -28,7 +28,7 @@ kraken ticker BTCUSD ETHUSD SOLUSD DOTUSD -o json 2>/dev/null
 The response contains one object per pair. Extract and compare:
 
 ```bash
-kraken ticker BTCUSD ETHUSD SOLUSD -o json 2>/dev/null | jq 'to_entries[] | {pair: .key, last: .value.c[0], volume: .value.v[1]}'
+kraken ticker BTCUSD ETHUSD SOLUSD -o json 2>/dev/null | jq 'to_entries[] | {pair: .key, last: .value.last_price, volume: .value.volume_24h}'
 ```
 
 ## Multi-Pair Streaming
@@ -68,7 +68,7 @@ kraken pairs -o json 2>/dev/null | jq '[to_entries[] | select(.key | endswith("U
 Compare bid-ask spreads across pairs to gauge liquidity:
 
 ```bash
-kraken ticker BTCUSD ETHUSD SOLUSD -o json 2>/dev/null | jq 'to_entries[] | {pair: .key, spread: ((.value.a[0] | tonumber) - (.value.b[0] | tonumber))}'
+kraken ticker BTCUSD ETHUSD SOLUSD -o json 2>/dev/null | jq 'to_entries[] | {pair: .key, spread: (.value.ask_price - .value.bid_price)}'
 ```
 
 ## Volume Screening
@@ -76,7 +76,7 @@ kraken ticker BTCUSD ETHUSD SOLUSD -o json 2>/dev/null | jq 'to_entries[] | {pai
 Identify high-volume pairs from a watchlist:
 
 ```bash
-kraken ticker BTCUSD ETHUSD SOLUSD ADAUSD DOTUSD -o json 2>/dev/null | jq 'to_entries | sort_by(-(.value.v[1] | tonumber)) | .[] | {pair: .key, vol_24h: .value.v[1]}'
+kraken ticker BTCUSD ETHUSD SOLUSD ADAUSD DOTUSD -o json 2>/dev/null | jq 'to_entries | sort_by(-.value.volume_24h) | .[] | {pair: .key, vol_24h: .value.volume_24h}'
 ```
 
 ## Futures Multi-Symbol
@@ -108,3 +108,5 @@ kraken ws ticker $WATCHLIST -o json 2>/dev/null
 - Batch pairs into a single command instead of one call per pair.
 - Use streaming for continuous monitoring; use REST snapshots for periodic checks.
 - Limit watchlist size to reduce context window consumption when passing results to an agent.
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

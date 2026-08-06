@@ -4,19 +4,19 @@
 /// parsing, transient-error retry, and output contracts.
 use std::collections::HashMap;
 
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use kraken_cli::client::{FuturesClient, SpotClient};
+use kraken_cli::config::{CredentialSource, Credentials};
+use secrecy::SecretString;
 use serde_json::json;
 use wiremock::matchers::{header, header_exists, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use kraken_cli::client::{FuturesClient, SpotClient};
-use kraken_cli::config::{CredentialSource, FuturesCredentials, SecretValue, SpotCredentials};
-
-fn test_credentials() -> SpotCredentials {
-    SpotCredentials {
-        api_key: "test-api-key".to_string(),
-        api_secret: SecretValue::new(BASE64.encode(b"test_secret_key_bytes_32_chars!!")),
+fn test_credentials() -> Credentials {
+    Credentials {
+        api_key: SecretString::from("test-api-key"),
+        api_secret: SecretString::from(BASE64.encode(b"test_secret_key_bytes_32_chars!!")),
         source: CredentialSource::Flag,
     }
 }
@@ -38,8 +38,8 @@ async fn spot_public_get_returns_result() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
-    let result = client.public_get("SystemStatus", &[], false).await.unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let result = client.public_get("SystemStatus", &[]).await.unwrap();
 
     assert_eq!(result.get("status").unwrap().as_str().unwrap(), "online");
 }
@@ -64,9 +64,9 @@ async fn spot_private_post_sends_auth_headers() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let result = client
-        .private_post("Balance", HashMap::new(), &creds, None, true, false)
+        .private_post("Balance", HashMap::new(), &creds, None, true)
         .await
         .unwrap();
 
@@ -89,16 +89,10 @@ async fn spot_private_post_includes_otp_when_provided() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let otp = SecretString::from("123456");
     let result = client
-        .private_post(
-            "Balance",
-            HashMap::new(),
-            &creds,
-            Some("123456"),
-            true,
-            false,
-        )
+        .private_post("Balance", HashMap::new(), &creds, Some(&otp), true)
         .await
         .unwrap();
 
@@ -120,9 +114,9 @@ async fn spot_rate_limit_returned_immediately() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let err = client
-        .private_post("Balance", HashMap::new(), &creds, None, true, false)
+        .private_post("Balance", HashMap::new(), &creds, None, true)
         .await
         .unwrap_err();
 
@@ -157,9 +151,9 @@ async fn spot_auth_error_parsed_from_envelope() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let err = client
-        .private_post("Balance", HashMap::new(), &creds, None, true, false)
+        .private_post("Balance", HashMap::new(), &creds, None, true)
         .await
         .unwrap_err();
 
@@ -172,10 +166,17 @@ async fn spot_auth_error_parsed_from_envelope() {
 }
 
 #[tokio::test]
-async fn spot_public_get_retries_on_transport_error() {
+async fn spot_public_get_retries_on_server_error() {
     let server = MockServer::start().await;
 
-    // First call fails, second succeeds
+    Mock::given(method("GET"))
+        .and(path("/0/public/Time"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+
     Mock::given(method("GET"))
         .and(path("/0/public/Time"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -186,8 +187,8 @@ async fn spot_public_get_retries_on_transport_error() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
-    let result = client.public_get("Time", &[], false).await.unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let result = client.public_get("Time", &[]).await.unwrap();
     assert!(result.get("unixtime").is_some());
 }
 
@@ -195,7 +196,6 @@ async fn spot_public_get_retries_on_transport_error() {
 async fn spot_5xx_retry_uses_fresh_nonce() {
     let server = MockServer::start().await;
 
-    // First call: 500 error; second call: success
     Mock::given(method("POST"))
         .and(path("/0/private/Balance"))
         .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
@@ -215,9 +215,9 @@ async fn spot_5xx_retry_uses_fresh_nonce() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let result = client
-        .private_post("Balance", HashMap::new(), &creds, None, true, false)
+        .private_post("Balance", HashMap::new(), &creds, None, true)
         .await
         .unwrap();
 
@@ -239,9 +239,9 @@ async fn private_post_raw_detects_json_error_on_200() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let err = client
-        .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true, false)
+        .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true)
         .await
         .unwrap_err();
 
@@ -269,9 +269,9 @@ async fn private_post_raw_returns_binary_on_success() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let result = client
-        .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true, false)
+        .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true)
         .await
         .unwrap();
 
@@ -294,9 +294,9 @@ async fn private_post_raw_rate_limit_returned_immediately() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let err = client
-        .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true, false)
+        .private_post_raw("RetrieveExport", HashMap::new(), &creds, None, true)
         .await
         .unwrap_err();
 
@@ -319,8 +319,8 @@ async fn spot_json_output_table_output_match() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
-    let result = client.public_get("SystemStatus", &[], false).await.unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let result = client.public_get("SystemStatus", &[]).await.unwrap();
 
     assert!(result.is_object());
     assert!(result.get("status").is_some());
@@ -337,8 +337,8 @@ async fn spot_non_2xx_returns_network_error() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
-    let err = client.public_get("Assets", &[], false).await.unwrap_err();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let err = client.public_get("Assets", &[]).await.unwrap_err();
 
     let category = err.category();
     assert_eq!(category, kraken_cli::errors::ErrorCategory::Network);
@@ -359,8 +359,8 @@ async fn spot_user_agent_header_present() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
-    let _ = client.public_get("Time", &[], false).await.unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let _ = client.public_get("Time", &[]).await.unwrap();
 }
 
 #[tokio::test]
@@ -378,8 +378,8 @@ async fn spot_korigin_header_present() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
-    let _ = client.public_get("Time", &[], false).await.unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let _ = client.public_get("Time", &[]).await.unwrap();
 }
 
 #[tokio::test]
@@ -404,9 +404,9 @@ async fn spot_public_get_retries_on_5xx_then_succeeds() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let result = client
-        .public_get("Ticker", &[("pair", "XBTUSD")], false)
+        .public_get("Ticker", &[("pair", "XBTUSD")])
         .await
         .unwrap();
     assert!(result.get("XXBTZUSD").is_some());
@@ -423,8 +423,8 @@ async fn spot_public_get_5xx_exhausts_retries() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
-    let err = client.public_get("Ticker", &[], false).await.unwrap_err();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let err = client.public_get("Ticker", &[]).await.unwrap_err();
     assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::Network);
 }
 
@@ -439,8 +439,8 @@ async fn spot_5xx_returns_network_error_not_parse_error() {
         .mount(&server)
         .await;
 
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
-    let err = client.public_get("Assets", &[], false).await.unwrap_err();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
+    let err = client.public_get("Assets", &[]).await.unwrap_err();
     assert_eq!(
         err.category(),
         kraken_cli::errors::ErrorCategory::Network,
@@ -448,10 +448,10 @@ async fn spot_5xx_returns_network_error_not_parse_error() {
     );
 }
 
-fn test_futures_credentials() -> FuturesCredentials {
-    FuturesCredentials {
-        api_key: "test-futures-key".to_string(),
-        api_secret: SecretValue::new(BASE64.encode(b"test_futures_secret_key_32chars!")),
+fn test_futures_credentials() -> Credentials {
+    Credentials {
+        api_key: SecretString::from("test-futures-key"),
+        api_secret: SecretString::from(BASE64.encode(b"test_futures_secret_key_32chars!")),
         source: CredentialSource::Flag,
     }
 }
@@ -479,8 +479,8 @@ async fn futures_public_get_retries_on_5xx_then_succeeds() {
         .mount(&server)
         .await;
 
-    let client = FuturesClient::new(Some(&base_url)).unwrap();
-    let result = client.public_get("tickers", &[], false).await.unwrap();
+    let client = FuturesClient::new(Some(&base_url), false).unwrap();
+    let result = client.public_get("tickers", &[]).await.unwrap();
     assert!(result.get("tickers").is_some());
 }
 
@@ -510,11 +510,8 @@ async fn futures_private_get_retries_on_5xx_then_succeeds() {
         .await;
 
     let creds = test_futures_credentials();
-    let client = FuturesClient::new(Some(&base_url)).unwrap();
-    let result = client
-        .private_get("accounts", &[], &creds, false)
-        .await
-        .unwrap();
+    let client = FuturesClient::new(Some(&base_url), false).unwrap();
+    let result = client.private_get("accounts", &[], &creds).await.unwrap();
     assert!(result.get("accounts").is_some());
 }
 
@@ -533,9 +530,9 @@ async fn spot_eservice_throttled_returned_immediately() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let err = client
-        .private_post("Balance", HashMap::new(), &creds, None, true, false)
+        .private_post("Balance", HashMap::new(), &creds, None, true)
         .await
         .unwrap_err();
 
@@ -562,9 +559,9 @@ async fn spot_eorder_rate_limit_returned_immediately() {
         .await;
 
     let creds = test_credentials();
-    let client = SpotClient::new(Some(&server.uri())).unwrap();
+    let client = SpotClient::new(Some(&server.uri()), false).unwrap();
     let err = client
-        .private_post("AddOrder", HashMap::new(), &creds, None, true, false)
+        .private_post("AddOrder", HashMap::new(), &creds, None, true)
         .await
         .unwrap_err();
 
@@ -597,8 +594,8 @@ async fn futures_api_limit_exceeded_returned_immediately() {
         .mount(&server)
         .await;
 
-    let client = FuturesClient::new(Some(&base_url)).unwrap();
-    let err = client.public_get("tickers", &[], false).await.unwrap_err();
+    let client = FuturesClient::new(Some(&base_url), false).unwrap();
+    let err = client.public_get("tickers", &[]).await.unwrap_err();
 
     assert_eq!(err.category(), kraken_cli::errors::ErrorCategory::RateLimit);
     if let kraken_cli::errors::KrakenError::RateLimit {
@@ -630,9 +627,9 @@ async fn futures_auth_error_not_retried() {
         .await;
 
     let creds = test_futures_credentials();
-    let client = FuturesClient::new(Some(&base_url)).unwrap();
+    let client = FuturesClient::new(Some(&base_url), false).unwrap();
     let err = client
-        .private_get("accounts", &[], &creds, false)
+        .private_get("accounts", &[], &creds)
         .await
         .unwrap_err();
 
@@ -660,9 +657,9 @@ async fn futures_private_get_rate_limit_from_non_2xx_returned_immediately() {
         .await;
 
     let creds = test_futures_credentials();
-    let client = FuturesClient::new(Some(&base_url)).unwrap();
+    let client = FuturesClient::new(Some(&base_url), false).unwrap();
     let err = client
-        .private_get("accounts", &[], &creds, false)
+        .private_get("accounts", &[], &creds)
         .await
         .unwrap_err();
 
@@ -695,13 +692,9 @@ async fn futures_funding_rate_reads_relative_field() {
         .mount(&server)
         .await;
 
-    let client = FuturesClient::new(Some(&base_url)).unwrap();
+    let client = FuturesClient::new(Some(&base_url), false).unwrap();
     let data = client
-        .public_get(
-            "historical-funding-rates",
-            &[("symbol", "PF_XBTUSD")],
-            false,
-        )
+        .public_get("historical-funding-rates", &[("symbol", "PF_XBTUSD")])
         .await
         .unwrap();
 
@@ -718,4 +711,46 @@ async fn futures_funding_rate_reads_relative_field() {
         "relativeFundingRate must be smaller than fundingRate; \
          using the wrong field overcharges by orders of magnitude"
     );
+}
+
+/// Pins the ordering law end to end: the mirror journal
+/// opens (and anchors) BEFORE the venue call, and a failed venue call never
+/// fabricates an order. The happy path (txid mirroring) is unit-tested
+/// in-process against a mock venue — the binary accepts https only, by design.
+mod journal_mirror {
+    use super::super::common::{config_dir_in, kraken_in};
+
+    const TEST_SECRET: &str = "dGVzdF9zZWNyZXRfa2V5X2J5dGVzXzMyX2NoYXJzISE="; // base64, test-only
+
+    #[test]
+    fn master_order_anchors_the_journal_before_the_venue_and_never_fakes_an_order() {
+        let home = tempfile::tempdir().unwrap();
+        // A dead venue: connection refused on every request.
+        let output = kraken_in(&home)
+            .env("KRAKEN_API_KEY", "test-api-key")
+            .env("KRAKEN_API_SECRET", TEST_SECRET)
+            .env("KRAKEN_SPOT_URL", "https://127.0.0.1:9/")
+            .env("KRAKEN_DANGER_ALLOW_ANY_URL_HOST", "1")
+            .args([
+                "order", "buy", "BTC/USD", "0.01", "--type", "limit", "--price", "100", "-o",
+                "json",
+            ])
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "the venue is down: {output:?}");
+
+        // The mirror opened first: the journal exists, anchored incomplete
+        // (the balance fetch failed too) — and holds NO order.
+        let journal = std::fs::read_to_string(config_dir_in(&home).join("journal.jsonl")).unwrap();
+        let events: Vec<serde_json::Value> = journal
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(events[0]["event"], "attached");
+        assert_eq!(events[0]["complete"], false);
+        assert!(
+            !events.iter().any(|e| e["event"] == "order_submitted"),
+            "a failed venue call must not fabricate an order: {events:?}"
+        );
+    }
 }

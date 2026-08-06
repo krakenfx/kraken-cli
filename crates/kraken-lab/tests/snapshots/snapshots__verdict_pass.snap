@@ -1,0 +1,21 @@
+---
+source: crates/kraken-lab/tests/snapshots.rs
+expression: pass
+---
+{
+  "pass": true,
+  "checks": [
+    {
+      "criterion": "min_return_pct",
+      "threshold": 1.0,
+      "observed": 1.87,
+      "pass": true
+    },
+    {
+      "criterion": "min_fills",
+      "threshold": 1.0,
+      "observed": 1.0,
+      "pass": true
+    }
+  ]
+}

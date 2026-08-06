@@ -88,7 +88,8 @@ For centralized monitoring, use the main account's credentials with query permis
 
 ## Hard Rules
 
-- Subaccount transfers are flagged as dangerous. Never execute without explicit human approval.
+- Subaccount transfers and `subaccount create` are flagged as dangerous. Never execute without explicit human approval — a created subaccount cannot be removed through the API.
 - Never share API keys across subaccounts; create separate keys per subaccount.
 - Verify IIBAN values before initiating transfers; incorrect IIBANs will fail.
 - Disable futures trading on subaccounts that should not trade futures.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

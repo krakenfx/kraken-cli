@@ -1,35 +1,42 @@
-/// Futures WebSocket v1 streaming commands.
-///
-/// Implements challenge-based authentication for private feeds, keepalive ping
-/// every 45 seconds, and bounded reconnect with exponential backoff plus
-/// reconnect safety budgets.
-///
-/// Public feeds: ticker, trade, book
-/// Private feeds: fills, open-orders, open-positions, balances, notifications, account-log
+//! Futures WebSocket streaming commands.
+//!
+//! Futures speaks WS v1, not the spot v2 protocol, so it cannot ride the
+//! `kraken-ws` stack: private feeds authenticate by signing a server-issued
+//! challenge (not a pre-minted token), liveness is a client-side ping, and —
+//! unlike the spot stream's uncapped backoff — reconnects are bounded by
+//! attempt and per-window safety budgets.
+
 use std::collections::VecDeque;
-use std::env;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::Subcommand;
 use futures_util::{SinkExt, StreamExt};
-use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{ClientConfig, DigitallySignedStruct, Error as RustlsError, SignatureScheme};
+use secrecy::ExposeSecret;
 use serde_json::Value;
 use tokio::net::TcpStream;
 use tokio::time::Instant;
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::{HeaderValue, Request};
-use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{
-    connect_async, connect_async_tls_with_config, Connector, MaybeTlsStream, WebSocketStream,
+    MaybeTlsStream, WebSocketStream, connect_async, connect_async_tls_with_config,
 };
 
-use crate::client::FuturesClient;
-use crate::config::FuturesCredentials;
+use super::Execute;
+use super::streaming::streaming_unsupported;
+use crate::cli::AppContext;
+use crate::config::Credentials;
 use crate::errors::{KrakenError, Result};
 use crate::output::{self, CommandOutput};
+
+/// Extract the host portion of a URL for safe logging (avoids leaking full paths/query).
+fn url_host(url: &str) -> &str {
+    let without_scheme = url.split("://").nth(1).unwrap_or(url);
+    without_scheme
+        .split(['/', '?'])
+        .next()
+        .unwrap_or(without_scheme)
+}
 
 const DEFAULT_FUTURES_WS_URL: &str = "wss://futures.kraken.com/ws/v1";
 const MAX_RECONNECTS: u32 = 12;
@@ -113,17 +120,18 @@ fn markets(cmd: &FuturesWsCommand) -> Option<&[String]> {
     }
 }
 
-fn resolve_futures_ws_url() -> String {
-    env::var("KRAKEN_FUTURES_WS_URL").unwrap_or_else(|_| DEFAULT_FUTURES_WS_URL.to_string())
-}
-
+/// Stream a futures WebSocket feed until the connection ends. This is an
+/// interactive/streaming command handled by the dispatcher, not the shared
+/// request/response executor — hence `Result<()>` rather than `CommandOutput`.
 pub(crate) async fn execute(
     cmd: &FuturesWsCommand,
-    _client: &FuturesClient,
-    creds: Option<&FuturesCredentials>,
-    verbose: bool,
-) -> Result<CommandOutput> {
-    let url = resolve_futures_ws_url();
+    creds: Option<&Credentials>,
+    ws_futures_url: Option<&str>,
+    accept_invalid_certs: bool,
+) -> Result<()> {
+    // URL precedence (flag > env) is resolved by clap upstream; the default is
+    // applied here. The scheme is validated regardless of source.
+    let url = ws_futures_url.unwrap_or(DEFAULT_FUTURES_WS_URL).to_string();
     crate::client::validate_url_scheme(&url)?;
 
     let feed = command_to_feed(cmd);
@@ -132,13 +140,21 @@ pub(crate) async fn execute(
         let creds = creds.ok_or_else(|| {
             KrakenError::Auth("Futures credentials required for private WebSocket feeds.".into())
         })?;
-        stream_private(feed, creds, verbose, &url).await?;
+        stream_private(feed, creds, &url, accept_invalid_certs).await?;
     } else {
         let markets = markets(cmd).unwrap_or(&[]);
-        stream_public(feed, markets, verbose, &url).await?;
+        stream_public(feed, markets, &url, accept_invalid_certs).await?;
     }
 
-    Ok(CommandOutput::message("WebSocket stream ended"))
+    Ok(())
+}
+
+impl Execute for FuturesWsCommand {
+    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+        // `futures ws` streams; `dispatch` intercepts it, so only the
+        // render-free executor (the MCP path) can reach this rejection.
+        Err(streaming_unsupported())
+    }
 }
 
 fn build_public_subscribe(feed: &str, markets: &[String]) -> Value {
@@ -153,37 +169,11 @@ fn build_public_subscribe(feed: &str, markets: &[String]) -> Value {
 }
 
 fn ws_handshake_request(url: &str) -> Result<Request<()>> {
-    let mut request = url
-        .into_client_request()
-        .map_err(|e| KrakenError::WebSocket(format!("Invalid WebSocket URL: {e}")))?;
+    let mut request = url.into_client_request()?;
     let headers = request.headers_mut();
-    headers.insert(
-        "User-Agent",
-        HeaderValue::from_str(crate::telemetry::user_agent())
-            .map_err(|e| KrakenError::WebSocket(format!("Invalid header value: {e}")))?,
-    );
-    headers.insert(
-        "X-Kraken-Client",
-        HeaderValue::from_static(crate::telemetry::CLIENT_NAME),
-    );
-    headers.insert(
-        "X-Kraken-Client-Version",
-        HeaderValue::from_static(crate::telemetry::CLIENT_VERSION),
-    );
-    headers.insert(
-        "X-Kraken-Agent-Client",
-        HeaderValue::from_str(crate::telemetry::agent_client())
-            .map_err(|e| KrakenError::WebSocket(format!("Invalid header value: {e}")))?,
-    );
-    headers.insert(
-        "X-Kraken-Instance-Id",
-        HeaderValue::from_str(crate::telemetry::instance_id())
-            .map_err(|e| KrakenError::WebSocket(format!("Invalid header value: {e}")))?,
-    );
-    headers.insert(
-        "x-korigin",
-        HeaderValue::from_static(crate::telemetry::KORIGIN_WS),
-    );
+    for (name, value) in crate::telemetry::ws_handshake_headers() {
+        headers.insert(name, HeaderValue::from_str(value)?);
+    }
     Ok(request)
 }
 
@@ -192,23 +182,15 @@ type WsConnection = (
     tokio_tungstenite::tungstenite::http::Response<Option<Vec<u8>>>,
 );
 
-async fn ws_connect(url: &str) -> Result<WsConnection> {
-    let skip_verify = env::var("KRAKEN_DANGER_ACCEPT_INVALID_CERTS")
-        .map(|v| matches!(v.as_str(), "1" | "true" | "yes"))
-        .unwrap_or(false);
+async fn ws_connect(url: &str, skip_verify: bool) -> Result<WsConnection> {
     let request = ws_handshake_request(url)?;
     let connect = if skip_verify {
-        eprintln!("WARNING: TLS certificate verification is DISABLED for WebSocket connections.");
-        let config = ClientConfig::builder()
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(NoVerify))
-            .with_no_client_auth();
-        let connector = Connector::Rustls(Arc::new(config));
+        let connector = kraken_ws::dangerous_tls_connector();
         connect_async_tls_with_config(request, None, false, Some(connector)).await
     } else {
         connect_async(request).await
     };
-    connect.map_err(|e| KrakenError::WebSocket(format!("Connection failed: {e}")))
+    Ok(connect?)
 }
 
 fn reconnect_jitter_ms() -> u64 {
@@ -246,10 +228,13 @@ async fn enforce_reconnect_budget(reconnect_history: &mut VecDeque<Instant>, lab
             let remaining =
                 Duration::from_secs(RECONNECT_WINDOW_SECS).saturating_sub(oldest.elapsed());
             let wait_for = remaining.saturating_add(Duration::from_millis(reconnect_jitter_ms()));
-            output::warn(&format!(
-                "{label}: reconnect safety budget reached ({MAX_RECONNECTS_PER_WINDOW}/{RECONNECT_WINDOW_SECS}s), waiting {}ms",
-                wait_for.as_millis()
-            ));
+            tracing::warn!(
+                label,
+                max = MAX_RECONNECTS_PER_WINDOW,
+                window_secs = RECONNECT_WINDOW_SECS,
+                wait_ms = wait_for.as_millis() as u64,
+                "reconnect safety budget reached"
+            );
             tokio::time::sleep(wait_for).await;
         }
         prune_reconnect_window(reconnect_history);
@@ -257,36 +242,42 @@ async fn enforce_reconnect_budget(reconnect_history: &mut VecDeque<Instant>, lab
     reconnect_history.push_back(Instant::now());
 }
 
-async fn stream_public(feed: &str, markets: &[String], verbose: bool, url: &str) -> Result<()> {
+async fn stream_public(feed: &str, markets: &[String], url: &str, skip_verify: bool) -> Result<()> {
     let mut reconnect_count = 0u32;
     let mut reconnect_history = VecDeque::new();
 
     loop {
-        if verbose {
-            if reconnect_count > 0 {
-                output::verbose(&format!(
-                    "Reconnecting to {url} (attempt {reconnect_count}/{MAX_RECONNECTS})"
-                ));
-            } else {
-                output::verbose(&format!("Connecting to {url}"));
-            }
+        if reconnect_count > 0 {
+            tracing::debug!(
+                feed,
+                host = url_host(url),
+                reconnect_count,
+                max = MAX_RECONNECTS,
+                "reconnecting"
+            );
+        } else {
+            tracing::info!(feed, host = url_host(url), "connecting");
         }
 
-        let ws_result = ws_connect(url).await;
+        let ws_result = ws_connect(url, skip_verify).await;
         let (mut ws, _) = match ws_result {
             Ok(conn) => conn,
             Err(e) => {
                 if reconnect_count >= MAX_RECONNECTS {
-                    return Err(KrakenError::WebSocket(format!(
+                    return Err(KrakenError::websocket(format!(
                         "Connection failed after {MAX_RECONNECTS} reconnect attempts: {e}"
                     )));
                 }
                 reconnect_count += 1;
                 enforce_reconnect_budget(&mut reconnect_history, "futures-ws-public").await;
                 let backoff = reconnect_backoff_ms(reconnect_count);
-                output::warn(&format!(
-                    "Futures WS connection failed: {e}, retrying in {backoff}ms"
-                ));
+                tracing::warn!(
+                    feed,
+                    reconnect_count,
+                    backoff_ms = backoff,
+                    error = %e,
+                    "connection failed, retrying"
+                );
                 tokio::time::sleep(Duration::from_millis(backoff)).await;
                 continue;
             }
@@ -298,13 +289,11 @@ async fn stream_public(feed: &str, markets: &[String], verbose: bool, url: &str)
         let msg =
             serde_json::to_string(&subscribe).map_err(|e| KrakenError::Parse(e.to_string()))?;
 
-        if verbose {
-            output::verbose(&format!("Subscribing: {msg}"));
-        }
+        tracing::info!(feed, "subscribing");
 
-        ws.send(Message::Text(msg))
+        ws.send(Message::Text(msg.into()))
             .await
-            .map_err(|e| KrakenError::WebSocket(format!("Send failed: {e}")))?;
+            .map_err(|e| KrakenError::websocket(format!("Send failed: {e}")))?;
 
         let shutdown = tokio::signal::ctrl_c();
         tokio::pin!(shutdown);
@@ -318,21 +307,17 @@ async fn stream_public(feed: &str, markets: &[String], verbose: bool, url: &str)
                         Some(Ok(Message::Text(text))) => {
                             if let Some(err_msg) = handle_futures_ws_message(&text) {
                                 let _ = ws.close(None).await;
-                                return Err(KrakenError::WebSocket(format!(
+                                return Err(KrakenError::websocket(format!(
                                     "Futures WS error: {err_msg}"
                                 )));
                             }
                         }
                         Some(Ok(Message::Close(_))) => {
-                            if verbose {
-                                output::verbose("Futures WS closed by server");
-                            }
+                            tracing::debug!(feed, "closed by server");
                             break true;
                         }
                         Some(Err(e)) => {
-                            if verbose {
-                                output::verbose(&format!("Futures WS stream error: {e}"));
-                            }
+                            tracing::debug!(feed, error = %e, "stream error");
                             break true;
                         }
                         None => break true,
@@ -342,14 +327,12 @@ async fn stream_public(feed: &str, markets: &[String], verbose: bool, url: &str)
                 _ = ping_interval.tick() => {
                     let ping = serde_json::json!({"event": "ping"});
                     let payload = serde_json::to_string(&ping).unwrap_or_default();
-                    if ws.send(Message::Text(payload)).await.is_err() {
+                    if ws.send(Message::Text(payload.into())).await.is_err() {
                         break true;
                     }
                 }
                 _ = &mut shutdown => {
-                    if verbose {
-                        output::verbose("Shutting down Futures WS connection");
-                    }
+                    tracing::info!(feed, "shutting down connection");
                     let _ = ws.close(None).await;
                     return Ok(());
                 }
@@ -362,15 +345,24 @@ async fn stream_public(feed: &str, markets: &[String], verbose: bool, url: &str)
             }
             reconnect_count += 1;
             if reconnect_count > MAX_RECONNECTS {
-                return Err(KrakenError::WebSocket(format!(
+                tracing::error!(
+                    feed,
+                    max = MAX_RECONNECTS,
+                    "connection lost after max reconnects"
+                );
+                return Err(KrakenError::websocket(format!(
                     "Futures WS connection lost after {MAX_RECONNECTS} reconnect attempts"
                 )));
             }
             enforce_reconnect_budget(&mut reconnect_history, "futures-ws-public").await;
             let backoff = reconnect_backoff_ms(reconnect_count);
-            output::warn(&format!(
-                "Futures WS disconnected, reconnecting in {backoff}ms ({reconnect_count}/{MAX_RECONNECTS})"
-            ));
+            tracing::warn!(
+                feed,
+                reconnect_count,
+                max = MAX_RECONNECTS,
+                backoff_ms = backoff,
+                "disconnected, reconnecting"
+            );
             tokio::time::sleep(Duration::from_millis(backoff)).await;
         }
     }
@@ -378,39 +370,45 @@ async fn stream_public(feed: &str, markets: &[String], verbose: bool, url: &str)
 
 async fn stream_private(
     feed: &str,
-    creds: &FuturesCredentials,
-    verbose: bool,
+    creds: &Credentials,
     url: &str,
+    skip_verify: bool,
 ) -> Result<()> {
     let mut reconnect_count = 0u32;
     let mut reconnect_history = VecDeque::new();
 
     loop {
-        if verbose {
-            if reconnect_count > 0 {
-                output::verbose(&format!(
-                    "Reconnecting to {url} (attempt {reconnect_count}/{MAX_RECONNECTS})"
-                ));
-            } else {
-                output::verbose(&format!("Connecting to {url}"));
-            }
+        if reconnect_count > 0 {
+            tracing::debug!(
+                feed,
+                host = url_host(url),
+                reconnect_count,
+                max = MAX_RECONNECTS,
+                "reconnecting"
+            );
+        } else {
+            tracing::info!(feed, host = url_host(url), "connecting");
         }
 
-        let ws_result = ws_connect(url).await;
+        let ws_result = ws_connect(url, skip_verify).await;
         let (mut ws, _) = match ws_result {
             Ok(conn) => conn,
             Err(e) => {
                 if reconnect_count >= MAX_RECONNECTS {
-                    return Err(KrakenError::WebSocket(format!(
+                    return Err(KrakenError::websocket(format!(
                         "Connection failed after {MAX_RECONNECTS} reconnect attempts: {e}"
                     )));
                 }
                 reconnect_count += 1;
                 enforce_reconnect_budget(&mut reconnect_history, "futures-ws-private").await;
                 let backoff = reconnect_backoff_ms(reconnect_count);
-                output::warn(&format!(
-                    "Futures WS connection failed: {e}, retrying in {backoff}ms"
-                ));
+                tracing::warn!(
+                    feed,
+                    reconnect_count,
+                    backoff_ms = backoff,
+                    error = %e,
+                    "connection failed, retrying"
+                );
                 tokio::time::sleep(Duration::from_millis(backoff)).await;
                 continue;
             }
@@ -418,32 +416,27 @@ async fn stream_private(
 
         let connected_at = Instant::now();
 
-        // Step 1: Request challenge
         let challenge_request = serde_json::json!({
             "event": "challenge",
-            "api_key": creds.api_key,
+            "api_key": creds.api_key.expose_secret(),
         });
         let challenge_msg = serde_json::to_string(&challenge_request)
             .map_err(|e| KrakenError::Parse(e.to_string()))?;
 
-        if verbose {
-            output::verbose("Requesting challenge for Futures WS auth");
-        }
+        tracing::debug!(feed, "requesting challenge for auth");
 
-        ws.send(Message::Text(challenge_msg))
+        ws.send(Message::Text(challenge_msg.into()))
             .await
-            .map_err(|e| KrakenError::WebSocket(format!("Send challenge failed: {e}")))?;
+            .map_err(|e| KrakenError::websocket(format!("Send challenge failed: {e}")))?;
 
-        // Step 2: Receive challenge
-        let challenge = receive_challenge(&mut ws, verbose).await?;
+        let challenge = receive_challenge(&mut ws).await?;
 
-        // Step 3: Sign challenge and subscribe
         let signed = sign_challenge(&challenge, &creds.api_secret)?;
 
         let subscribe = serde_json::json!({
             "event": "subscribe",
             "feed": feed,
-            "api_key": creds.api_key,
+            "api_key": creds.api_key.expose_secret(),
             "original_challenge": challenge,
             "signed_challenge": signed,
         });
@@ -451,15 +444,11 @@ async fn stream_private(
         let sub_msg =
             serde_json::to_string(&subscribe).map_err(|e| KrakenError::Parse(e.to_string()))?;
 
-        if verbose {
-            output::verbose(&format!(
-                "Subscribing to private feed '{feed}' with signed challenge"
-            ));
-        }
+        tracing::info!(feed, "subscribing (private, signed challenge)");
 
-        ws.send(Message::Text(sub_msg))
+        ws.send(Message::Text(sub_msg.into()))
             .await
-            .map_err(|e| KrakenError::WebSocket(format!("Send subscribe failed: {e}")))?;
+            .map_err(|e| KrakenError::websocket(format!("Send subscribe failed: {e}")))?;
 
         let shutdown = tokio::signal::ctrl_c();
         tokio::pin!(shutdown);
@@ -473,21 +462,17 @@ async fn stream_private(
                         Some(Ok(Message::Text(text))) => {
                             if let Some(err_msg) = handle_futures_ws_message(&text) {
                                 let _ = ws.close(None).await;
-                                return Err(KrakenError::WebSocket(format!(
+                                return Err(KrakenError::websocket(format!(
                                     "Futures WS error: {err_msg}"
                                 )));
                             }
                         }
                         Some(Ok(Message::Close(_))) => {
-                            if verbose {
-                                output::verbose("Futures WS closed by server");
-                            }
+                            tracing::debug!(feed, "closed by server");
                             break true;
                         }
                         Some(Err(e)) => {
-                            if verbose {
-                                output::verbose(&format!("Futures WS stream error: {e}"));
-                            }
+                            tracing::debug!(feed, error = %e, "stream error");
                             break true;
                         }
                         None => break true,
@@ -497,14 +482,12 @@ async fn stream_private(
                 _ = ping_interval.tick() => {
                     let ping = serde_json::json!({"event": "ping"});
                     let payload = serde_json::to_string(&ping).unwrap_or_default();
-                    if ws.send(Message::Text(payload)).await.is_err() {
+                    if ws.send(Message::Text(payload.into())).await.is_err() {
                         break true;
                     }
                 }
                 _ = &mut shutdown => {
-                    if verbose {
-                        output::verbose("Shutting down Futures WS connection");
-                    }
+                    tracing::info!(feed, "shutting down connection");
                     let _ = ws.close(None).await;
                     return Ok(());
                 }
@@ -517,24 +500,30 @@ async fn stream_private(
             }
             reconnect_count += 1;
             if reconnect_count > MAX_RECONNECTS {
-                return Err(KrakenError::WebSocket(format!(
+                tracing::error!(
+                    feed,
+                    max = MAX_RECONNECTS,
+                    "connection lost after max reconnects"
+                );
+                return Err(KrakenError::websocket(format!(
                     "Futures WS connection lost after {MAX_RECONNECTS} reconnect attempts"
                 )));
             }
             enforce_reconnect_budget(&mut reconnect_history, "futures-ws-private").await;
             let backoff = reconnect_backoff_ms(reconnect_count);
-            output::warn(&format!(
-                "Futures WS disconnected, reconnecting in {backoff}ms ({reconnect_count}/{MAX_RECONNECTS})"
-            ));
+            tracing::warn!(
+                feed,
+                reconnect_count,
+                max = MAX_RECONNECTS,
+                backoff_ms = backoff,
+                "disconnected, reconnecting"
+            );
             tokio::time::sleep(Duration::from_millis(backoff)).await;
         }
     }
 }
 
-async fn receive_challenge(
-    ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
-    verbose: bool,
-) -> Result<String> {
+async fn receive_challenge(ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>) -> Result<String> {
     let timeout = tokio::time::sleep(Duration::from_secs(10));
     tokio::pin!(timeout);
 
@@ -545,29 +534,26 @@ async fn receive_challenge(
                     Some(Ok(Message::Text(text))) => {
                         if let Ok(val) = serde_json::from_str::<Value>(&text) {
                             let event = val.get("event").and_then(|e| e.as_str()).unwrap_or("");
-                            if event == "challenge" {
-                                if let Some(message) = val.get("message").and_then(|m| m.as_str()) {
-                                    if verbose {
-                                        output::verbose("Challenge received");
-                                    }
+                            if event == "challenge"
+                                && let Some(message) = val.get("message").and_then(|m| m.as_str()) {
+                                    tracing::debug!("challenge received");
                                     return Ok(message.to_string());
                                 }
-                            }
                             if event == "error" {
                                 let err_msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("unknown");
-                                return Err(KrakenError::WebSocket(format!(
+                                return Err(KrakenError::websocket(format!(
                                     "Challenge request failed: {err_msg}"
                                 )));
                             }
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => {
-                        return Err(KrakenError::WebSocket(
-                            "Connection closed before challenge received".into(),
+                        return Err(KrakenError::websocket(
+                            "Connection closed before challenge received",
                         ));
                     }
                     Some(Err(e)) => {
-                        return Err(KrakenError::WebSocket(format!(
+                        return Err(KrakenError::websocket(format!(
                             "Stream error waiting for challenge: {e}"
                         )));
                     }
@@ -575,8 +561,8 @@ async fn receive_challenge(
                 }
             }
             _ = &mut timeout => {
-                return Err(KrakenError::WebSocket(
-                    "Timed out waiting for challenge response".into(),
+                return Err(KrakenError::websocket(
+                    "Timed out waiting for challenge response",
                 ));
             }
         }
@@ -589,15 +575,15 @@ async fn receive_challenge(
 /// Result is base64-encoded.
 pub(crate) fn sign_challenge(
     challenge: &str,
-    api_secret: &crate::config::SecretValue,
+    api_secret: &secrecy::SecretString,
 ) -> Result<String> {
-    use base64::engine::general_purpose::STANDARD as BASE64;
     use base64::Engine;
-    use hmac::{Hmac, Mac};
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use hmac::{Hmac, KeyInit, Mac};
     use sha2::{Digest, Sha256, Sha512};
 
     let secret_bytes = BASE64
-        .decode(api_secret.expose())
+        .decode(api_secret.expose_secret())
         .map_err(|e| KrakenError::Auth(format!("Failed to decode Futures API secret: {e}")))?;
 
     let sha_digest = Sha256::digest(challenge.as_bytes());
@@ -610,7 +596,9 @@ pub(crate) fn sign_challenge(
     Ok(BASE64.encode(result))
 }
 
-/// Returns `Some(error_message)` when the server sends an error event, `None` otherwise.
+/// Route one inbound frame: control events (pong/subscribed/challenge/info) are
+/// swallowed, data frames render as JSONL on stdout, and a server `error` event
+/// returns its message for the caller to fail the stream on.
 fn handle_futures_ws_message(text: &str) -> Option<String> {
     if let Ok(val) = serde_json::from_str::<Value>(text) {
         let event = val.get("event").and_then(|e| e.as_str()).unwrap_or("");
@@ -624,67 +612,18 @@ fn handle_futures_ws_message(text: &str) -> Option<String> {
         if event == "pong" || event == "subscribed" || event == "challenge" || event == "info" {
             return None;
         }
-        output::json::render_ndjson(&val);
+        output::json::render_jsonl(&val);
     }
     None
 }
 
-#[derive(Debug)]
-struct NoVerify;
-
-impl ServerCertVerifier for NoVerify {
-    fn verify_server_cert(
-        &self,
-        _end_entity: &CertificateDer<'_>,
-        _intermediates: &[CertificateDer<'_>],
-        _server_name: &ServerName<'_>,
-        _ocsp_response: &[u8],
-        _now: UnixTime,
-    ) -> std::result::Result<ServerCertVerified, RustlsError> {
-        Ok(ServerCertVerified::assertion())
-    }
-
-    fn verify_tls12_signature(
-        &self,
-        _message: &[u8],
-        _cert: &CertificateDer<'_>,
-        _dss: &DigitallySignedStruct,
-    ) -> std::result::Result<HandshakeSignatureValid, RustlsError> {
-        Ok(HandshakeSignatureValid::assertion())
-    }
-
-    fn verify_tls13_signature(
-        &self,
-        _message: &[u8],
-        _cert: &CertificateDer<'_>,
-        _dss: &DigitallySignedStruct,
-    ) -> std::result::Result<HandshakeSignatureValid, RustlsError> {
-        Ok(HandshakeSignatureValid::assertion())
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        vec![
-            SignatureScheme::RSA_PKCS1_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA384,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::ECDSA_NISTP256_SHA256,
-            SignatureScheme::ECDSA_NISTP384_SHA384,
-            SignatureScheme::ECDSA_NISTP521_SHA512,
-            SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PSS_SHA384,
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::ED25519,
-            SignatureScheme::ED448,
-        ]
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config::SecretValue;
-    use base64::engine::general_purpose::STANDARD as BASE64;
     use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+    use secrecy::SecretString;
+
+    use super::*;
 
     #[test]
     fn ws_handshake_includes_korigin() {
@@ -698,7 +637,7 @@ mod tests {
 
     #[test]
     fn sign_challenge_deterministic() {
-        let secret = SecretValue::new(BASE64.encode(b"futures_ws_secret_key_32chars!!"));
+        let secret = SecretString::from(BASE64.encode(b"futures_ws_secret_key_32chars!!"));
         let challenge = "test-challenge-uuid-12345";
         let sig1 = sign_challenge(challenge, &secret).unwrap();
         let sig2 = sign_challenge(challenge, &secret).unwrap();
@@ -708,7 +647,7 @@ mod tests {
 
     #[test]
     fn sign_challenge_different_inputs_different_outputs() {
-        let secret = SecretValue::new(BASE64.encode(b"futures_ws_secret_key_32chars!!"));
+        let secret = SecretString::from(BASE64.encode(b"futures_ws_secret_key_32chars!!"));
         let sig1 = sign_challenge("challenge-a", &secret).unwrap();
         let sig2 = sign_challenge("challenge-b", &secret).unwrap();
         assert_ne!(sig1, sig2);
@@ -716,7 +655,7 @@ mod tests {
 
     #[test]
     fn sign_challenge_rejects_invalid_base64_secret() {
-        let secret = SecretValue::new("not-valid-base64!!!".to_string());
+        let secret = SecretString::from("not-valid-base64!!!".to_string());
         assert!(sign_challenge("test", &secret).is_err());
     }
 

@@ -32,3 +32,5 @@ Monitor portfolio value and halt trading if cumulative drawdown from peak exceed
 5. Present drawdown report: peak value, current value, drawdown percentage, orders cancelled
 6. Cancel operations require explicit human approval unless operating at autonomy level 4+
 7. Wait for explicit user instruction before resuming any trading activity
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

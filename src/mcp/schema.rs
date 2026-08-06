@@ -3,7 +3,7 @@
 /// Positional args become explicit named properties. Optional flags become
 /// optional properties. Bool flags become boolean type. All others default
 /// to string type.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(crate) fn clap_command_to_schema(cmd: &clap::Command) -> Value {
     let mut properties = serde_json::Map::new();
@@ -15,7 +15,6 @@ pub(crate) fn clap_command_to_schema(cmd: &clap::Command) -> Value {
             continue;
         }
 
-        // Skip global flags that are handled by the MCP context
         if is_mcp_excluded_arg(id) {
             continue;
         }
@@ -98,10 +97,8 @@ pub(crate) fn inject_dangerous_confirmation(schema: &mut Value) {
     }
     if let Some(req) = schema.get_mut("required").and_then(|r| r.as_array_mut()) {
         req.push(json!("acknowledged"));
-    } else {
-        schema
-            .as_object_mut()
-            .map(|s| s.insert("required".into(), json!(["acknowledged"])));
+    } else if let Some(obj) = schema.as_object_mut() {
+        obj.insert("required".into(), json!(["acknowledged"]));
     }
 }
 
@@ -114,6 +111,8 @@ pub(crate) fn is_mcp_excluded_arg(id: &str) -> bool {
         id,
         "output"
             | "verbose"
+            | "log_format"
+            | "workspace"
             | "api_url"
             | "futures_url"
             | "api_key"
@@ -143,8 +142,9 @@ pub(crate) fn is_mcp_excluded_command(canonical_key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::{Arg, Command};
+
+    use super::*;
 
     fn make_cmd() -> Command {
         Command::new("test")
@@ -233,12 +233,16 @@ mod tests {
                     .long("verbose")
                     .action(clap::ArgAction::SetTrue),
             )
-            .arg(Arg::new("api_key").long("api-key"));
+            .arg(Arg::new("api_key").long("api-key"))
+            .arg(Arg::new("workspace").long("workspace"));
         let schema = clap_command_to_schema(&cmd);
         let props = schema["properties"].as_object().unwrap();
         assert!(props.contains_key("pair"));
         assert!(!props.contains_key("output"));
         assert!(!props.contains_key("api_key"));
+        // `session` and `workspace` are server-startup scoped, never
+        // per-call parameters.
+        assert!(!props.contains_key("workspace"));
     }
 
     #[test]

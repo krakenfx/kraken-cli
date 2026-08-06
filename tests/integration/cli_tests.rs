@@ -3,748 +3,85 @@ use std::fs;
 use assert_cmd::Command;
 use predicates::prelude::*;
 
+use super::common::{config_dir_in, kraken_in};
+
 #[allow(deprecated)]
 fn kraken() -> Command {
-    Command::cargo_bin("kraken").unwrap()
+    let mut cmd = Command::cargo_bin("kraken").unwrap();
+    // Hermetic by default: the retired `KRAKEN_SESSION` is scrubbed for one
+    // release as defense against stale developer environments (the binary
+    // now ignores it, but a set value in CI logs would mislead debugging).
+    cmd.env_remove("KRAKEN_SESSION");
+    cmd
 }
 
-#[test]
-fn help_flag_shows_usage() {
-    kraken()
-        .arg("--help")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Kraken CLI"))
-        .stdout(predicate::str::contains("Usage:"));
+/// [`kraken_in`] with REST pointed at a dead local port, so best-effort
+/// mark-to-market paths (paper status, reconcile) fail fast without ever
+/// opening a live socket.
+fn kraken_offline_in(home: &tempfile::TempDir) -> Command {
+    let mut cmd = kraken_in(home);
+    cmd.env("KRAKEN_SPOT_URL", "https://127.0.0.1:9/")
+        .env("KRAKEN_DANGER_ALLOW_ANY_URL_HOST", "1");
+    cmd
 }
 
-#[test]
-fn version_flag_shows_version() {
-    kraken()
-        .arg("--version")
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("kraken"));
-}
+// --- REPL scope stickiness ---
 
-#[test]
-fn no_args_prints_help() {
-    kraken()
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Usage:"));
-}
-
-#[test]
-fn unknown_command_fails() {
-    kraken().arg("nonexistent-command").assert().failure();
-}
-
-#[test]
-fn order_help_shows_subcommands() {
-    kraken()
-        .args(["order", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("buy"))
-        .stdout(predicate::str::contains("sell"))
-        .stdout(predicate::str::contains("cancel"));
-}
-
-#[test]
-fn futures_help_shows_subcommands() {
-    kraken()
-        .args(["futures", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("instruments"))
-        .stdout(predicate::str::contains("tickers"))
-        .stdout(predicate::str::contains("order"))
-        .stdout(predicate::str::contains("feeschedules"))
-        .stdout(predicate::str::contains("accounts"))
-        .stdout(predicate::str::contains("positions"))
-        .stdout(predicate::str::contains("paper"))
-        .stdout(predicate::str::contains("ws"));
-}
-
-#[test]
-fn futures_edit_order_help_shows_args() {
-    kraken()
-        .args(["futures", "edit-order", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("order-id"));
-}
-
-#[test]
-fn futures_batch_order_help_shows_args() {
-    kraken()
-        .args(["futures", "batch-order", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("json"));
-}
-
-#[test]
-fn futures_cancel_help_shows_args() {
-    kraken()
-        .args(["futures", "cancel", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("order-id"));
-}
-
-#[test]
-fn futures_ws_help_shows_channels() {
-    kraken()
-        .args(["futures", "ws", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("ticker"))
-        .stdout(predicate::str::contains("fills"))
-        .stdout(predicate::str::contains("book"));
-}
-
-#[test]
-fn futures_ws_ticker_help_shows_markets() {
-    kraken()
-        .args(["futures", "ws", "ticker", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("MARKETS").or(predicate::str::contains("Market symbols")));
-}
-
-#[test]
-fn futures_ws_trades_help_shows_markets() {
-    kraken()
-        .args(["futures", "ws", "trades", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("MARKETS").or(predicate::str::contains("Market symbols")));
-}
-
-#[test]
-fn futures_ws_trade_alias_still_works() {
-    kraken()
-        .args(["futures", "ws", "trade", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("Stream futures trades"));
-}
-
-#[test]
-fn futures_ws_trades_requires_markets() {
-    kraken()
-        .args(["futures", "ws", "trades"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("MARKETS").and(predicate::str::contains("required")));
-}
-
-#[test]
-fn futures_ws_ticker_requires_markets() {
-    kraken()
-        .args(["futures", "ws", "ticker"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("MARKETS").and(predicate::str::contains("required")));
-}
-
-#[test]
-fn futures_ws_book_requires_markets() {
-    kraken()
-        .args(["futures", "ws", "book"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("MARKETS").and(predicate::str::contains("required")));
-}
-
-#[test]
-fn ws_help_shows_subcommands() {
-    kraken()
-        .args(["ws", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("ticker"))
-        .stdout(predicate::str::contains("trades"))
-        .stdout(predicate::str::contains("book"))
-        .stdout(predicate::str::contains("executions"))
-        .stdout(predicate::str::contains("balances"))
-        .stdout(predicate::str::contains("instrument"))
-        .stdout(predicate::str::contains("spread").not())
-        .stdout(predicate::str::contains("own-trades").not())
-        .stdout(predicate::str::contains("open-orders").not());
-}
-
-#[test]
-fn mcp_help_shows_safe_default_services() {
-    kraken()
-        .args(["mcp", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("[default: market,account,paper]"));
-}
-
-#[test]
-fn mcp_help_shows_allow_dangerous_flag() {
-    kraken()
-        .args(["mcp", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("--allow-dangerous"))
-        .stdout(predicate::str::contains(
-            "Skip per-call confirmation for dangerous tools",
-        ));
-}
-
-#[test]
-fn auth_help_shows_subcommands() {
-    kraken()
-        .args(["auth", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("set"))
-        .stdout(predicate::str::contains("show"))
-        .stdout(predicate::str::contains("test"))
-        .stdout(predicate::str::contains("reset"));
-}
-
-#[test]
-fn output_flag_accepts_table_and_json() {
-    kraken()
-        .args(["--output", "table", "--help"])
-        .assert()
-        .success();
-
-    kraken()
-        .args(["--output", "json", "--help"])
-        .assert()
-        .success();
-}
-
-#[test]
-fn output_flag_rejects_invalid() {
-    kraken()
-        .args(["--output", "xml", "--help"])
-        .assert()
-        .failure();
-}
-
-#[test]
-fn api_secret_and_stdin_are_mutually_exclusive() {
-    kraken()
-        .args(["--api-secret", "foo", "--api-secret-stdin", "status"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("cannot be used with"));
-}
-
-#[test]
-fn balance_without_credentials_fails() {
-    kraken()
-        .env_remove("KRAKEN_API_KEY")
-        .env_remove("KRAKEN_API_SECRET")
-        .env("HOME", "/nonexistent")
-        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
-        .args(["balance", "--output", "json"])
-        .assert()
-        .failure();
-}
-
-// --- Empty-string env var handling (plugin hosts like Claude Code) ---
-//
-// Plugin hosts pass an empty string for userConfig fields that the user left
-// blank. Credential resolution must treat the empty string as absent and fall
-// through to the next tier, producing the friendly "not configured" error
-// rather than attempting auth with garbage credentials and surfacing a cryptic
-// Kraken API error. These tests exercise the full CLI entry point so both the
-// env-reading logic and the error envelope stay correct end-to-end.
-
-#[test]
-fn spot_both_env_empty_falls_through_to_config_tier() {
-    kraken()
-        .env("KRAKEN_API_KEY", "")
-        .env("KRAKEN_API_SECRET", "")
-        .env("HOME", "/nonexistent")
-        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
-        .args(["balance", "--output", "json"])
-        .assert()
-        .failure()
-        .stdout(predicate::str::contains("No Spot API credentials found"))
-        // No mismatched-pair warning when both are treated as absent.
-        .stderr(predicate::str::contains("KRAKEN_API_KEY is set").not())
-        .stderr(predicate::str::contains("KRAKEN_API_SECRET is set").not());
-}
-
-#[test]
-fn spot_empty_key_with_real_secret_warns_and_falls_through() {
-    kraken()
-        .env("KRAKEN_API_KEY", "")
-        .env("KRAKEN_API_SECRET", "real-secret-value")
-        .env("HOME", "/nonexistent")
-        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
-        .args(["balance", "--output", "json"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "KRAKEN_API_SECRET is set but KRAKEN_API_KEY is missing",
-        ))
-        .stdout(predicate::str::contains("No Spot API credentials found"));
-}
-
-#[test]
-fn spot_real_key_with_empty_secret_warns_and_falls_through() {
-    kraken()
-        .env("KRAKEN_API_KEY", "real-key-value")
-        .env("KRAKEN_API_SECRET", "")
-        .env("HOME", "/nonexistent")
-        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
-        .args(["balance", "--output", "json"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "KRAKEN_API_KEY is set but KRAKEN_API_SECRET is missing",
-        ))
-        .stdout(predicate::str::contains("No Spot API credentials found"));
-}
-
-#[test]
-fn futures_both_env_empty_falls_through_to_config_tier() {
-    kraken()
-        .env("KRAKEN_FUTURES_API_KEY", "")
-        .env("KRAKEN_FUTURES_API_SECRET", "")
-        .env("HOME", "/nonexistent")
-        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
-        .args(["futures", "accounts", "--output", "json"])
-        .assert()
-        .failure()
-        .stdout(predicate::str::contains("No Futures API credentials found"))
-        .stderr(predicate::str::contains("KRAKEN_FUTURES_API_KEY is set").not())
-        .stderr(predicate::str::contains("KRAKEN_FUTURES_API_SECRET is set").not());
-}
-
-#[test]
-fn futures_empty_key_with_real_secret_warns_and_falls_through() {
-    kraken()
-        .env("KRAKEN_FUTURES_API_KEY", "")
-        .env("KRAKEN_FUTURES_API_SECRET", "real-secret-value")
-        .env("HOME", "/nonexistent")
-        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
-        .args(["futures", "accounts", "--output", "json"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "KRAKEN_FUTURES_API_SECRET is set but KRAKEN_FUTURES_API_KEY is missing",
-        ))
-        .stdout(predicate::str::contains("No Futures API credentials found"));
-}
-
-#[test]
-fn futures_real_key_with_empty_secret_warns_and_falls_through() {
-    kraken()
-        .env("KRAKEN_FUTURES_API_KEY", "real-key-value")
-        .env("KRAKEN_FUTURES_API_SECRET", "")
-        .env("HOME", "/nonexistent")
-        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
-        .args(["futures", "accounts", "--output", "json"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains(
-            "KRAKEN_FUTURES_API_KEY is set but KRAKEN_FUTURES_API_SECRET is missing",
-        ))
-        .stdout(predicate::str::contains("No Futures API credentials found"));
-}
-
-#[test]
-fn auth_show_masks_api_key() {
-    // `auth show` must never expose either the full key or the secret
-    // in either renderer:
-    //
-    // - Table mode: api_key renders as a last-4 mask (`****7890`), so
-    //   an operator with multiple keys can tell them apart without
-    //   giving up correlation material; api_secret renders as the
-    //   literal `[REDACTED]` token so screen-shares and paste-to-Slack
-    //   cannot exfiltrate any secret prefix.
-    //
-    // - JSON mode: both fields render as structured
-    //   `{present, masked}` objects. `masked` never contains the full
-    //   material, and `api_secret.masked` is the fixed `[REDACTED]`
-    //   string. Structured output lets scripts branch on presence
-    //   without parsing a masked string and keeps log-scrubbers that
-    //   match on `[REDACTED]` working.
-    let dir = tempfile::tempdir().unwrap();
-    let api_key = "supersecretapikey1234567890";
-    let api_secret = "supersecretsecretvalue1234";
-
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+/// A workspace for REPL scope tests: created via the real command so the
+/// existence gate passes.
+fn create_workspace(home: &tempfile::TempDir, name: &str) {
+    kraken_in(home)
         .args([
-            "auth",
-            "set",
-            "--api-key",
-            api_key,
-            "--api-secret",
-            api_secret,
+            "workspace",
+            "create",
+            name,
+            "--capital",
+            "1000",
+            "--mode",
+            "paper",
+            "-o",
+            "json",
         ])
         .assert()
         .success();
+}
 
-    // Table mode.
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["auth", "show"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains(api_key).not())
-        .stdout(predicate::str::contains(api_secret).not())
-        // Last-4 mask for the api_key.
-        .stdout(predicate::str::contains("****7890"))
-        // Regression guard against first-4+last-4 (`supe...`).
-        .stdout(predicate::str::contains("supe...").not())
-        // Secret appears only as the fixed redaction token.
-        .stdout(predicate::str::contains("[REDACTED]"));
-
-    // JSON mode.
-    let output = kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["auth", "show", "--output", "json"])
+#[test]
+fn repl_env_workspace_does_not_override_startup_workspace_flag() {
+    // `kraken shell --workspace w1` with $KRAKEN_WORKSPACE=w2 exported: the
+    // explicit startup flag wins; the constant env must not silently
+    // re-scope every line.
+    let home = tempfile::tempdir().unwrap();
+    create_workspace(&home, "w1");
+    create_workspace(&home, "w2");
+    let out = kraken_in(&home)
+        .env("KRAKEN_WORKSPACE", "w2")
+        .args(["shell", "--workspace", "w1"])
+        .write_stdin("paper balance -o json\n")
         .output()
         .unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        !stdout.contains(api_key),
-        "JSON output leaked full api_key: {stdout}"
-    );
-    assert!(
-        !stdout.contains(api_secret),
-        "JSON output leaked full api_secret: {stdout}"
-    );
-    assert!(
-        !stdout.contains("supe...") && !stdout.contains("supersecret"),
-        "JSON output leaked api_key prefix: {stdout}"
-    );
-
-    // Structural assertions on the JSON. Parsing ensures we hit the
-    // exact contract downstream scripts depend on, not just string
-    // substring matches that would also pass on a malformed shape.
-    let parsed: serde_json::Value =
-        serde_json::from_str(&stdout).expect("auth show --output json must emit valid JSON");
-    let data = parsed
-        .get("data")
-        .or(Some(&parsed))
-        .unwrap_or(&parsed)
-        .clone();
-    // Tolerate both flat and nested JSON envelopes; find the fields
-    // wherever the output renderer puts them.
-    let find = |key: &str| -> serde_json::Value {
-        if let Some(v) = data.get(key) {
-            return v.clone();
-        }
-        if let Some(v) = parsed.get(key) {
-            return v.clone();
-        }
-        serde_json::Value::Null
-    };
-    let api_key_json = find("api_key");
-    let api_secret_json = find("api_secret");
-
-    assert_eq!(
-        api_key_json.get("present").and_then(|v| v.as_bool()),
-        Some(true),
-        "api_key.present should be true: {stdout}"
-    );
-    let masked_key = api_key_json
-        .get("masked")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
-    assert!(
-        masked_key.ends_with("7890"),
-        "api_key.masked should end with last-4: got {masked_key}"
-    );
-    assert!(
-        !masked_key.contains("supe") && !masked_key.contains("supersecret"),
-        "api_key.masked leaked prefix: {masked_key}"
-    );
-
-    assert_eq!(
-        api_secret_json.get("present").and_then(|v| v.as_bool()),
-        Some(true),
-        "api_secret.present should be true: {stdout}"
-    );
-    assert_eq!(
-        api_secret_json.get("masked").and_then(|v| v.as_str()),
-        Some("[REDACTED]"),
-        "api_secret.masked should be the fixed [REDACTED] token: {stdout}"
+        stdout.contains("\"workspace\":\"w1\""),
+        "startup flag wins over env: {stdout}"
     );
 }
 
 #[test]
-fn json_error_is_valid_json() {
-    let output = kraken()
-        .env_remove("KRAKEN_API_KEY")
-        .env_remove("KRAKEN_API_SECRET")
-        .env("HOME", "/nonexistent")
-        .env("XDG_CONFIG_HOME", "/nonexistent/xdg")
-        .args(["balance", "--output", "json"])
+fn repl_per_line_workspace_flag_overrides_startup_workspace() {
+    let home = tempfile::tempdir().unwrap();
+    create_workspace(&home, "w1");
+    create_workspace(&home, "w2");
+    let out = kraken_in(&home)
+        .args(["shell", "--workspace", "w1"])
+        .write_stdin("paper balance --workspace w2 -o json\n")
         .output()
         .unwrap();
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.is_empty() {
-        let parsed: serde_json::Value = serde_json::from_str(&stdout)
-            .unwrap_or_else(|_| panic!("Expected valid JSON, got: {stdout}"));
-        assert!(
-            parsed.get("error").is_some(),
-            "Expected error field in JSON"
-        );
-    }
-}
-
-#[test]
-fn earn_help_shows_subcommands() {
-    kraken()
-        .args(["earn", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("allocate"))
-        .stdout(predicate::str::contains("strategies"));
-}
-
-#[test]
-fn deposit_help_shows_subcommands() {
-    kraken()
-        .args(["deposit", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("methods"))
-        .stdout(predicate::str::contains("addresses"))
-        .stdout(predicate::str::contains("status"));
-}
-
-#[test]
-fn withdrawal_help_shows_subcommands() {
-    kraken()
-        .args(["withdrawal", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("methods"))
-        .stdout(predicate::str::contains("addresses"))
-        .stdout(predicate::str::contains("cancel"));
-}
-
-#[test]
-fn auth_set_futures_secret_requires_futures_key() {
-    kraken()
-        .args([
-            "auth",
-            "set",
-            "--api-key",
-            "spot-key",
-            "--api-secret",
-            "spot-secret",
-            "--futures-api-secret",
-            "orphan-secret",
-        ])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--futures-api-key"));
-}
-
-#[test]
-fn auth_set_futures_secret_stdin_requires_futures_key() {
-    kraken()
-        .args([
-            "auth",
-            "set",
-            "--api-key",
-            "spot-key",
-            "--api-secret",
-            "spot-secret",
-            "--futures-api-secret-stdin",
-        ])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--futures-api-key"));
-}
-
-#[test]
-fn auth_set_futures_secret_file_requires_futures_key() {
-    kraken()
-        .args([
-            "auth",
-            "set",
-            "--api-key",
-            "spot-key",
-            "--api-secret",
-            "spot-secret",
-            "--futures-api-secret-file",
-            "/tmp/nonexistent",
-        ])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--futures-api-key"));
-}
-
-// --- Paper Trading tests ---
-
-#[test]
-fn paper_help_shows_subcommands() {
-    kraken()
-        .args(["paper", "--help"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("init"))
-        .stdout(predicate::str::contains("reset"))
-        .stdout(predicate::str::contains("balance"))
-        .stdout(predicate::str::contains("buy"))
-        .stdout(predicate::str::contains("sell"))
-        .stdout(predicate::str::contains("orders"))
-        .stdout(predicate::str::contains("cancel"))
-        .stdout(predicate::str::contains("cancel-all"))
-        .stdout(predicate::str::contains("history"))
-        .stdout(predicate::str::contains("status"));
-}
-
-#[test]
-fn paper_init_table_output_labeled() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("[PAPER]"));
-}
-
-#[test]
-fn paper_init_json_output_labeled() {
-    let dir = tempfile::tempdir().unwrap();
-    let output = kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init", "--output", "json"])
-        .output()
-        .unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("\"mode\""),
-        "JSON output must contain mode field"
+        stdout.contains("\"workspace\":\"w2\""),
+        "explicit per-line flag re-scopes that line: {stdout}"
     );
-    assert!(stdout.contains("\"paper\""), "JSON mode must be paper");
-}
-
-#[test]
-fn paper_balance_table_labeled() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
-        .assert()
-        .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "balance"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("[PAPER]"));
-}
-
-#[test]
-fn paper_history_table_labeled() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
-        .assert()
-        .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "history"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("[PAPER]"));
-}
-
-#[test]
-fn paper_status_table_labeled() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
-        .assert()
-        .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "status"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("[PAPER]"));
-}
-
-#[test]
-fn paper_status_json_output_labeled() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
-        .assert()
-        .success();
-    let output = kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "status", "--output", "json"])
-        .output()
-        .unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("\"mode\""),
-        "JSON output must contain mode field"
-    );
-    assert!(stdout.contains("\"paper\""), "JSON mode must be paper");
-    assert!(
-        stdout.contains("\"valuation_complete\""),
-        "JSON must include valuation_complete"
-    );
-}
-
-#[test]
-fn paper_init_prevents_double_init() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
-        .assert()
-        .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
-        .assert()
-        .failure();
-}
-
-#[test]
-fn paper_commands_fail_without_init() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "balance"])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("not initialized"));
 }
 
 // --- URL override rejection tests (REQ-005, REQ-020) ---
@@ -830,135 +167,120 @@ fn env_var_futures_url_override_used() {
         .stderr(predicate::str::contains("futures.kraken.com/override-test"));
 }
 
-// --- Paper Trading: additional integration tests ---
-
 #[test]
 fn paper_commands_work_after_failed_auth() {
-    let dir = tempfile::tempdir().unwrap();
-    // First, a real auth command fails (no credentials)
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
         .env_remove("KRAKEN_API_KEY")
         .env_remove("KRAKEN_API_SECRET")
         .args(["balance"])
         .assert()
         .failure();
 
-    // Paper init should still work
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+    kraken_in(&home)
         .env_remove("KRAKEN_API_KEY")
         .env_remove("KRAKEN_API_SECRET")
-        .args(["paper", "init"])
+        .args(["paper", "init", "w1"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("[PAPER]"));
+        .stdout(predicate::str::contains("w1"));
 
-    // Paper balance should work
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+    kraken_in(&home)
         .env_remove("KRAKEN_API_KEY")
         .env_remove("KRAKEN_API_SECRET")
-        .args(["paper", "balance"])
+        .args(["paper", "balance", "w1"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("[PAPER]"));
+        .stdout(predicate::str::contains("USD"));
 }
 
 #[test]
 fn paper_market_buy_fails_gracefully_without_network() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
+        .args(["paper", "init", "w1"])
         .assert()
         .success();
 
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .env("KRAKEN_SPOT_URL", "https://api.kraken.com/override-test/")
-        .args(["paper", "buy", "BTCUSD", "0.1"])
+    kraken_offline_in(&home)
+        .args(["--workspace", "w1", "paper", "buy", "BTCUSD", "0.1"])
         .assert()
         .failure();
 }
 
 #[test]
 fn paper_market_sell_fails_gracefully_without_network() {
-    let dir = tempfile::tempdir().unwrap();
-    let config_dir = dir.path().join(".config").join("kraken");
-    let paper_dir = config_dir.join("paper");
-    fs::create_dir_all(&paper_dir).unwrap();
-
-    // Create a paper state with some BTC
-    let state = serde_json::json!({
-        "balances": {"USD": 5000.0, "BTC": 1.0},
-        "reserved": {},
-        "open_orders": [],
-        "filled_trades": [],
-        "starting_balance": 10000.0,
-        "starting_currency": "USD",
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z",
-        "next_order_id": 1
-    });
+    let home = tempfile::tempdir().unwrap();
+    let ws_dir = config_dir_in(&home).join("workspaces").join("w1");
+    fs::create_dir_all(&ws_dir).unwrap();
     fs::write(
-        paper_dir.join("state.json"),
-        serde_json::to_string_pretty(&state).unwrap(),
+        ws_dir.join("workspace.json"),
+        r#"{"workspace_version":"1.0","cli_version":"0.0.0-test","name":"w1","capital":"5000.0","currency":"USD","mode":"paper","fee_rate":"0.0026","slippage_rate":"0.0","created_at":"2026-01-01T00:00:00Z"}"#,
     )
     .unwrap();
 
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+    // A hand-written account journal with BTC holdings — also pins the on-disk
+    // wire format: any drift in the record envelope or event shapes breaks
+    // this fixture loudly.
+    let log = concat!(
+        r#"{"v":1,"ts":"2026-01-01T00:00:00+00:00","origin":"cli","event":"initialized","balance":"5000.0","currency":"USD","fee_rate":"0.0026","slippage_rate":"0.0"}"#,
+        "\n",
+        r#"{"v":1,"ts":"2026-01-02T00:00:00+00:00","origin":"cli","event":"order_filled","trade":{"id":"PAPER-00002","order_id":"PAPER-00001","pair":"BTCUSD","base":"BTC","quote":"USD","side":"buy","volume":"1.0","price":"4000.0","fee":"10.4","cost":"4000.0","filled_at":"2026-01-02T00:00:00+00:00"}}"#,
+        "\n"
+    );
+    fs::write(ws_dir.join("journal.jsonl"), log).unwrap();
+
+    // The funded holdings make the market sell reach the price fetch; the
+    // unroutable venue makes that fetch fail — graceful error, no fill.
+    kraken_in(&home)
         .env("KRAKEN_SPOT_URL", "https://api.kraken.com/override-test/")
-        .args(["paper", "sell", "BTCUSD", "0.05"])
+        .args(["--workspace", "w1", "paper", "sell", "BTCUSD", "0.05"])
         .assert()
         .failure();
 }
 
 #[test]
-fn paper_state_in_subdirectory() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+fn paper_init_state_lives_under_the_workspaces_tree() {
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
+        .args(["paper", "init", "w1"])
         .assert()
         .success();
 
-    // On macOS dirs::config_dir() = HOME/Library/Application Support;
-    // on Linux it respects XDG_CONFIG_HOME.
-    let mac_path = dir
-        .path()
-        .join("Library/Application Support/kraken/paper/state.json");
-    let xdg_path = dir.path().join(".config/kraken/paper/state.json");
+    let ws = config_dir_in(&home).join("workspaces").join("w1");
     assert!(
-        mac_path.exists() || xdg_path.exists(),
-        "State file must be at kraken/paper/state.json; checked {mac_path:?} and {xdg_path:?}"
+        ws.join("workspace.json").exists(),
+        "init must write the workspace manifest at {ws:?}"
+    );
+    assert!(
+        ws.join("journal.jsonl").exists(),
+        "init must seed the workspace journal at {ws:?}"
     );
 
-    let mac_legacy = dir
-        .path()
-        .join("Library/Application Support/kraken/paper.json");
-    let xdg_legacy = dir.path().join(".config/kraken/paper.json");
-    assert!(
-        !mac_legacy.exists() && !xdg_legacy.exists(),
-        "Legacy paper.json must not exist after fresh init"
-    );
+    // The retired flat spot account and the pre-workspace layouts must not
+    // reappear (paper/ itself may exist later, but only for futures state).
+    for legacy in ["paper/events.jsonl", "paper/state.json", "paper.json"] {
+        assert!(
+            !config_dir_in(&home).join(legacy).exists(),
+            "legacy state file must not exist after fresh init: {legacy}"
+        );
+    }
 }
 
 #[test]
 fn paper_init_custom_balance_and_currency() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init", "--balance", "5000", "--currency", "EUR"])
+    let home = tempfile::tempdir().unwrap();
+    // `--balance` survives as an alias of `--capital`.
+    kraken_in(&home)
+        .args([
+            "paper",
+            "init",
+            "w1",
+            "--balance",
+            "5000",
+            "--currency",
+            "EUR",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains("5000"))
@@ -967,70 +289,71 @@ fn paper_init_custom_balance_and_currency() {
 
 #[test]
 fn paper_init_json_output_parsed() {
-    let dir = tempfile::tempdir().unwrap();
-    let output = kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init", "--output", "json"])
+    // The JSON output is the WorkspaceManifest verbatim; money fields are
+    // Decimal strings, never floats.
+    let home = tempfile::tempdir().unwrap();
+    let output = kraken_in(&home)
+        .args(["paper", "init", "w1", "--output", "json"])
         .output()
         .unwrap();
     assert!(output.status.success());
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output must be valid JSON");
+    assert_eq!(json["workspace_version"], "1.0");
+    assert_eq!(json["name"], "w1");
     assert_eq!(json["mode"], "paper");
-    assert_eq!(json["starting_balance"], 10000.0);
+    assert_eq!(json["capital"], "10000");
+    assert_eq!(json["currency"], "USD");
+    assert_eq!(json["fee_rate"], "0.0026");
+    assert_eq!(json["slippage_rate"], "0");
 }
 
 #[test]
-fn paper_reset_works() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+fn paper_reset_returns_to_manifest_capital() {
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
+        .args(["paper", "init", "w1", "--capital", "10000"])
         .assert()
         .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "reset"])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("[PAPER]"))
-        .stdout(predicate::str::contains("reset"));
+    // Reset is destructive-confirmed; `--yes` stands in for the prompt.
+    let output = kraken_in(&home)
+        .args(["--yes", "paper", "reset", "w1", "-o", "json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output must be valid JSON");
+    assert_eq!(json["group"], "workspace");
+    assert_eq!(json["type"], "reset");
+    assert_eq!(json["workspace"], "w1");
+    assert_eq!(json["capital"], "10000");
+    assert_eq!(json["currency"], "USD");
 }
 
 #[test]
 fn paper_orders_shows_empty_table() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
+        .args(["paper", "init", "w1"])
         .assert()
         .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "orders"])
+    kraken_in(&home)
+        .args(["--workspace", "w1", "paper", "orders"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("[PAPER]"));
+        .stdout(predicate::str::contains("[PAPER]"))
+        .stdout(predicate::str::contains("No open orders"));
 }
 
 #[test]
 fn paper_cancel_all_without_orders() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
+        .args(["paper", "init", "w1"])
         .assert()
         .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "cancel-all"])
+    kraken_in(&home)
+        .args(["--workspace", "w1", "paper", "cancel-all"])
         .assert()
         .success()
         .stdout(predicate::str::contains("[PAPER]"));
@@ -1038,76 +361,62 @@ fn paper_cancel_all_without_orders() {
 
 #[test]
 fn paper_cancel_nonexistent_order_fails() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
+        .args(["paper", "init", "w1"])
         .assert()
         .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "cancel", "PAPER-99999"])
+    kraken_in(&home)
+        .args(["--workspace", "w1", "paper", "cancel", "PAPER-99999"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("not found"));
 }
 
 #[test]
-fn paper_status_fails_without_init() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+fn bare_paper_status_targets_the_unfunded_global_account() {
+    // With no workspace in scope, status addresses the
+    // global paper account; before any init that account does not exist.
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
         .args(["paper", "status"])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("not initialized"));
+        .stderr(predicate::str::contains("Workspace 'global' not found"));
 }
 
 #[test]
 fn paper_market_buy_fails_gracefully_with_error_message() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
+        .args(["paper", "init", "w1"])
         .assert()
         .success();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .env("KRAKEN_SPOT_URL", "https://api.kraken.com/override-test/")
-        .args(["paper", "buy", "BTCUSD", "0.1"])
+    kraken_offline_in(&home)
+        .args(["--workspace", "w1", "paper", "buy", "BTCUSD", "0.1"])
         .assert()
         .failure()
-        .stderr(predicate::str::is_empty().not());
+        .stderr(predicate::str::contains("Error"));
 }
 
 #[test]
 fn paper_status_json_output_parsed() {
-    let dir = tempfile::tempdir().unwrap();
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+    let home = tempfile::tempdir().unwrap();
+    kraken_in(&home)
+        .args(["paper", "init", "w1"])
         .assert()
         .success();
-    let output = kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "status", "--output", "json"])
+    let output = kraken_offline_in(&home)
+        .args(["paper", "status", "w1", "--output", "json"])
         .output()
         .unwrap();
     assert!(output.status.success());
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output must be valid JSON");
     assert_eq!(json["mode"], "paper");
+    assert_eq!(json["workspace"], "w1");
     assert!(json["valuation_complete"].is_boolean());
 }
-
-// --- Futures Paper Trading integration tests ---
 
 #[test]
 fn futures_paper_help_shows_subcommands() {
@@ -1527,37 +836,35 @@ fn futures_paper_state_in_correct_path() {
 
 #[test]
 fn futures_paper_state_isolated_from_spot() {
-    let dir = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
 
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "init"])
+    kraken_in(&home)
+        .args(["paper", "init", "w1"])
         .assert()
         .success();
 
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+    kraken_in(&home)
         .args(["futures", "paper", "init"])
         .assert()
         .success();
 
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
-        .args(["paper", "balance"])
+    kraken_in(&home)
+        .args(["paper", "balance", "w1"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("[PAPER]"));
+        .stdout(predicate::str::contains("USD"));
 
-    kraken()
-        .env("HOME", dir.path())
-        .env("XDG_CONFIG_HOME", dir.path().join(".config"))
+    kraken_in(&home)
         .args(["futures", "paper", "balance"])
         .assert()
         .success()
         .stdout(predicate::str::contains("[FUTURES PAPER]"));
+
+    // Futures keeps its flat paper/ state file; the spot account lives in the
+    // workspace tree, so the retired flat spot journal must not reappear.
+    let cfg = config_dir_in(&home);
+    assert!(cfg.join("paper/futures_state.json").exists());
+    assert!(!cfg.join("paper/events.jsonl").exists());
 }
 
 #[test]
@@ -1640,4 +947,132 @@ fn futures_paper_sell_fails_gracefully_without_network() {
         .assert()
         .failure()
         .stderr(predicate::str::is_empty().not());
+}
+
+// --- event-sourced account log ---
+
+/// The ticket's acceptance flow, fully offline: init, a resting limit buy, a
+/// cancel, and a rejected order against a workspace must reconstruct the full
+/// ordered lifecycle from the workspace's `journal.jsonl` alone.
+#[test]
+fn account_log_reconstructs_order_lifecycle_in_order() {
+    let home = tempfile::tempdir().unwrap();
+    let run = |args: &[&str]| {
+        // Reconcile's price fetch must fail fast and gracefully offline.
+        let mut cmd = kraken_offline_in(&home);
+        cmd.args(args);
+        cmd
+    };
+
+    run(&["paper", "init", "w1", "--capital", "10000"])
+        .assert()
+        .success();
+    run(&[
+        "--workspace",
+        "w1",
+        "paper",
+        "buy",
+        "BTCUSD",
+        "0.1",
+        "--type",
+        "limit",
+        "--price",
+        "1.0",
+    ])
+    .assert()
+    .success();
+    run(&["--workspace", "w1", "paper", "cancel", "PAPER-00001"])
+        .assert()
+        .success();
+    // Oversized reserve -> engine rejection, recorded on the log.
+    run(&[
+        "--workspace",
+        "w1",
+        "paper",
+        "buy",
+        "BTCUSD",
+        "1000000",
+        "--type",
+        "limit",
+        "--price",
+        "1.0",
+    ])
+    .assert()
+    .failure();
+
+    let log_path = config_dir_in(&home)
+        .join("workspaces")
+        .join("w1")
+        .join("journal.jsonl");
+    let records: Vec<serde_json::Value> = fs::read_to_string(&log_path)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+
+    let events: Vec<&str> = records
+        .iter()
+        .map(|r| r["event"].as_str().unwrap())
+        .collect();
+    // Init (workspace create) seeds only the capital epoch — it is account
+    // provisioning, not a trade command, so it writes no command audit entry.
+    assert_eq!(
+        events,
+        [
+            "initialized",
+            "order_submitted",
+            "command",
+            "order_cancelled",
+            "command",
+            "order_rejected",
+            "command",
+        ],
+        "full log: {records:#?}"
+    );
+
+    // The lifecycle joins by order id, and the cancel's timestamp is the
+    // record's own — the information the snapshot could never hold.
+    assert_eq!(records[1]["order"]["id"], "PAPER-00001");
+    assert_eq!(records[3]["order"]["id"], "PAPER-00001");
+    assert!(records[3]["ts"].as_str().unwrap() >= records[1]["ts"].as_str().unwrap());
+    assert_eq!(records[5]["category"], "validation");
+    assert_eq!(records[6]["outcome"]["result"], "err");
+    // Command audit entries carry origin and post-command balances.
+    assert_eq!(records[2]["origin"], "cli");
+    assert_eq!(records[2]["balances"]["USD"], 10000.0);
+}
+
+#[test]
+fn ws_symbol_channels_require_at_least_one_pair() {
+    // An empty pairs list used to open a socket that subscribed to nothing and idled
+    // forever (the server answers with silence, not a rejection); the parser now
+    // refuses it up front. `instrument` stays pair-less by design: whole catalogue.
+    for channel in ["ticker", "trades", "book", "ohlc", "level3"] {
+        kraken()
+            .args(["ws", channel])
+            .assert()
+            .failure()
+            .code(2)
+            .stderr(predicate::str::contains("PAIRS"));
+    }
+    // With -o json the same refusal keeps the machine contract: a validation
+    // envelope on stdout, still exit 2.
+    kraken()
+        .args(["ws", "ticker", "-o", "json"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains(r#""error":"validation""#));
+}
+
+#[test]
+fn env_var_rejects_zero_ws_reconnect_base() {
+    // Zero is the fixed point of the multiplicative backoff (0*2=0): the schedule
+    // would never escalate and a down venue would be dialed in a hot loop.
+    kraken()
+        .env("KRAKEN_WS_RECONNECT_BASE_MS", "0")
+        .args(["ws", "ticker", "BTC/USD"])
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(predicate::str::contains("1.."));
 }

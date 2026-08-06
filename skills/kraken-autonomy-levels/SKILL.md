@@ -35,10 +35,11 @@ The agent can inform, alert, and recommend. It cannot place orders, cancel order
 The agent tests strategies against live prices with zero risk. No API key needed.
 
 ```bash
-kraken paper init --balance 10000 -o json 2>/dev/null
+kraken workspace create sandbox --capital 10000 --mode paper -o json 2>/dev/null
+export KRAKEN_WORKSPACE=sandbox
 kraken paper buy BTCUSD 0.01 -o json 2>/dev/null
-kraken paper status -o json 2>/dev/null
-kraken paper reset -o json 2>/dev/null
+kraken workspace status -o json 2>/dev/null
+kraken workspace reset -o json --yes 2>/dev/null
 ```
 
 Run paper strategies repeatedly. Compare results across parameter changes. Only move to Level 3 after consistent paper performance.
@@ -129,3 +130,5 @@ This level is rare and high-risk. Only appropriate when:
 ## Progression Rule
 
 Move to the next level only after the agent demonstrates consistent behavior at the current level. Paper trading (Level 2) for at least a week before supervised trading (Level 3). Supervised trading for at least a week before autonomous (Level 4).
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

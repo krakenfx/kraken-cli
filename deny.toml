@@ -1,0 +1,33 @@
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+allow = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+deny = [
+  # reqwest and tokio-tungstenite are already on their rustls backends; keep
+  # a future dep from dragging native TLS back into the graph.
+  { crate = "openssl-sys", reason = "rustls-only TLS stack" },
+  { crate = "native-tls", reason = "rustls-only TLS stack" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

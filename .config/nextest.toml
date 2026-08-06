@@ -1,0 +1,3 @@
+# Emits JUnit for GitLab's MR test widget (wired up in .gitlab-ci.yml).
+[profile.ci.junit]
+path = "junit.xml"

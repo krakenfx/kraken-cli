@@ -1,6 +1,6 @@
 # Skills Index
 
-50 agent skills for `kraken-cli`, organized by category. Covers spot and futures paper trading, live trading, and portfolio management.
+59 agent skills for spot, futures, paper trading, live trading, and portfolio management.
 
 ## Core
 
@@ -38,6 +38,7 @@ Order execution, position management, and spot paper testing.
 | [kraken-fee-optimization](./kraken-fee-optimization/SKILL.md) | Minimize fees through maker orders, volume tiers, and fee currency selection. |
 | [kraken-paper-strategy](./kraken-paper-strategy/SKILL.md) | Test spot strategies on paper trading before live deployment. |
 | [kraken-paper-to-live](./kraken-paper-to-live/SKILL.md) | Promote validated paper strategies (spot and futures) to live trading. |
+| [kraken-playground](./kraken-playground/SKILL.md) | Drive recorded paper-trading sessions (and the one-command playground demo) to test a hypothesis on live prices. |
 | [kraken-risk-operations](./kraken-risk-operations/SKILL.md) | Operational risk controls for live agent trading sessions. |
 
 ## Futures
@@ -85,6 +86,18 @@ Balance analysis, P&L tracking, subaccounts, and exports.
 ## Recipes
 
 Multi-step workflows combining multiple skills.
+
+### Playground Recipes
+
+| Skill | Description |
+|-------|-------------|
+| [recipe-playground-dca](./recipe-playground-dca/SKILL.md) | Example driver: drive a time-based dollar-cost-averaging hypothesis into a recorded session. |
+| [recipe-playground-dca-triggered](./recipe-playground-dca-triggered/SKILL.md) | Example driver: dip-triggered dollar-cost-averaging on a live WebSocket stream, recorded to a session. |
+| [recipe-playground-rebalance](./recipe-playground-rebalance/SKILL.md) | Example driver: drive a portfolio-rebalance hypothesis into a recorded session. |
+| [recipe-playground-price-alert](./recipe-playground-price-alert/SKILL.md) | Example driver: drive a price-level-alert hypothesis into a recorded session. |
+| [recipe-playground-webhook](./recipe-playground-webhook/SKILL.md) | Example driver: turn incoming webhook signals into validated paper trades inside a recorded session. |
+| [recipe-session-post-mortem](./recipe-session-post-mortem/SKILL.md) | Narrate a stopped session's post-mortem: replay the window and explain the P&L in plain, presentation-ready terms. |
+| [kraken-lab-experiment](./kraken-lab-experiment/SKILL.md) | Run the Autoresearch Lab lifecycle under /loop: freeze a hash-sealed hypothesis, drive recorded sessions, score them, read the mechanical verdict. |
 
 ### Strategy Recipes
 

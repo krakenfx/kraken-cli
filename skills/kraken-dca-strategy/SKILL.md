@@ -28,19 +28,20 @@ Always validate the strategy in paper mode before going live.
 The `paper buy` command takes base-asset volume, not dollar amount. Calculate volume first:
 
 ```bash
-kraken paper init --balance 10000 --currency USD -o json 2>/dev/null
+kraken workspace create sandbox --capital 10000 --mode paper --currency USD -o json 2>/dev/null
+export KRAKEN_WORKSPACE=sandbox
 
 # Calculate BTC volume for a $100 buy at current price
-PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].c[0]')
+PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].last_price')
 VOLUME=$(echo "scale=8; 100 / $PRICE" | bc)
 
 # Simulate weekly buys
 kraken paper buy BTCUSD $VOLUME -o json 2>/dev/null
-kraken paper status -o json 2>/dev/null
+kraken workspace status -o json 2>/dev/null
 
 # Repeat buy, check status each iteration
 kraken paper buy BTCUSD $VOLUME -o json 2>/dev/null
-kraken paper status -o json 2>/dev/null
+kraken workspace status -o json 2>/dev/null
 
 kraken paper history -o json 2>/dev/null
 ```
@@ -55,7 +56,7 @@ Each interval, the agent executes one market buy for the fixed amount:
    ```
 2. Calculate volume from dollar amount (e.g., $100 at current price):
    ```bash
-   PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].c[0]')
+   PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].last_price')
    VOLUME=$(echo "scale=8; 100 / $PRICE" | bc)
    ```
 3. Validate the order:
@@ -88,7 +89,7 @@ The agent should maintain a running total:
 Instead of market buys, place limit orders slightly below the current price for better fills:
 
 ```bash
-PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].b[0]')
+PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].bid_price')
 LIMIT=$(echo "scale=2; $PRICE * 0.998" | bc)
 VOLUME=$(echo "scale=8; 100 / $LIMIT" | bc)
 kraken order buy BTCUSD $VOLUME --type limit --price $LIMIT -o json 2>/dev/null
@@ -120,3 +121,4 @@ The CLI does not include a built-in scheduler. Agents should use external schedu
 - Always paper-test the DCA loop first.
 - Track cost basis after every buy; do not lose history.
 - Cancel stale limit orders before placing new ones to avoid duplicate exposure.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

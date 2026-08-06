@@ -1,0 +1,75 @@
+---
+source: crates/kraken-lab/tests/snapshots.rs
+expression: scorecard()
+---
+{
+  "group": "lab",
+  "type": "scorecard",
+  "session": "btc-dip",
+  "anchor": {
+    "starting_balance": 10000.0,
+    "final_value": 10187.0,
+    "total_pnl": 187.0,
+    "ended_at": "2026-01-01T00:00:04Z",
+    "currency": "USD"
+  },
+  "components": [
+    {
+      "kind": "price_movement",
+      "amount": 200.0,
+      "explanation": "your position changes valued at mid-market when filled and marked at the recorded end, before any costs"
+    },
+    {
+      "kind": "fees",
+      "amount": -13.0,
+      "explanation": "paid across 1 fill(s) at the account's 0.26% fee rate"
+    },
+    {
+      "kind": "spread",
+      "amount": 0.0,
+      "explanation": "1 market fill(s) paid the half-spread (0.00); 0 limit fill(s) executed at their resting price vs mid (0.00) — a cost of late fill detection"
+    },
+    {
+      "kind": "slippage",
+      "amount": 0.0,
+      "explanation": "simulated slippage on market fills (rate 0.00%)"
+    },
+    {
+      "kind": "residual",
+      "amount": 0.0,
+      "explanation": "the gap between the live prices 'session stop' marked at and this session's recorded prices (plus anything the caveats folded in); components + residual sum to the total, exactly in the engine and to double precision on this JSON wire"
+    }
+  ],
+  "metrics": {
+    "return_pct": 1.87,
+    "max_drawdown": 13.0,
+    "max_drawdown_pct": 0.13,
+    "fees": -13.0,
+    "friction": 0.0,
+    "turnover_pct": 50.0,
+    "slippage_sensitivity": -0.5
+  },
+  "trades": {
+    "fills": 1,
+    "buys": 1,
+    "sells": 0,
+    "decided": 0,
+    "missed_fills": 0
+  },
+  "curve": {
+    "currency": "USD",
+    "points": 3,
+    "complete": true,
+    "first_value": 10000.0,
+    "last_value": 10087.0,
+    "peak": 10087.0,
+    "trough": 9987.0,
+    "unmarked": []
+  },
+  "epochs_skipped": 0,
+  "source": {
+    "kind": "live",
+    "symbols": []
+  },
+  "caveats": []
+}

@@ -25,7 +25,7 @@ When futures trade at a premium to spot (positive basis), you can buy spot and s
 ## Basis Calculation
 
 ```bash
-SPOT=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].c[0]')
+SPOT=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].last_price')
 FUTURES=$(kraken futures ticker PF_XBTUSD -o json 2>/dev/null | jq -r '.ticker.last')
 BASIS=$(echo "scale=4; ($FUTURES - $SPOT) / $SPOT * 100" | bc)
 echo "Basis: ${BASIS}%"
@@ -90,3 +90,4 @@ kraken futures order buy PF_XBTUSD 1 --reduce-only -o json 2>/dev/null
 - Monitor futures margin continuously; a large spot rally can trigger liquidation on the short.
 - Close both legs together; leaving one open converts to a directional bet.
 - Requires human approval for all live entries and exits.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

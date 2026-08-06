@@ -30,3 +30,5 @@ Generate a daily summary of trading activity, fees, and portfolio change.
 9. Check futures positions if applicable: `kraken futures positions -o json 2>/dev/null`
 10. Check futures funding accrued: `kraken futures accounts -o json 2>/dev/null`
 11. Present summary: total value, daily change, realized P&L, fees, open positions
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

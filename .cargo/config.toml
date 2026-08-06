@@ -1,0 +1,4 @@
+# Debug schema generation exceeds the platform's 2 MiB thread stack.
+# Release builds are unaffected.
+[env]
+RUST_MIN_STACK = "16777216"

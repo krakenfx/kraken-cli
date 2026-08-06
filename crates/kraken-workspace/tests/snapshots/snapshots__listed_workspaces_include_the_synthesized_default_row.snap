@@ -1,0 +1,17 @@
+---
+source: crates/kraken-workspace/tests/snapshots.rs
+expression: rows
+---
+[
+  {
+    "name": "default",
+    "mode": "live"
+  },
+  {
+    "name": "btc-momentum",
+    "mode": "paper",
+    "capital": "10000",
+    "currency": "USD",
+    "created_at": "2026-01-01T00:00:00Z"
+  }
+]

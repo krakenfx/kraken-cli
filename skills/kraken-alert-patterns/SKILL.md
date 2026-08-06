@@ -22,7 +22,7 @@ Use this skill for:
 Check price at intervals and compare against thresholds:
 
 ```bash
-PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].c[0]')
+PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].last_price')
 # Agent compares $PRICE to upper/lower thresholds
 # If breached, notify the user
 ```
@@ -58,7 +58,7 @@ done
 Compare current 24h volume against a baseline:
 
 ```bash
-kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].v[1]'
+kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].volume_24h'
 # Agent compares to historical average
 # Alert if volume > 2x baseline
 ```
@@ -157,3 +157,4 @@ The CLI outputs alerts to stdout. The agent is responsible for delivering notifi
 - Alerts are informational; they do not execute trades automatically.
 - Prefer streaming over high-frequency polling to reduce API load.
 - Close streams when monitoring is no longer needed.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

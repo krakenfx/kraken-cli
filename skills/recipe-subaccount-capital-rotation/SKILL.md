@@ -30,3 +30,5 @@ Evaluate strategy performance per subaccount and reallocate capital to winning s
 7. Transfer from underperforming subaccount to main (requires human approval): `kraken subaccount transfer USD 2000 --from $SUB_IIBAN --to $MAIN_IIBAN -o json 2>/dev/null`
 8. Transfer from main to outperforming subaccount: `kraken subaccount transfer USD 2000 --from $MAIN_IIBAN --to $SUB_IIBAN -o json 2>/dev/null`
 9. Verify balances after transfers: `kraken balance -o json 2>/dev/null`
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

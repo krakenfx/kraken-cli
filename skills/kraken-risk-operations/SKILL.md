@@ -55,3 +55,4 @@ kraken futures positions -o json 2>/dev/null
 - All cancel and cancel-all operations are dangerous. Require explicit human approval before executing.
 - Dead-man switch (`cancel-after`) is also dangerous; confirm the timeout value with the user.
 - Never execute mass-cancel without verifying which orders and positions are open first.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

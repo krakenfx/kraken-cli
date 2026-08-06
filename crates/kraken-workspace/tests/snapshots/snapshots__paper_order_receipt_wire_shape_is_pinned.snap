@@ -1,0 +1,19 @@
+---
+source: crates/kraken-workspace/tests/snapshots.rs
+expression: "OrderReceipt\n{\n    core: receipt_core(TradeMode::Paper, ReceiptStatus::Filled), venue: None,\n    paper:\n    Some(PaperFill\n    {\n        trade_id: Some(\"PAPER-00002\".to_string()), fee: Some(dec!(1.3)), cost:\n        Some(dec!(500)),\n    }),\n}"
+---
+{
+  "mode": "paper",
+  "status": "filled",
+  "order_id": "OTEST1-RCPT0-000001",
+  "pair": "BTC/USD",
+  "side": "buy",
+  "type": "limit",
+  "volume": "0.01",
+  "price": "50000",
+  "paper": {
+    "trade_id": "PAPER-00002",
+    "fee": "1.3",
+    "cost": "500"
+  }
+}

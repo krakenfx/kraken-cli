@@ -1,50 +1,196 @@
 [package]
 name = "kraken-cli"
-version = "0.3.2"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 description = "Kraken CLI — trade, query, and manage your Kraken account from the terminal"
-license = "MIT"
+license.workspace = true
 keywords = ["kraken", "crypto", "trading", "cli", "api"]
 categories = ["command-line-utilities", "finance"]
-repository = "https://github.com/krakenfx/kraken-cli"
+repository.workspace = true
 homepage = "https://github.com/krakenfx/kraken-cli"
+include = [
+    "/Cargo.lock",
+    "/Cargo.toml",
+    "/CHANGELOG.md",
+    "/DISCLAIMER.md",
+    "/LICENSE",
+    "/README.md",
+    # Compiled into the MCP registry via include_str! — a build input, not a doc.
+    "/agents/tool-catalog.json",
+    "/src/**",
+]
+
+[workspace]
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.4.0"
+edition = "2024"
+# Deliberate floor: bumped manually to current stable. Gated in CI by
+# test-msrv, which reads the version from here alone.
+rust-version = "1.97"
+license = "MIT"
+repository = "https://github.com/krakenfx/kraken-cli"
+
+[workspace.dependencies]
+chrono = { version = "0.4.45", features = ["serde"] }
+clap = { version = "4.6.5", features = ["derive"] }
+duckdb = { version = "1.10505.0", features = ["bundled"] }
+futures-util = "0.3.33"
+humantime = "2.4.0"
+kraken-core = { path = "crates/kraken-core" }
+kraken-lab = { path = "crates/kraken-lab" }
+kraken-paper = { path = "crates/kraken-paper" }
+kraken-recording = { path = "crates/kraken-recording" }
+kraken-replay = { path = "crates/kraken-replay" }
+kraken-session = { path = "crates/kraken-session" }
+kraken-workspace = { path = "crates/kraken-workspace" }
+kraken-ws = { path = "crates/kraken-ws" }
+proptest = "1.11.0"
+rust_decimal = { version = "1.42.1", features = ["serde-float", "serde-with-str"] }
+rust_decimal_macros = "1.40.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["raw_value"] }
+serde_with = { version = "3.21.0", default-features = false, features = ["macros"] }
+# Experiment freeze hashes (kraken-lab) and the binary's own digests.
+sha2 = "0.11"
+strum = { version = "0.28", features = ["derive"] }
+tempfile = "3.27.0"
+thiserror = "2.0.19"
+tokio = "1.53.1"
+tokio-stream = "0.1.19"
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+tokio-util = "0.7.19"
+tracing = "0.1.44"
+
+# No missing_debug_implementations: `Cli`/`AppContext` hold the OTP as a plain
+# String, so a derived Debug would print a live credential.
+[workspace.lints.rust]
+unreachable_pub = "warn"
+# Two per-site carve-outs, each with a SAFETY comment: libc::kill supervision
+# and Rust 2024 env mutation in telemetry tests.
+unsafe_code = "deny"
+
+# The docs gate documents private items, so pub-doc links to pub(crate)
+# items resolve; a broken link is a real error.
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "allow"
+
+# The panic tripwire the conventions demand: unwrap/panic/todo in non-test code
+# fail the clippy gate. clippy.toml carves tests out of the first three; a
+# production expect() needs a local #[expect] whose reason states the invariant.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
 
 [[bin]]
 name = "kraken"
 path = "src/main.rs"
 
+[features]
+default = ["record-duckdb"]
+# With this off, `record --to duckdb` reports a clean validation error and
+# `--to jsonl` still works. A union, never a behavior toggle: every member
+# that can read DuckDB gets the backend together.
+record-duckdb = ["kraken-recording/duckdb", "kraken-session/duckdb", "dep:duckdb"]
+
 [dependencies]
-clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.13", features = ["query", "json", "rustls"], default-features = false }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml = "1"
-hmac = "0.12"
-sha2 = "0.10"
-base64 = "0.22"
-url = "2"
-chrono = { version = "0.4", features = ["serde"] }
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
-rustls = { version = "0.23", default-features = false }
-futures-util = "0.3"
-anyhow = "1"
-thiserror = "2"
-dirs = "6"
-comfy-table = "7"
+anyhow = "1.0.104"
+base64 = "0.23.1"
+chrono = { workspace = true }
+clap = { workspace = true, features = ["env"] }
+colored = "3.1.1"
+# duckdb >=1.10503 pins `comfy-table ~7.1`; anything above 7.1.x is
+# unresolvable until upstream relaxes it (duckdb-rs Cargo.toml, comfy-table dep).
+# Renovate is capped to match — see renovate.json5.
+comfy-table = "7.1.4"
 dialoguer = "0.12"
-rustyline = "17"
-colored = "3"
-indicatif = "0.18"
-rmcp = { version = "1.1", default-features = false, features = ["server", "transport-io"] }
+dirs = "6"
+duckdb = { workspace = true, optional = true }
+enum_dispatch = "0.3.13"
+futures-util = { workspace = true }
+hmac = "0.13"
+humantime = { workspace = true }
+indicatif = "0.18.6"
+itertools = "0.15.0"
+kraken-core = { workspace = true, features = ["clap"] }
+kraken-lab = { workspace = true }
+kraken-paper = { workspace = true }
+kraken-recording = { workspace = true }
+kraken-replay = { workspace = true }
+kraken-session = { workspace = true, features = ["clap"] }
+kraken-workspace = { workspace = true }
+kraken-ws = { path = "crates/kraken-ws" }
+reqwest = { version = "0.13.4", features = [
+    "query",
+    "json",
+    "rustls",
+], default-features = false }
+rmcp = { version = "2.2.0", default-features = false, features = [
+    "server",
+    "transport-io",
+] }
+# serde-float: wire prices are JSON numbers, so Decimal must (de)serialize as a
+# number, not rust_decimal's default string form.
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+rustyline = "18.0.1"
+secrecy = { version = "0.10.3", features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+sha2 = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+    "net",
+    "signal",
+    "fs",
+] }
+tokio-stream = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-util = { workspace = true }
+toml = "1.1.4"
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+url = "2.5.8"
+uuid = { version = "1.24.0", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+# `kill(pid, 0)` liveness probe and SIGTERM delivery for playground's recorder
+# supervision (`process::process_alive` / `process::terminate`).
+libc = "0.2.189"
 
 [dev-dependencies]
-wiremock = "0.6"
-assert_cmd = "2"
-predicates = "3"
-tempfile = "3"
+assert_cmd = "2.2.2"
+# Journal-accurate fixture sessions for the timeline consumers' tests;
+# feature unification turns fixtures on for every root test target.
+kraken-session = { workspace = true, features = ["fixtures"] }
+predicates = "3.1.4"
+# Pins the P&L decomposition identity (explain pnl) over random fill
+# sequences, not just example inputs.
+proptest = "1.11.0"
+tempfile = { workspace = true }
+# test-util's paused clock keeps time-based tests (WS read-idle timeout)
+# instant and deterministic.
+tokio = { version = "1.53.1", features = ["test-util"] }
+wiremock = "0.6.5"
 
-# The profile that 'dist' will build with
+[lints]
+workspace = true
+
 [profile.dist]
 inherits = "release"
+codegen-units = 1
 lto = "thin"
+strip = "symbols"

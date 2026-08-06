@@ -27,3 +27,5 @@ Enter a position and attach a trailing stop to capture trend profits while limit
 6. Monitor via stream: `kraken ws ticker BTC/USD -o json 2>/dev/null`
 7. When the trailing stop triggers, verify the exit fill: `kraken trades-history -o json 2>/dev/null`
 8. Report entry price, exit price, and net P&L
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

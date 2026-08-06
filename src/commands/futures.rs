@@ -2,13 +2,17 @@
 use std::collections::HashMap;
 
 use clap::Subcommand;
+use enum_dispatch::enum_dispatch;
+use kraken_core::OrderSide;
 use serde_json::Value;
 
-use super::helpers::{confirm_destructive, jstr, parse_generic};
-use crate::client::FuturesClient;
-use crate::config::FuturesCredentials;
+use super::Execute;
+use super::value_types::{CliWire, ContractType, TrailingUnit};
+use crate::cli::AppContext;
 use crate::errors::{KrakenError, Result};
+use crate::futures_paper::{FuturesOrderType, TriggerSignal};
 use crate::output::CommandOutput;
+use crate::output::json_field;
 
 /// Boolean-like value for CLI args (accepts true/false, yes/no, 1/0).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -29,821 +33,927 @@ impl BoolValue {
     }
 }
 
+/// The `kraken futures` surface: request/response commands (flattened), plus
+/// the streaming WS subtree and the paper engine, which route outside the
+/// shared executor — mirroring how top-level `ws` and `paper` are siblings of
+/// the request/response tree.
+#[enum_dispatch(Execute)]
 #[derive(Debug, Subcommand)]
 pub(crate) enum FuturesCommand {
-    /// List all futures instruments/contracts.
-    Instruments,
-    /// Get all futures tickers.
-    Tickers,
-    /// Get ticker for a single contract.
-    Ticker {
-        /// Futures symbol (e.g. PI_XBTUSD).
-        symbol: String,
-    },
-    /// Get futures order book.
-    Orderbook {
-        /// Futures symbol.
-        symbol: String,
-    },
-    /// Get recent futures trade history.
-    History {
-        /// Futures symbol.
-        symbol: String,
-        /// Fetch history since this timestamp.
-        #[arg(long)]
-        since: Option<String>,
-        /// Fetch history before this timestamp.
-        #[arg(long)]
-        before: Option<String>,
-    },
-    /// Get fee schedules (volumes and fees per contract).
-    Feeschedules,
-    /// Get instrument status (all or per symbol).
-    InstrumentStatus {
-        /// Specific symbol to query (omit for all).
-        #[arg(long)]
-        symbol: Option<String>,
-    },
-    /// Get trading instruments (optional filter by contract type) (auth required).
-    TradingInstruments {
-        /// Filter by contract type: futures_inverse, futures_vanilla, flexible_futures.
-        #[arg(long)]
-        contract_type: Option<String>,
-    },
-    /// Get historical funding rates.
-    HistoricalFundingRates {
-        /// Futures symbol (e.g. PI_XBTUSD).
-        symbol: String,
-    },
+    #[command(flatten)]
+    Market(FuturesMarketCommand),
 
-    // === Private commands ===
-    /// Get futures account/wallet info (auth required).
-    Accounts,
-    /// Get open futures orders (auth required).
-    OpenOrders,
-    /// Get status of orders by ID (auth required).
-    OrderStatus {
-        /// Order ID to query.
-        #[arg(required = true, num_args = 1.., value_name = "ORDER_ID")]
-        order_ids: Vec<String>,
-    },
-    /// Place a futures order (auth required).
-    Order {
-        /// Direction: buy or sell.
-        #[command(subcommand)]
-        direction: FuturesOrderDirection,
-    },
-    /// Edit an existing futures order (auth required).
-    EditOrder {
-        /// Order ID to edit.
-        #[arg(long)]
-        order_id: String,
-        /// New order size.
-        #[arg(long)]
-        size: Option<String>,
-        /// New limit price.
-        #[arg(long)]
-        price: Option<String>,
-        /// New stop price.
-        #[arg(long)]
-        stop_price: Option<String>,
-    },
-    /// Cancel a futures order by order_id or client order id (auth required).
-    Cancel {
-        /// Exchange order ID.
-        #[arg(long, required_unless_present = "cli_ord_id")]
-        order_id: Option<String>,
-        /// Client order ID.
-        #[arg(long, required_unless_present = "order_id")]
-        cli_ord_id: Option<String>,
-    },
-    /// Cancel all futures orders (auth required).
-    CancelAll {
-        /// Filter by symbol.
-        #[arg(long)]
-        symbol: Option<String>,
-    },
-    /// Dead man's switch: cancel all orders after timeout (auth required).
-    CancelAfter {
-        /// Timeout in seconds (0 to disable).
-        timeout: u64,
-    },
-    /// Place a batch of futures orders (auth required).
-    BatchOrder {
-        /// Orders as JSON array or path to JSON file (prefix with @).
-        orders_json: String,
-    },
-    /// Get open futures positions (auth required).
-    Positions,
-    /// Get recent fills (auth required).
-    Fills {
-        /// Filter since this timestamp.
-        #[arg(long)]
-        since: Option<String>,
-    },
-    /// Get current leverage preference (auth required).
-    Leverage {
-        /// Filter by symbol (omit for all).
-        #[arg(long)]
-        symbol: Option<String>,
-    },
-    /// Set leverage preference for a symbol (auth required).
-    SetLeverage {
-        /// Futures symbol.
-        symbol: String,
-        /// Max leverage value (omit to use cross margin).
-        #[arg(required = false)]
-        leverage: Option<String>,
-    },
-    /// Get PnL preferences (auth required).
-    PnlPreferences,
-    /// Set PnL preference for a symbol (auth required).
-    SetPnlPreference {
-        /// Futures symbol (e.g. PF_XBTUSD).
-        symbol: String,
-        /// PnL preference asset (e.g. USD).
-        preference: String,
-    },
-    /// Get notifications (auth required).
-    Notifications,
-    /// Get execution history (auth required).
-    HistoryExecutions {
-        /// Filter since this timestamp.
-        #[arg(long)]
-        since: Option<String>,
-        /// Filter before this timestamp.
-        #[arg(long)]
-        before: Option<String>,
-        /// Sort order (asc or desc).
-        #[arg(long)]
-        sort: Option<String>,
-    },
-    /// Get order history (auth required).
-    HistoryOrders {
-        /// Filter since this timestamp.
-        #[arg(long)]
-        since: Option<String>,
-        /// Filter before this timestamp.
-        #[arg(long)]
-        before: Option<String>,
-        /// Sort order (asc or desc).
-        #[arg(long)]
-        sort: Option<String>,
-    },
-    /// Get trigger history (auth required).
-    HistoryTriggers {
-        /// Filter since this timestamp.
-        #[arg(long)]
-        since: Option<String>,
-        /// Filter before this timestamp.
-        #[arg(long)]
-        before: Option<String>,
-        /// Sort order (asc or desc).
-        #[arg(long)]
-        sort: Option<String>,
-    },
-    /// Download account log as CSV (auth required).
-    HistoryAccountLogCsv {
-        /// Filter since this timestamp.
-        #[arg(long)]
-        since: Option<String>,
-        /// Filter before this timestamp.
-        #[arg(long)]
-        before: Option<String>,
-    },
-    /// Get futures transfer history (auth required).
-    Transfers,
-    /// Transfer funds between spot and futures wallets (auth required).
-    Transfer {
-        /// Amount.
-        amount: String,
-        /// Currency (e.g. USD, XBT).
-        currency: String,
-    },
-    /// Get unwind queue (auth required).
-    UnwindQueue,
-    /// Get current assignment programs (auth required).
-    AssignmentPrograms,
-    /// Get fee schedule volumes (auth required).
-    FeeScheduleVolumes,
-    /// Get subaccounts (auth required).
-    Subaccounts,
-    /// Get trading-enabled status for a subaccount (auth required).
-    SubaccountStatus {
-        /// Subaccount UID.
-        subaccount_uid: String,
-    },
-    /// Set trading-enabled for a subaccount (auth required).
-    SetSubaccountStatus {
-        /// Subaccount UID.
-        subaccount_uid: String,
-        /// Enable or disable trading (true/false, yes/no, 1/0).
-        trading_enabled: BoolValue,
-    },
-    /// Transfer between wallets (auth required).
-    WalletTransfer {
-        /// Source account.
-        from_account: String,
-        /// Destination account.
-        to_account: String,
-        /// Currency unit (e.g. USD, XBT).
-        unit: String,
-        /// Amount to transfer.
-        amount: String,
-    },
+    #[command(flatten)]
+    Trading(FuturesTradingCommand),
 
     /// Futures WebSocket streaming commands.
-    Ws {
-        #[command(subcommand)]
-        cmd: super::futures_ws::FuturesWsCommand,
-    },
+    #[command(subcommand)]
+    Ws(super::futures_ws::FuturesWsCommand),
 
     /// Futures paper trading (simulated, no real money).
-    Paper {
-        #[command(subcommand)]
-        cmd: super::futures_paper::FuturesPaperCommand,
-    },
+    #[command(subcommand)]
+    Paper(super::futures_paper::FuturesPaperCommand),
 }
 
+/// Public futures market data (no credentials required).
+#[enum_dispatch(Execute)]
 #[derive(Debug, Subcommand)]
-pub(crate) enum FuturesOrderDirection {
-    /// Place a buy order.
-    Buy {
-        /// Futures symbol.
-        symbol: String,
-        /// Order size.
-        size: String,
-        /// Order type.
-        #[arg(long, default_value = "limit", value_parser = ["limit", "post", "market", "stop", "take-profit", "ioc", "trailing-stop", "fok"])]
-        r#type: String,
-        /// Limit price.
-        #[arg(long)]
-        price: Option<String>,
-        /// Stop price (for stop and take-profit orders).
-        #[arg(long)]
-        stop_price: Option<String>,
-        /// Trigger signal: mark, index, or last.
-        #[arg(long, value_parser = ["mark", "index", "last"])]
-        trigger_signal: Option<String>,
-        /// Client order ID for correlation.
-        #[arg(long)]
-        client_order_id: Option<String>,
-        /// Reduce-only flag.
-        #[arg(long)]
-        reduce_only: bool,
-        /// Trailing stop max deviation.
-        #[arg(long)]
-        trailing_stop_max_deviation: Option<String>,
-        /// Trailing stop deviation unit (percent or quote_currency).
-        #[arg(long)]
-        trailing_stop_deviation_unit: Option<String>,
-    },
-    /// Place a sell order.
-    Sell {
-        /// Futures symbol.
-        symbol: String,
-        /// Order size.
-        size: String,
-        /// Order type.
-        #[arg(long, default_value = "limit", value_parser = ["limit", "post", "market", "stop", "take-profit", "ioc", "trailing-stop", "fok"])]
-        r#type: String,
-        /// Limit price.
-        #[arg(long)]
-        price: Option<String>,
-        /// Stop price (for stop and take-profit orders).
-        #[arg(long)]
-        stop_price: Option<String>,
-        /// Trigger signal: mark, index, or last.
-        #[arg(long, value_parser = ["mark", "index", "last"])]
-        trigger_signal: Option<String>,
-        /// Client order ID for correlation.
-        #[arg(long)]
-        client_order_id: Option<String>,
-        /// Reduce-only flag.
-        #[arg(long)]
-        reduce_only: bool,
-        /// Trailing stop max deviation.
-        #[arg(long)]
-        trailing_stop_max_deviation: Option<String>,
-        /// Trailing stop deviation unit (percent or quote_currency).
-        #[arg(long)]
-        trailing_stop_deviation_unit: Option<String>,
-    },
+pub(crate) enum FuturesMarketCommand {
+    /// List all futures instruments/contracts.
+    Instruments(Instruments),
+    /// Get all futures tickers.
+    Tickers(Tickers),
+    /// Get ticker for a single contract.
+    Ticker(Ticker),
+    /// Get futures order book.
+    Orderbook(Orderbook),
+    /// Get recent futures trade history.
+    History(History),
+    /// Get fee schedules (volumes and fees per contract).
+    Feeschedules(Feeschedules),
+    /// Get instrument status (all or per symbol).
+    InstrumentStatus(InstrumentStatus),
+    /// Get historical funding rates.
+    HistoricalFundingRates(HistoricalFundingRates),
 }
 
-pub(crate) async fn execute(
-    cmd: &FuturesCommand,
-    client: &FuturesClient,
-    creds: Option<&FuturesCredentials>,
-    _otp: Option<&str>,
-    force: bool,
-    verbose: bool,
-) -> Result<CommandOutput> {
-    match cmd {
-        FuturesCommand::Instruments => {
-            let data = client.public_get("instruments", &[], verbose).await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::Tickers => {
-            let data = client.public_get("tickers", &[], verbose).await?;
-            Ok(parse_tickers(&data))
-        }
-        FuturesCommand::Ticker { symbol } => {
-            validate_path_segment(symbol, "symbol")?;
-            let endpoint = format!("tickers/{symbol}");
-            let data = client.public_get(&endpoint, &[], verbose).await?;
-            Ok(parse_ticker(&data))
-        }
-        FuturesCommand::Orderbook { symbol } => {
-            validate_path_segment(symbol, "symbol")?;
-            let data = client
-                .public_get("orderbook", &[("symbol", symbol.as_str())], verbose)
-                .await?;
-            Ok(parse_orderbook(&data))
-        }
-        FuturesCommand::History {
+#[derive(Debug, clap::Args)]
+pub(crate) struct Instruments {}
+
+impl Execute for Instruments {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let client = ctx.futures()?;
+        let data = client.public_get("instruments", &[]).await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Tickers {}
+
+impl Execute for Tickers {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let client = ctx.futures()?;
+        let data = client.public_get("tickers", &[]).await?;
+        Ok(parse_tickers(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Ticker {
+    /// Futures symbol (e.g. PI_XBTUSD).
+    symbol: String,
+}
+
+impl Execute for Ticker {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let client = ctx.futures()?;
+        let Self { symbol } = self;
+        validate_path_segment(&symbol, "symbol")?;
+        let endpoint = format!("tickers/{symbol}");
+        let data = client.public_get(&endpoint, &[]).await?;
+        Ok(parse_ticker(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Orderbook {
+    /// Futures symbol.
+    symbol: String,
+}
+
+impl Execute for Orderbook {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let client = ctx.futures()?;
+        let Self { symbol } = self;
+        validate_path_segment(&symbol, "symbol")?;
+        let data = client
+            .public_get("orderbook", &[("symbol", symbol.as_str())])
+            .await?;
+        Ok(parse_orderbook(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct History {
+    /// Futures symbol.
+    symbol: String,
+    /// Fetch history since this timestamp.
+    #[arg(long)]
+    since: Option<String>,
+    /// Fetch history before this timestamp.
+    #[arg(long)]
+    before: Option<String>,
+}
+
+impl Execute for History {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let client = ctx.futures()?;
+        let Self {
             symbol,
             since,
             before,
-        } => {
-            validate_path_segment(symbol, "symbol")?;
-            let mut params: Vec<(&str, &str)> = vec![("symbol", symbol.as_str())];
-            let since_owned;
-            if let Some(s) = since {
-                since_owned = s.clone();
-                params.push(("since", &since_owned));
-            }
-            let before_owned;
-            if let Some(b) = before {
-                before_owned = b.clone();
-                params.push(("before", &before_owned));
-            }
-            let data = client.public_get("history", &params, verbose).await?;
-            Ok(parse_trade_history(&data))
+        } = self;
+        validate_path_segment(&symbol, "symbol")?;
+        let mut params: Vec<(&str, &str)> = vec![("symbol", symbol.as_str())];
+        if let Some(s) = since.as_deref() {
+            params.push(("since", s));
         }
-        FuturesCommand::Feeschedules => {
-            let data = client.public_get("feeschedules", &[], verbose).await?;
-            Ok(parse_feeschedules(&data))
+        if let Some(b) = before.as_deref() {
+            params.push(("before", b));
         }
-        FuturesCommand::InstrumentStatus { symbol } => {
-            let endpoint = match symbol {
-                Some(s) => {
-                    validate_path_segment(s, "symbol")?;
-                    format!("instruments/{s}/status")
-                }
-                None => "instruments/status".to_string(),
-            };
-            let data = client.public_get(&endpoint, &[], verbose).await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::TradingInstruments { contract_type } => {
-            let creds = require_creds(creds)?;
-            if let Some(ref ct) = contract_type {
-                validate_contract_type(ct)?;
-            }
-            let mut params: Vec<(&str, &str)> = Vec::new();
-            let ct_owned;
-            if let Some(ref ct) = contract_type {
-                ct_owned = ct.clone();
-                params.push(("contractType", &ct_owned));
-            }
-            let data = client
-                .private_get("trading/instruments", &params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::HistoricalFundingRates { symbol } => {
-            validate_path_segment(symbol, "symbol")?;
-            let params = [("symbol", symbol.as_str())];
-            let data = client
-                .public_get("historical-funding-rates", &params, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
+        let data = client.public_get("history", &params).await?;
+        Ok(parse_trade_history(&data))
+    }
+}
 
-        // === Private commands ===
-        FuturesCommand::Accounts => {
-            let creds = require_creds(creds)?;
-            let data = client.private_get("accounts", &[], creds, verbose).await?;
-            Ok(parse_accounts(&data))
+#[derive(Debug, clap::Args)]
+pub(crate) struct Feeschedules {}
+
+impl Execute for Feeschedules {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let client = ctx.futures()?;
+        let data = client.public_get("feeschedules", &[]).await?;
+        Ok(parse_feeschedules(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct InstrumentStatus {
+    /// Specific symbol to query (omit for all).
+    #[arg(long)]
+    symbol: Option<String>,
+}
+
+impl Execute for InstrumentStatus {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let client = ctx.futures()?;
+        let Self { symbol } = self;
+        let endpoint = match symbol {
+            Some(s) => {
+                validate_path_segment(&s, "symbol")?;
+                format!("instruments/{s}/status")
+            }
+            None => "instruments/status".to_string(),
+        };
+        let data = client.public_get(&endpoint, &[]).await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct HistoricalFundingRates {
+    /// Futures symbol (e.g. PI_XBTUSD).
+    symbol: String,
+}
+
+impl Execute for HistoricalFundingRates {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let client = ctx.futures()?;
+        let Self { symbol } = self;
+        validate_path_segment(&symbol, "symbol")?;
+        let params = [("symbol", symbol.as_str())];
+        let data = client
+            .public_get("historical-funding-rates", &params)
+            .await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+/// Authenticated futures REST: account data, orders, transfers, subaccounts.
+#[enum_dispatch(Execute)]
+#[derive(Debug, Subcommand)]
+pub(crate) enum FuturesTradingCommand {
+    /// Get trading instruments (optional filter by contract type) (auth required).
+    TradingInstruments(TradingInstruments),
+    /// Get futures account/wallet info (auth required).
+    Accounts(Accounts),
+    /// Get open futures orders (auth required).
+    OpenOrders(OpenOrders),
+    /// Get status of orders by ID (auth required).
+    OrderStatus(OrderStatus),
+    /// Place a futures order (auth required).
+    #[command(subcommand)]
+    Order(FuturesOrderDirection),
+    /// Edit an existing futures order (auth required).
+    EditOrder(EditOrder),
+    /// Cancel a futures order by order_id or client order id (auth required).
+    Cancel(Cancel),
+    /// Cancel all futures orders (auth required).
+    CancelAll(CancelAll),
+    /// Dead man's switch: cancel all orders after timeout (auth required).
+    CancelAfter(CancelAfter),
+    /// Place a batch of futures orders (auth required).
+    BatchOrder(BatchOrder),
+    /// Get open futures positions (auth required).
+    Positions(Positions),
+    /// Get recent fills (auth required).
+    Fills(Fills),
+    /// Get current leverage preference (auth required).
+    Leverage(Leverage),
+    /// Set leverage preference for a symbol (auth required).
+    SetLeverage(SetLeverage),
+    /// Get PnL preferences (auth required).
+    PnlPreferences(PnlPreferences),
+    /// Set PnL preference for a symbol (auth required).
+    SetPnlPreference(SetPnlPreference),
+    /// Get notifications (auth required).
+    Notifications(Notifications),
+    /// Get execution history (auth required).
+    HistoryExecutions(HistoryExecutions),
+    /// Get order history (auth required).
+    HistoryOrders(HistoryOrders),
+    /// Get trigger history (auth required).
+    HistoryTriggers(HistoryTriggers),
+    /// Download account log as CSV (auth required).
+    HistoryAccountLogCsv(HistoryAccountLogCsv),
+    /// Get futures transfer history (auth required).
+    Transfers(Transfers),
+    /// Transfer funds between spot and futures wallets (auth required).
+    Transfer(Transfer),
+    /// Get unwind queue (auth required).
+    UnwindQueue(UnwindQueue),
+    /// Get current assignment programs (auth required).
+    AssignmentPrograms(AssignmentPrograms),
+    /// Get fee schedule volumes (auth required).
+    FeeScheduleVolumes(FeeScheduleVolumes),
+    /// Get subaccounts (auth required).
+    Subaccounts(Subaccounts),
+    /// Get trading-enabled status for a subaccount (auth required).
+    SubaccountStatus(SubaccountStatus),
+    /// Set trading-enabled for a subaccount (auth required).
+    SetSubaccountStatus(SetSubaccountStatus),
+    /// Transfer between wallets (auth required).
+    WalletTransfer(WalletTransfer),
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct TradingInstruments {
+    /// Filter by contract type.
+    #[arg(long)]
+    contract_type: Option<ContractType>,
+}
+
+impl Execute for TradingInstruments {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { contract_type } = self;
+        let mut params: Vec<(&str, &str)> = Vec::new();
+        let ct_wire;
+        if let Some(ct) = contract_type {
+            ct_wire = ct.as_wire();
+            params.push(("contractType", &ct_wire));
         }
-        FuturesCommand::OpenOrders => {
-            let creds = require_creds(creds)?;
-            let data = client
-                .private_get("openorders", &[], creds, verbose)
-                .await?;
-            Ok(parse_open_orders(&data))
-        }
-        FuturesCommand::OrderStatus { order_ids } => {
-            let creds = require_creds(creds)?;
-            let mut params = HashMap::new();
-            params.insert("orderIds".into(), order_ids.join(","));
-            let data = client
-                .private_post("orders/status", params, creds, verbose)
-                .await?;
-            Ok(parse_order_status(&data))
-        }
-        FuturesCommand::Order { direction } => {
-            let creds = require_creds(creds)?;
-            let params = build_futures_order(direction)?;
-            let data = client
-                .private_post("sendorder", params, creds, verbose)
-                .await?;
-            Ok(parse_order_response(&data))
-        }
-        FuturesCommand::EditOrder {
+        let data = client
+            .private_get("trading/instruments", &params, creds)
+            .await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Accounts {}
+
+impl Execute for Accounts {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client.private_get("accounts", &[], creds).await?;
+        Ok(parse_accounts(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct OpenOrders {}
+
+impl Execute for OpenOrders {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client.private_get("openorders", &[], creds).await?;
+        Ok(parse_open_orders(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct OrderStatus {
+    /// Order ID to query.
+    #[arg(required = true, num_args = 1.., value_name = "ORDER_ID")]
+    order_ids: Vec<String>,
+}
+
+impl Execute for OrderStatus {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { order_ids } = self;
+        let mut params = HashMap::new();
+        params.insert("orderIds".into(), order_ids.join(","));
+        let data = client.private_post("orders/status", params, creds).await?;
+        Ok(parse_order_status(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct EditOrder {
+    /// Order ID to edit.
+    #[arg(long)]
+    order_id: String,
+    /// New order size.
+    #[arg(long)]
+    size: Option<String>,
+    /// New limit price.
+    #[arg(long)]
+    price: Option<String>,
+    /// New stop price.
+    #[arg(long)]
+    stop_price: Option<String>,
+}
+
+impl Execute for EditOrder {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self {
             order_id,
             size,
             price,
             stop_price,
-        } => {
-            let creds = require_creds(creds)?;
-            let mut params = HashMap::new();
-            params.insert("orderId".into(), order_id.clone());
-            if let Some(s) = size {
-                params.insert("size".into(), s.clone());
-            }
-            if let Some(p) = price {
-                params.insert("limitPrice".into(), p.clone());
-            }
-            if let Some(sp) = stop_price {
-                params.insert("stopPrice".into(), sp.clone());
-            }
-            let data = client
-                .private_post("editorder", params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
+        } = self;
+        let mut params = HashMap::new();
+        params.insert("orderId".into(), order_id);
+        if let Some(s) = size {
+            params.insert("size".into(), s);
         }
-        FuturesCommand::Cancel {
+        if let Some(p) = price {
+            params.insert("limitPrice".into(), p);
+        }
+        if let Some(sp) = stop_price {
+            params.insert("stopPrice".into(), sp);
+        }
+        let data = client.private_post("editorder", params, creds).await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+// `required_unless_present` on each side references the other, so both fields
+// must stay in this one struct with these identifiers.
+#[derive(Debug, clap::Args)]
+pub(crate) struct Cancel {
+    /// Exchange order ID.
+    #[arg(long, required_unless_present = "cli_ord_id")]
+    order_id: Option<String>,
+    /// Client order ID.
+    #[arg(long, required_unless_present = "order_id")]
+    cli_ord_id: Option<String>,
+}
+
+impl Execute for Cancel {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self {
             order_id,
             cli_ord_id,
-        } => {
-            let creds = require_creds(creds)?;
-            let mut params = HashMap::new();
-            match (order_id, cli_ord_id) {
-                (Some(oid), None) => {
-                    params.insert("order_id".into(), oid.clone());
-                }
-                (None, Some(cid)) => {
-                    params.insert("cliOrdId".into(), cid.clone());
-                }
-                (Some(_), Some(_)) => {
-                    return Err(KrakenError::Validation(
-                        "Provide exactly one of --order-id or --cli-ord-id".into(),
-                    ));
-                }
-                (None, None) => {
-                    return Err(KrakenError::Validation(
-                        "One of --order-id or --cli-ord-id is required".into(),
-                    ));
-                }
+        } = self;
+        let mut params = HashMap::new();
+        match (order_id, cli_ord_id) {
+            (Some(oid), None) => {
+                params.insert("order_id".into(), oid);
             }
-            let data = client
-                .private_post("cancelorder", params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::CancelAll { symbol } => {
-            let creds = require_creds(creds)?;
-            if !force {
-                confirm_destructive("Cancel ALL open futures orders?")?;
+            (None, Some(cid)) => {
+                params.insert("cliOrdId".into(), cid);
             }
-            let mut params = HashMap::new();
-            if let Some(s) = symbol {
-                params.insert("symbol".into(), s.clone());
+            (Some(_), Some(_)) => {
+                return Err(KrakenError::Validation(
+                    "Provide exactly one of --order-id or --cli-ord-id".into(),
+                ));
             }
-            let data = client
-                .private_post("cancelallorders", params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::CancelAfter { timeout } => {
-            let creds = require_creds(creds)?;
-            let mut params = HashMap::new();
-            params.insert("timeout".into(), timeout.to_string());
-            let data = client
-                .private_post("cancelallordersafter", params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::BatchOrder { orders_json } => {
-            let creds = require_creds(creds)?;
-            let json_str = if let Some(path) = orders_json.strip_prefix('@') {
-                std::fs::read_to_string(path).map_err(|e| {
-                    KrakenError::Io(std::io::Error::new(
-                        e.kind(),
-                        format!("Failed to read batch order file '{path}': {e}"),
-                    ))
-                })?
-            } else {
-                orders_json.clone()
-            };
-            let parsed: Value = serde_json::from_str(&json_str)
-                .map_err(|e| KrakenError::Validation(format!("Invalid batch order JSON: {e}")))?;
-            let data = client
-                .private_post_json("batchorder", parsed, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::Positions => {
-            let creds = require_creds(creds)?;
-            let data = client
-                .private_get("openpositions", &[], creds, verbose)
-                .await?;
-            Ok(parse_positions(&data))
-        }
-        FuturesCommand::Fills { since } => {
-            let creds = require_creds(creds)?;
-            let mut params: Vec<(&str, &str)> = Vec::new();
-            let since_owned;
-            if let Some(s) = since {
-                since_owned = s.clone();
-                params.push(("lastFillTime", &since_owned));
+            (None, None) => {
+                return Err(KrakenError::Validation(
+                    "One of --order-id or --cli-ord-id is required".into(),
+                ));
             }
-            let data = client.private_get("fills", &params, creds, verbose).await?;
-            Ok(parse_fills(&data))
         }
-        FuturesCommand::Leverage { symbol } => {
-            let creds = require_creds(creds)?;
-            let mut params: Vec<(&str, &str)> = Vec::new();
-            let sym_owned;
-            if let Some(s) = symbol {
-                sym_owned = s.clone();
-                params.push(("symbol", &sym_owned));
-            }
-            let data = client
-                .private_get("leveragepreferences", &params, creds, verbose)
-                .await?;
-            Ok(parse_leverage_preferences(&data))
+        let data = client.private_post("cancelorder", params, creds).await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct CancelAll {
+    /// Filter by symbol.
+    #[arg(long)]
+    symbol: Option<String>,
+}
+
+impl Execute for CancelAll {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { symbol } = self;
+        ctx.confirm_destructive("Cancel ALL open futures orders?")?;
+        let mut params = HashMap::new();
+        if let Some(s) = symbol {
+            params.insert("symbol".into(), s);
         }
-        FuturesCommand::SetLeverage { symbol, leverage } => {
-            let creds = require_creds(creds)?;
-            let mut params = HashMap::new();
-            params.insert("symbol".into(), symbol.clone());
-            if let Some(lev) = &leverage {
-                params.insert("maxLeverage".into(), lev.clone());
-            }
-            let data = client
-                .private_put("leveragepreferences", params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
+        let data = client
+            .private_post("cancelallorders", params, creds)
+            .await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct CancelAfter {
+    /// Timeout in seconds (0 to disable).
+    timeout: u64,
+}
+
+impl Execute for CancelAfter {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { timeout } = self;
+        let mut params = HashMap::new();
+        params.insert("timeout".into(), timeout.to_string());
+        let data = client
+            .private_post("cancelallordersafter", params, creds)
+            .await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct BatchOrder {
+    /// Orders as JSON array or path to JSON file (prefix with @).
+    orders_json: String,
+}
+
+impl Execute for BatchOrder {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { orders_json } = self;
+        let json_str = if let Some(path) = orders_json.strip_prefix('@') {
+            std::fs::read_to_string(path).map_err(|e| {
+                KrakenError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to read batch order file '{path}': {e}"),
+                ))
+            })?
+        } else {
+            orders_json
+        };
+        let parsed: Value = serde_json::from_str(&json_str)
+            .map_err(|e| KrakenError::Validation(format!("Invalid batch order JSON: {e}")))?;
+        let data = client
+            .private_post_json("batchorder", parsed, creds)
+            .await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Positions {}
+
+impl Execute for Positions {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client.private_get("openpositions", &[], creds).await?;
+        Ok(parse_positions(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Fills {
+    /// Filter since this timestamp.
+    #[arg(long)]
+    since: Option<String>,
+}
+
+impl Execute for Fills {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { since } = self;
+        let mut params: Vec<(&str, &str)> = Vec::new();
+        if let Some(s) = since.as_deref() {
+            params.push(("lastFillTime", s));
         }
-        FuturesCommand::PnlPreferences => {
-            let creds = require_creds(creds)?;
-            let data = client
-                .private_get("pnlpreferences", &[], creds, verbose)
-                .await?;
-            Ok(parse_pnl_preferences(&data))
+        let data = client.private_get("fills", &params, creds).await?;
+        Ok(parse_fills(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Leverage {
+    /// Filter by symbol (omit for all).
+    #[arg(long)]
+    symbol: Option<String>,
+}
+
+impl Execute for Leverage {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { symbol } = self;
+        let mut params: Vec<(&str, &str)> = Vec::new();
+        if let Some(s) = symbol.as_deref() {
+            params.push(("symbol", s));
         }
-        FuturesCommand::SetPnlPreference { symbol, preference } => {
-            let creds = require_creds(creds)?;
-            let mut params = HashMap::new();
-            params.insert("symbol".into(), symbol.clone());
-            params.insert("pnlPreference".into(), preference.clone());
-            let data = client
-                .private_put("pnlpreferences", params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
+        let data = client
+            .private_get("leveragepreferences", &params, creds)
+            .await?;
+        Ok(parse_leverage_preferences(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct SetLeverage {
+    /// Futures symbol.
+    symbol: String,
+    /// Max leverage value (omit to use cross margin).
+    #[arg(required = false)]
+    leverage: Option<String>,
+}
+
+impl Execute for SetLeverage {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { symbol, leverage } = self;
+        let mut params = HashMap::new();
+        params.insert("symbol".into(), symbol);
+        if let Some(lev) = leverage {
+            params.insert("maxLeverage".into(), lev);
         }
-        FuturesCommand::Notifications => {
-            let creds = require_creds(creds)?;
-            let data = client
-                .private_get("notifications", &[], creds, verbose)
-                .await?;
-            Ok(parse_notifications(&data))
+        let data = client
+            .private_put("leveragepreferences", params, creds)
+            .await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct PnlPreferences {}
+
+impl Execute for PnlPreferences {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client.private_get("pnlpreferences", &[], creds).await?;
+        Ok(parse_pnl_preferences(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct SetPnlPreference {
+    /// Futures symbol (e.g. PF_XBTUSD).
+    symbol: String,
+    /// PnL preference asset (e.g. USD).
+    preference: String,
+}
+
+impl Execute for SetPnlPreference {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { symbol, preference } = self;
+        let mut params = HashMap::new();
+        params.insert("symbol".into(), symbol);
+        params.insert("pnlPreference".into(), preference);
+        let data = client.private_put("pnlpreferences", params, creds).await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Notifications {}
+
+impl Execute for Notifications {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client.private_get("notifications", &[], creds).await?;
+        Ok(parse_notifications(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct HistoryWindow {
+    /// Filter since this timestamp.
+    #[arg(long)]
+    since: Option<String>,
+    /// Filter before this timestamp.
+    #[arg(long)]
+    before: Option<String>,
+    /// Sort order (asc or desc).
+    #[arg(long)]
+    sort: Option<String>,
+}
+
+// enum_dispatch needs a distinct type per variant, so each history command
+// wraps the shared filter instead of reusing one Args struct three times.
+#[derive(Debug, clap::Args)]
+pub(crate) struct HistoryExecutions {
+    #[command(flatten)]
+    filter: HistoryWindow,
+}
+
+impl Execute for HistoryExecutions {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        fetch_history(self.filter, "executions", ctx).await
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct HistoryOrders {
+    #[command(flatten)]
+    filter: HistoryWindow,
+}
+
+impl Execute for HistoryOrders {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        fetch_history(self.filter, "orders", ctx).await
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct HistoryTriggers {
+    #[command(flatten)]
+    filter: HistoryWindow,
+}
+
+impl Execute for HistoryTriggers {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        fetch_history(self.filter, "triggers", ctx).await
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct HistoryAccountLogCsv {
+    /// Filter since this timestamp.
+    #[arg(long)]
+    since: Option<String>,
+    /// Filter before this timestamp.
+    #[arg(long)]
+    before: Option<String>,
+}
+
+impl Execute for HistoryAccountLogCsv {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { since, before } = self;
+        let mut params: Vec<(&str, &str)> = Vec::new();
+        if let Some(s) = since.as_deref() {
+            params.push(("since", s));
         }
-        FuturesCommand::HistoryExecutions {
-            since,
-            before,
-            sort,
-        } => {
-            let creds = require_creds(creds)?;
-            let params = build_history_params(since.as_deref(), before.as_deref(), sort.as_deref());
-            let data = client
-                .private_get("executions", &params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
+        if let Some(b) = before.as_deref() {
+            params.push(("before", b));
         }
-        FuturesCommand::HistoryOrders {
-            since,
-            before,
-            sort,
-        } => {
-            let creds = require_creds(creds)?;
-            let params = build_history_params(since.as_deref(), before.as_deref(), sort.as_deref());
-            let data = client
-                .private_get("orders", &params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::HistoryTriggers {
-            since,
-            before,
-            sort,
-        } => {
-            let creds = require_creds(creds)?;
-            let params = build_history_params(since.as_deref(), before.as_deref(), sort.as_deref());
-            let data = client
-                .private_get("triggers", &params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::HistoryAccountLogCsv { since, before } => {
-            let creds = require_creds(creds)?;
-            let mut params: Vec<(&str, &str)> = Vec::new();
-            let s_owned;
-            if let Some(s) = since {
-                s_owned = s.clone();
-                params.push(("since", &s_owned));
-            }
-            let b_owned;
-            if let Some(b) = before {
-                b_owned = b.clone();
-                params.push(("before", &b_owned));
-            }
-            let csv_text = client
-                .private_get_raw("accountlogcsv", &params, creds, verbose)
-                .await?;
-            let json_data = serde_json::json!({ "csv": csv_text });
-            let total_lines = csv_text.lines().count();
-            let summary = if total_lines > 1 {
-                format!("{} data rows", total_lines - 1)
-            } else {
-                "empty".to_string()
-            };
-            let first_line = csv_text.lines().next().unwrap_or("").to_string();
-            Ok(CommandOutput::new(
-                json_data,
-                vec!["Headers".into(), "Rows".into()],
-                vec![vec![first_line, summary]],
-            ))
-        }
-        FuturesCommand::Transfers => {
-            let creds = require_creds(creds)?;
-            let data = client.private_get("transfers", &[], creds, verbose).await?;
-            Ok(parse_transfers(&data))
-        }
-        FuturesCommand::Transfer { amount, currency } => {
-            let creds = require_creds(creds)?;
-            if !force {
-                confirm_destructive(&format!(
-                    "Transfer {amount} {currency} between spot and futures wallets?"
-                ))?;
-            }
-            let mut params = HashMap::new();
-            params.insert("amount".into(), amount.clone());
-            params.insert("currency".into(), currency.clone());
-            let data = client
-                .private_post("withdrawal", params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::UnwindQueue => {
-            let creds = require_creds(creds)?;
-            let data = client
-                .private_get("unwindqueue", &[], creds, verbose)
-                .await?;
-            Ok(parse_unwind_queue(&data))
-        }
-        FuturesCommand::AssignmentPrograms => {
-            let creds = require_creds(creds)?;
-            let data = client
-                .private_get("assignmentprogram/current", &[], creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::FeeScheduleVolumes => {
-            let creds = require_creds(creds)?;
-            let data = client
-                .private_get("feeschedules/volumes", &[], creds, verbose)
-                .await?;
-            Ok(parse_fee_schedule_volumes(&data))
-        }
-        FuturesCommand::Subaccounts => {
-            let creds = require_creds(creds)?;
-            let data = client
-                .private_get("subaccounts", &[], creds, verbose)
-                .await?;
-            Ok(parse_subaccounts(&data))
-        }
-        FuturesCommand::SubaccountStatus { subaccount_uid } => {
-            let creds = require_creds(creds)?;
-            validate_path_segment(subaccount_uid, "subaccount_uid")?;
-            let endpoint = format!("subaccount/{subaccount_uid}/trading-enabled");
-            let data = client.private_get(&endpoint, &[], creds, verbose).await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::SetSubaccountStatus {
+        let csv_text = client
+            .private_get_raw("accountlogcsv", &params, creds)
+            .await?;
+        let json_data = serde_json::json!({ "csv": csv_text });
+        let total_lines = csv_text.lines().count();
+        let summary = if total_lines > 1 {
+            format!("{} data rows", total_lines - 1)
+        } else {
+            "empty".to_string()
+        };
+        let first_line = csv_text.lines().next().unwrap_or("").to_string();
+        Ok(CommandOutput::new(
+            json_data,
+            vec!["Headers".into(), "Rows".into()],
+            vec![vec![first_line, summary]],
+        ))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Transfers {}
+
+impl Execute for Transfers {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client.private_get("transfers", &[], creds).await?;
+        Ok(parse_transfers(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Transfer {
+    /// Amount.
+    amount: String,
+    /// Currency (e.g. USD, XBT).
+    currency: String,
+}
+
+impl Execute for Transfer {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { amount, currency } = self;
+        ctx.confirm_destructive(&format!(
+            "Transfer {amount} {currency} between spot and futures wallets?"
+        ))?;
+        let mut params = HashMap::new();
+        params.insert("amount".into(), amount);
+        params.insert("currency".into(), currency);
+        let data = client.private_post("withdrawal", params, creds).await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct UnwindQueue {}
+
+impl Execute for UnwindQueue {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client.private_get("unwindqueue", &[], creds).await?;
+        Ok(parse_unwind_queue(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct AssignmentPrograms {}
+
+impl Execute for AssignmentPrograms {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client
+            .private_get("assignmentprogram/current", &[], creds)
+            .await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct FeeScheduleVolumes {}
+
+impl Execute for FeeScheduleVolumes {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client
+            .private_get("feeschedules/volumes", &[], creds)
+            .await?;
+        Ok(parse_fee_schedule_volumes(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Subaccounts {}
+
+impl Execute for Subaccounts {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let data = client.private_get("subaccounts", &[], creds).await?;
+        Ok(parse_subaccounts(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct SubaccountStatus {
+    /// Subaccount UID.
+    subaccount_uid: String,
+}
+
+impl Execute for SubaccountStatus {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self { subaccount_uid } = self;
+        validate_path_segment(&subaccount_uid, "subaccount_uid")?;
+        let endpoint = format!("subaccount/{subaccount_uid}/trading-enabled");
+        let data = client.private_get(&endpoint, &[], creds).await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct SetSubaccountStatus {
+    /// Subaccount UID.
+    subaccount_uid: String,
+    /// Enable or disable trading (true/false, yes/no, 1/0).
+    trading_enabled: BoolValue,
+}
+
+impl Execute for SetSubaccountStatus {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self {
             subaccount_uid,
             trading_enabled,
-        } => {
-            let creds = require_creds(creds)?;
-            validate_path_segment(subaccount_uid, "subaccount_uid")?;
-            let endpoint = format!("subaccount/{subaccount_uid}/trading-enabled");
-            let mut params = HashMap::new();
-            params.insert(
-                "tradingEnabled".into(),
-                trading_enabled.as_api_value().to_string(),
-            );
-            let data = client
-                .private_put(&endpoint, params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-        FuturesCommand::WalletTransfer {
+        } = self;
+        validate_path_segment(&subaccount_uid, "subaccount_uid")?;
+        let endpoint = format!("subaccount/{subaccount_uid}/trading-enabled");
+        let mut params = HashMap::new();
+        params.insert(
+            "tradingEnabled".into(),
+            trading_enabled.as_api_value().to_string(),
+        );
+        let data = client.private_put(&endpoint, params, creds).await?;
+        Ok(CommandOutput::from_untyped(&data))
+    }
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct WalletTransfer {
+    /// Source account.
+    from_account: String,
+    /// Destination account.
+    to_account: String,
+    /// Currency unit (e.g. USD, XBT).
+    unit: String,
+    /// Amount to transfer.
+    amount: String,
+}
+
+impl Execute for WalletTransfer {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let (client, creds) = ctx.futures_authed()?;
+        let Self {
             from_account,
             to_account,
             unit,
             amount,
-        } => {
-            let creds = require_creds(creds)?;
-            if !force {
-                confirm_destructive(&format!(
-                    "Transfer {amount} {unit} from {from_account} to {to_account}?"
-                ))?;
-            }
-            let mut params = HashMap::new();
-            params.insert("fromAccount".into(), from_account.clone());
-            params.insert("toAccount".into(), to_account.clone());
-            params.insert("unit".into(), unit.clone());
-            params.insert("amount".into(), amount.clone());
-            let data = client
-                .private_post("transfer", params, creds, verbose)
-                .await?;
-            Ok(parse_generic(&data))
-        }
-
-        FuturesCommand::Ws { cmd } => super::futures_ws::execute(cmd, client, creds, verbose).await,
-
-        FuturesCommand::Paper { cmd } => super::futures_paper::execute(cmd, client, verbose).await,
+        } = self;
+        ctx.confirm_destructive(&format!(
+            "Transfer {amount} {unit} from {from_account} to {to_account}?"
+        ))?;
+        let mut params = HashMap::new();
+        params.insert("fromAccount".into(), from_account);
+        params.insert("toAccount".into(), to_account);
+        params.insert("unit".into(), unit);
+        params.insert("amount".into(), amount);
+        let data = client.private_post("transfer", params, creds).await?;
+        Ok(CommandOutput::from_untyped(&data))
     }
 }
 
-/// Returns true for commands that require authentication.
-pub(crate) fn requires_auth(cmd: &FuturesCommand) -> bool {
-    matches!(
-        cmd,
-        FuturesCommand::Accounts
-            | FuturesCommand::OpenOrders
-            | FuturesCommand::OrderStatus { .. }
-            | FuturesCommand::Order { .. }
-            | FuturesCommand::EditOrder { .. }
-            | FuturesCommand::Cancel { .. }
-            | FuturesCommand::CancelAll { .. }
-            | FuturesCommand::CancelAfter { .. }
-            | FuturesCommand::BatchOrder { .. }
-            | FuturesCommand::Positions
-            | FuturesCommand::Fills { .. }
-            | FuturesCommand::Leverage { .. }
-            | FuturesCommand::SetLeverage { .. }
-            | FuturesCommand::PnlPreferences
-            | FuturesCommand::SetPnlPreference { .. }
-            | FuturesCommand::Notifications
-            | FuturesCommand::HistoryExecutions { .. }
-            | FuturesCommand::HistoryOrders { .. }
-            | FuturesCommand::HistoryTriggers { .. }
-            | FuturesCommand::HistoryAccountLogCsv { .. }
-            | FuturesCommand::Transfers
-            | FuturesCommand::Transfer { .. }
-            | FuturesCommand::UnwindQueue
-            | FuturesCommand::AssignmentPrograms
-            | FuturesCommand::FeeScheduleVolumes
-            | FuturesCommand::Subaccounts
-            | FuturesCommand::SubaccountStatus { .. }
-            | FuturesCommand::SetSubaccountStatus { .. }
-            | FuturesCommand::WalletTransfer { .. }
-            | FuturesCommand::TradingInstruments { .. }
-    )
+#[enum_dispatch(Execute)]
+#[derive(Debug, Subcommand)]
+pub(crate) enum FuturesOrderDirection {
+    /// Place a buy order.
+    Buy(Buy),
+    /// Place a sell order.
+    Sell(Sell),
 }
 
-/// Returns true for WS commands that require authentication.
-pub(crate) fn ws_requires_auth(cmd: &FuturesCommand) -> bool {
-    if let FuturesCommand::Ws { cmd } = cmd {
-        super::futures_ws::requires_auth(cmd)
-    } else {
-        false
+/// Order fields shared by buy and sell; the side comes from the variant.
+#[derive(Debug, clap::Args)]
+pub(crate) struct OrderRequest {
+    /// Futures symbol.
+    symbol: String,
+    /// Order size.
+    size: String,
+    /// Order type.
+    #[arg(long, default_value = "limit")]
+    r#type: FuturesOrderType,
+    /// Limit price.
+    #[arg(long)]
+    price: Option<String>,
+    /// Stop price (for stop and take-profit orders).
+    #[arg(long)]
+    stop_price: Option<String>,
+    /// Trigger signal: mark, index, or last.
+    #[arg(long)]
+    trigger_signal: Option<TriggerSignal>,
+    /// Client order ID for correlation.
+    #[arg(long)]
+    client_order_id: Option<String>,
+    /// Reduce-only flag.
+    #[arg(long)]
+    reduce_only: bool,
+    /// Trailing stop max deviation.
+    #[arg(long)]
+    trailing_stop_max_deviation: Option<String>,
+    /// Trailing stop deviation unit.
+    #[arg(long)]
+    trailing_stop_deviation_unit: Option<TrailingUnit>,
+}
+
+// enum_dispatch needs a distinct type per variant, so buy and sell each wrap
+// the shared fields instead of reusing one Args struct twice.
+#[derive(Debug, clap::Args)]
+pub(crate) struct Buy {
+    #[command(flatten)]
+    order: OrderRequest,
+}
+
+#[derive(Debug, clap::Args)]
+pub(crate) struct Sell {
+    #[command(flatten)]
+    order: OrderRequest,
+}
+
+impl Execute for Buy {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        send_futures_order(self.order, OrderSide::Buy, ctx).await
     }
 }
 
-fn require_creds(creds: Option<&FuturesCredentials>) -> Result<&FuturesCredentials> {
-    creds.ok_or_else(|| {
-        KrakenError::Auth(
-            "Futures credentials required. Use `kraken setup` or set KRAKEN_FUTURES_API_KEY / KRAKEN_FUTURES_API_SECRET.".into(),
-        )
-    })
+impl Execute for Sell {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        send_futures_order(self.order, OrderSide::Sell, ctx).await
+    }
 }
 
-const VALID_TRAILING_UNITS: &[&str] = &["percent", "quote_currency"];
-const VALID_CONTRACT_TYPES: &[&str] = &["futures_inverse", "futures_vanilla", "flexible_futures"];
-
-fn validate_contract_type(ct: &str) -> Result<()> {
-    if !VALID_CONTRACT_TYPES.contains(&ct) {
-        return Err(KrakenError::Validation(format!(
-            "Invalid contract type: {ct}. Valid values: {}",
-            VALID_CONTRACT_TYPES.join(", ")
-        )));
-    }
-    Ok(())
+async fn send_futures_order(
+    order: OrderRequest,
+    side: OrderSide,
+    ctx: &AppContext,
+) -> Result<CommandOutput> {
+    let (client, creds) = ctx.futures_authed()?;
+    let params = build_futures_order(order, side)?;
+    let data = client.private_post("sendorder", params, creds).await?;
+    Ok(parse_order_response(&data))
 }
 
 /// Validates a value for safe interpolation into a URL path segment.
@@ -877,120 +987,63 @@ fn validate_path_segment(value: &str, field_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Map CLI order type to API orderType value.
-fn map_order_type_to_api(ot: &str) -> String {
-    match ot {
-        "limit" => "lmt".to_string(),
-        "market" => "mkt".to_string(),
-        "stop" => "stp".to_string(),
-        "take-profit" => "take_profit".to_string(),
-        "trailing-stop" => "trailing_stop".to_string(),
-        other => other.to_string(),
-    }
-}
-
-fn build_futures_order(direction: &FuturesOrderDirection) -> Result<HashMap<String, String>> {
-    let (
-        side,
+fn build_futures_order(order: OrderRequest, side: OrderSide) -> Result<HashMap<String, String>> {
+    let OrderRequest {
         symbol,
         size,
-        order_type,
+        r#type: order_type,
         price,
         stop_price,
         trigger_signal,
         client_order_id,
         reduce_only,
-        trailing_max,
-        trailing_unit,
-    ) = match direction {
-        FuturesOrderDirection::Buy {
-            symbol,
-            size,
-            r#type,
-            price,
-            stop_price,
-            trigger_signal,
-            client_order_id,
-            reduce_only,
-            trailing_stop_max_deviation,
-            trailing_stop_deviation_unit,
-        } => (
-            "buy",
-            symbol,
-            size,
-            r#type,
-            price,
-            stop_price,
-            trigger_signal,
-            client_order_id,
-            *reduce_only,
-            trailing_stop_max_deviation,
-            trailing_stop_deviation_unit,
-        ),
-        FuturesOrderDirection::Sell {
-            symbol,
-            size,
-            r#type,
-            price,
-            stop_price,
-            trigger_signal,
-            client_order_id,
-            reduce_only,
-            trailing_stop_max_deviation,
-            trailing_stop_deviation_unit,
-        } => (
-            "sell",
-            symbol,
-            size,
-            r#type,
-            price,
-            stop_price,
-            trigger_signal,
-            client_order_id,
-            *reduce_only,
-            trailing_stop_max_deviation,
-            trailing_stop_deviation_unit,
-        ),
-    };
-
-    let order_type_api = map_order_type_to_api(order_type);
-
-    if let Some(tu) = trailing_unit {
-        if !VALID_TRAILING_UNITS.contains(&tu.as_str()) {
-            return Err(KrakenError::Validation(format!(
-                "Invalid trailing stop deviation unit: {tu}. Valid values: {}",
-                VALID_TRAILING_UNITS.join(", ")
-            )));
-        }
-    }
+        trailing_stop_max_deviation: trailing_max,
+        trailing_stop_deviation_unit: trailing_unit,
+    } = order;
 
     let mut params = HashMap::new();
-    params.insert("orderType".into(), order_type_api);
-    params.insert("symbol".into(), symbol.to_string());
+    params.insert("orderType".into(), order_type.as_api_wire().to_string());
+    params.insert("symbol".into(), symbol);
     params.insert("side".into(), side.to_string());
-    params.insert("size".into(), size.to_string());
+    params.insert("size".into(), size);
     if let Some(p) = price {
-        params.insert("limitPrice".into(), p.clone());
+        params.insert("limitPrice".into(), p);
     }
     if let Some(sp) = stop_price {
-        params.insert("stopPrice".into(), sp.clone());
+        params.insert("stopPrice".into(), sp);
     }
     if let Some(ts) = trigger_signal {
-        params.insert("triggerSignal".into(), ts.clone());
+        params.insert("triggerSignal".into(), ts.to_string());
     }
     if let Some(coid) = client_order_id {
-        params.insert("cliOrdId".into(), coid.clone());
+        params.insert("cliOrdId".into(), coid);
     }
     if reduce_only {
         params.insert("reduceOnly".into(), "true".into());
     }
     if let Some(tm) = trailing_max {
-        params.insert("trailingStopMaxDeviation".into(), tm.clone());
+        params.insert("trailingStopMaxDeviation".into(), tm);
     }
     if let Some(tu) = trailing_unit {
-        params.insert("trailingStopDeviationUnit".into(), tu.clone());
+        params.insert("trailingStopDeviationUnit".into(), tu.as_wire());
     }
     Ok(params)
+}
+
+/// Shared executor for the three `history-*` endpoints, which take identical filters.
+async fn fetch_history(
+    filter: HistoryWindow,
+    endpoint: &str,
+    ctx: &AppContext,
+) -> Result<CommandOutput> {
+    let (client, creds) = ctx.futures_authed()?;
+    let params = build_history_params(
+        filter.since.as_deref(),
+        filter.before.as_deref(),
+        filter.sort.as_deref(),
+    );
+    let data = client.private_get(endpoint, &params, creds).await?;
+    Ok(CommandOutput::from_untyped(&data))
 }
 
 fn build_history_params<'a>(
@@ -1011,9 +1064,9 @@ fn build_history_params<'a>(
     params
 }
 
-/// Parse orderbook response (GET orderbook) into Side | Price | Size table (asks then bids).
+/// Parse orderbook response (GET orderbook) into OrderSide | Price | Size table (asks then bids).
 fn parse_orderbook(data: &Value) -> CommandOutput {
-    let headers = vec!["Side".into(), "Price".into(), "Size".into()];
+    let headers = vec!["OrderSide".into(), "Price".into(), "Size".into()];
     let mut rows = Vec::new();
     let book = data
         .get("orderBook")
@@ -1022,19 +1075,19 @@ fn parse_orderbook(data: &Value) -> CommandOutput {
     if let Some(book) = book {
         if let Some(asks) = book.get("asks").and_then(|a| a.as_array()) {
             for level in asks {
-                if let Some(arr) = level.as_array() {
-                    if arr.len() >= 2 {
-                        rows.push(vec!["Ask".into(), arr[0].to_string(), arr[1].to_string()]);
-                    }
+                if let Some(arr) = level.as_array()
+                    && arr.len() >= 2
+                {
+                    rows.push(vec!["Ask".into(), arr[0].to_string(), arr[1].to_string()]);
                 }
             }
         }
         if let Some(bids) = book.get("bids").and_then(|b| b.as_array()) {
             for level in bids {
-                if let Some(arr) = level.as_array() {
-                    if arr.len() >= 2 {
-                        rows.push(vec!["Bid".into(), arr[0].to_string(), arr[1].to_string()]);
-                    }
+                if let Some(arr) = level.as_array()
+                    && arr.len() >= 2
+                {
+                    rows.push(vec!["Bid".into(), arr[0].to_string(), arr[1].to_string()]);
                 }
             }
         }
@@ -1085,7 +1138,7 @@ fn parse_accounts(data: &Value) -> CommandOutput {
     let accounts = data.get("accounts").and_then(|a| a.as_object());
     if let Some(accounts) = accounts {
         for (account_id, account) in accounts {
-            let type_str = jstr(account, "type");
+            let type_str = json_field(account, "type");
             if let Some(balances) = account.get("balances").and_then(|b| b.as_object()) {
                 for (currency, amount) in balances {
                     rows.push(vec![
@@ -1122,9 +1175,9 @@ fn parse_subaccounts(data: &Value) -> CommandOutput {
     if let Some(subaccounts) = subaccounts {
         for sa in subaccounts {
             rows.push(vec![
-                jstr(sa, "accountUid"),
-                jstr(sa, "email"),
-                jstr(sa, "fullName"),
+                json_field(sa, "accountUid"),
+                json_field(sa, "email"),
+                json_field(sa, "fullName"),
             ]);
         }
     }
@@ -1148,11 +1201,11 @@ fn parse_open_orders(data: &Value) -> CommandOutput {
     if let Some(orders) = orders {
         for order in orders {
             rows.push(vec![
-                jstr(order, "order_id"),
-                jstr(order, "orderType"),
-                jstr(order, "side"),
-                jstr(order, "symbol"),
-                jstr(order, "status"),
+                json_field(order, "order_id"),
+                json_field(order, "orderType"),
+                json_field(order, "side"),
+                json_field(order, "symbol"),
+                json_field(order, "status"),
             ]);
         }
     }
@@ -1174,12 +1227,12 @@ fn parse_trade_history(data: &Value) -> CommandOutput {
     if let Some(history) = history {
         for trade in history {
             rows.push(vec![
-                jstr(trade, "trade_id"),
-                jstr(trade, "time"),
-                jstr(trade, "side"),
-                jstr(trade, "price"),
-                jstr(trade, "size"),
-                jstr(trade, "type"),
+                json_field(trade, "trade_id"),
+                json_field(trade, "time"),
+                json_field(trade, "side"),
+                json_field(trade, "price"),
+                json_field(trade, "size"),
+                json_field(trade, "type"),
             ]);
         }
     }
@@ -1198,11 +1251,11 @@ fn parse_ticker(data: &Value) -> CommandOutput {
     let mut rows = Vec::new();
     if let Some(ticker) = data.get("ticker") {
         rows.push(vec![
-            jstr(ticker, "symbol"),
-            jstr(ticker, "last"),
-            jstr(ticker, "bid"),
-            jstr(ticker, "ask"),
-            jstr(ticker, "vol24h"),
+            json_field(ticker, "symbol"),
+            json_field(ticker, "last"),
+            json_field(ticker, "bid"),
+            json_field(ticker, "ask"),
+            json_field(ticker, "vol24h"),
         ]);
     }
     CommandOutput::new(data.clone(), headers, rows)
@@ -1222,11 +1275,11 @@ fn parse_tickers(data: &Value) -> CommandOutput {
     if let Some(tickers) = data.get("tickers").and_then(|t| t.as_array()) {
         for ticker in tickers {
             rows.push(vec![
-                jstr(ticker, "symbol"),
-                jstr(ticker, "last"),
-                jstr(ticker, "bid"),
-                jstr(ticker, "ask"),
-                jstr(ticker, "vol24h"),
+                json_field(ticker, "symbol"),
+                json_field(ticker, "last"),
+                json_field(ticker, "bid"),
+                json_field(ticker, "ask"),
+                json_field(ticker, "vol24h"),
             ]);
         }
     }
@@ -1240,7 +1293,10 @@ fn parse_unwind_queue(data: &Value) -> CommandOutput {
     let queue = data.get("queue").and_then(|q| q.as_array());
     if let Some(queue) = queue {
         for item in queue {
-            rows.push(vec![jstr(item, "symbol"), jstr(item, "percentile")]);
+            rows.push(vec![
+                json_field(item, "symbol"),
+                json_field(item, "percentile"),
+            ]);
         }
     }
     CommandOutput::new(data.clone(), headers, rows)
@@ -1262,13 +1318,13 @@ fn parse_transfers(data: &Value) -> CommandOutput {
     if let Some(transfers) = transfers {
         for t in transfers {
             rows.push(vec![
-                jstr(t, "id"),
-                jstr(t, "date"),
-                jstr(t, "from"),
-                jstr(t, "to"),
-                jstr(t, "asset"),
-                jstr(t, "amount"),
-                jstr(t, "status"),
+                json_field(t, "id"),
+                json_field(t, "date"),
+                json_field(t, "from"),
+                json_field(t, "to"),
+                json_field(t, "asset"),
+                json_field(t, "amount"),
+                json_field(t, "status"),
             ]);
         }
     }
@@ -1302,7 +1358,10 @@ fn parse_feeschedules(data: &Value) -> CommandOutput {
 
     if let Some(schedules) = data.get("feeSchedules").and_then(|s| s.as_array()) {
         for schedule in schedules {
-            rows.push(vec![jstr(schedule, "name"), jstr(schedule, "uid")]);
+            rows.push(vec![
+                json_field(schedule, "name"),
+                json_field(schedule, "uid"),
+            ]);
         }
     }
     CommandOutput::new(data.clone(), headers, rows)
@@ -1315,7 +1374,10 @@ fn parse_pnl_preferences(data: &Value) -> CommandOutput {
     let prefs = data.get("preferences").and_then(|p| p.as_array());
     if let Some(prefs) = prefs {
         for pref in prefs {
-            rows.push(vec![jstr(pref, "symbol"), jstr(pref, "pnlCurrency")]);
+            rows.push(vec![
+                json_field(pref, "symbol"),
+                json_field(pref, "pnlCurrency"),
+            ]);
         }
     }
     CommandOutput::new(data.clone(), headers, rows)
@@ -1331,7 +1393,10 @@ fn parse_leverage_preferences(data: &Value) -> CommandOutput {
         .and_then(|p| p.as_array());
     if let Some(prefs) = prefs {
         for pref in prefs {
-            rows.push(vec![jstr(pref, "symbol"), jstr(pref, "maxLeverage")]);
+            rows.push(vec![
+                json_field(pref, "symbol"),
+                json_field(pref, "maxLeverage"),
+            ]);
         }
     }
     CommandOutput::new(data.clone(), headers, rows)
@@ -1356,25 +1421,25 @@ fn parse_positions(data: &Value) -> CommandOutput {
     if let Some(positions) = positions {
         for pos in positions {
             rows.push(vec![
-                jstr(pos, "symbol"),
-                jstr(pos, "side"),
-                jstr(pos, "size"),
-                jstr(pos, "price"),
-                jstr(pos, "fillTime"),
-                jstr(pos, "pnlCurrency"),
-                jstr(pos, "unrealizedFunding"),
+                json_field(pos, "symbol"),
+                json_field(pos, "side"),
+                json_field(pos, "size"),
+                json_field(pos, "price"),
+                json_field(pos, "fillTime"),
+                json_field(pos, "pnlCurrency"),
+                json_field(pos, "unrealizedFunding"),
             ]);
         }
     }
     CommandOutput::new(data.clone(), headers, rows)
 }
 
-/// Parse fills response (GET fills) into Fill ID | Symbol | Side | Size | Price | Time table.
+/// Parse fills response (GET fills) into Fill ID | Symbol | OrderSide | Size | Price | Time table.
 fn parse_fills(data: &Value) -> CommandOutput {
     let headers = vec![
         "Fill ID".into(),
         "Symbol".into(),
-        "Side".into(),
+        "OrderSide".into(),
         "Size".into(),
         "Price".into(),
         "Time".into(),
@@ -1384,12 +1449,12 @@ fn parse_fills(data: &Value) -> CommandOutput {
     if let Some(fills) = data.get("fills").and_then(|f| f.as_array()) {
         for fill in fills {
             rows.push(vec![
-                jstr(fill, "fill_id"),
-                jstr(fill, "symbol"),
-                jstr(fill, "side"),
-                jstr(fill, "size"),
-                jstr(fill, "price"),
-                jstr(fill, "fillTime"),
+                json_field(fill, "fill_id"),
+                json_field(fill, "symbol"),
+                json_field(fill, "side"),
+                json_field(fill, "size"),
+                json_field(fill, "price"),
+                json_field(fill, "fillTime"),
             ]);
         }
     }
@@ -1409,10 +1474,10 @@ fn parse_notifications(data: &Value) -> CommandOutput {
     if let Some(notifications) = data.get("notifications").and_then(|n| n.as_array()) {
         for notif in notifications {
             rows.push(vec![
-                jstr(notif, "type"),
-                jstr(notif, "priority"),
-                jstr(notif, "note"),
-                jstr(notif, "effectiveTime"),
+                json_field(notif, "type"),
+                json_field(notif, "priority"),
+                json_field(notif, "note"),
+                json_field(notif, "effectiveTime"),
             ]);
         }
     }
@@ -1421,7 +1486,7 @@ fn parse_notifications(data: &Value) -> CommandOutput {
 
 /// Parse sendorder response into order_id | Result | Status table.
 fn parse_order_response(data: &Value) -> CommandOutput {
-    let result = jstr(data, "result");
+    let result = json_field(data, "result");
 
     let (order_id, status) = data
         .get("sendStatus")
@@ -1431,7 +1496,7 @@ fn parse_order_response(data: &Value) -> CommandOutput {
                 Value::Object(_) => v.clone(),
                 _ => return None,
             };
-            Some((jstr(&obj, "order_id"), jstr(&obj, "status")))
+            Some((json_field(&obj, "order_id"), json_field(&obj, "status")))
         })
         .unwrap_or_else(|| ("-".to_string(), "-".to_string()));
 
@@ -1472,10 +1537,10 @@ mod tests {
 
     #[test]
     fn build_futures_order_basic_buy() {
-        let dir = FuturesOrderDirection::Buy {
+        let order = OrderRequest {
             symbol: "PI_XBTUSD".into(),
             size: "1".into(),
-            r#type: "limit".into(),
+            r#type: FuturesOrderType::Limit,
             price: Some("50000".into()),
             stop_price: None,
             trigger_signal: None,
@@ -1484,7 +1549,7 @@ mod tests {
             trailing_stop_max_deviation: None,
             trailing_stop_deviation_unit: None,
         };
-        let params = build_futures_order(&dir).unwrap();
+        let params = build_futures_order(order, OrderSide::Buy).unwrap();
         assert_eq!(params.get("side").unwrap(), "buy");
         assert_eq!(params.get("symbol").unwrap(), "PI_XBTUSD");
         assert_eq!(params.get("orderType").unwrap(), "lmt");
@@ -1494,19 +1559,19 @@ mod tests {
 
     #[test]
     fn build_futures_order_with_stop_and_client_id() {
-        let dir = FuturesOrderDirection::Sell {
+        let order = OrderRequest {
             symbol: "PI_ETHUSD".into(),
             size: "10".into(),
-            r#type: "stop".into(),
+            r#type: FuturesOrderType::Stop,
             price: None,
             stop_price: Some("3000".into()),
-            trigger_signal: Some("mark".into()),
+            trigger_signal: Some(TriggerSignal::Mark),
             client_order_id: Some("my-order-123".into()),
             reduce_only: true,
             trailing_stop_max_deviation: None,
             trailing_stop_deviation_unit: None,
         };
-        let params = build_futures_order(&dir).unwrap();
+        let params = build_futures_order(order, OrderSide::Sell).unwrap();
         assert_eq!(params.get("side").unwrap(), "sell");
         assert_eq!(params.get("stopPrice").unwrap(), "3000");
         assert_eq!(params.get("triggerSignal").unwrap(), "mark");
@@ -1516,19 +1581,19 @@ mod tests {
 
     #[test]
     fn build_futures_order_trailing_stop() {
-        let dir = FuturesOrderDirection::Buy {
+        let order = OrderRequest {
             symbol: "PI_XBTUSD".into(),
             size: "1".into(),
-            r#type: "stop".into(),
+            r#type: FuturesOrderType::Stop,
             price: None,
             stop_price: Some("49000".into()),
             trigger_signal: None,
             client_order_id: None,
             reduce_only: false,
             trailing_stop_max_deviation: Some("5".into()),
-            trailing_stop_deviation_unit: Some("percent".into()),
+            trailing_stop_deviation_unit: Some(TrailingUnit::Percent),
         };
-        let params = build_futures_order(&dir).unwrap();
+        let params = build_futures_order(order, OrderSide::Buy).unwrap();
         assert_eq!(params.get("trailingStopMaxDeviation").unwrap(), "5");
         assert_eq!(params.get("trailingStopDeviationUnit").unwrap(), "percent");
     }

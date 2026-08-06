@@ -30,3 +30,5 @@ Scan available perpetual contracts, identify those with high funding rates, and 
 6. Check spot price for hedge calculation: `kraken ticker BTCUSD ETHUSD SOLUSD -o json 2>/dev/null`
 7. Check futures account margin: `kraken futures accounts -o json 2>/dev/null`
 8. Present ranked opportunities with annualized yield, direction, and required margin
+
+If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

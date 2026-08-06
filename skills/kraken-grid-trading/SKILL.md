@@ -36,7 +36,8 @@ Grid spacing = (upper - lower) / grid levels.
 Always test in paper mode first:
 
 ```bash
-kraken paper init --balance 10000 -o json 2>/dev/null
+kraken workspace create sandbox --capital 10000 --mode paper -o json 2>/dev/null
+export KRAKEN_WORKSPACE=sandbox
 
 # Place buy grid below current price
 kraken paper buy BTCUSD 0.001 --type limit --price 58000 -o json 2>/dev/null
@@ -49,7 +50,7 @@ kraken paper sell BTCUSD 0.001 --type limit --price 63000 -o json 2>/dev/null
 kraken paper sell BTCUSD 0.001 --type limit --price 64000 -o json 2>/dev/null
 
 kraken paper orders -o json 2>/dev/null
-kraken paper status -o json 2>/dev/null
+kraken workspace status -o json 2>/dev/null
 ```
 
 ## Live Grid Placement
@@ -124,3 +125,4 @@ kraken order cancel-batch <TXID1> <TXID2> <TXID3> -o json 2>/dev/null
 - Enable `cancel-after` for unattended grid sessions.
 - Track total grid P&L, not just individual level fills.
 - Cancel the entire grid before adjusting parameters; do not leave orphaned orders.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

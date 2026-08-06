@@ -1,8 +1,8 @@
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+
+use uuid::Uuid;
 
 pub(crate) const CLIENT_NAME: &str = "kraken-cli";
 pub(crate) const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -19,12 +19,43 @@ static AGENT_CLIENT: OnceLock<String> = OnceLock::new();
 static INSTANCE_ID: OnceLock<String> = OnceLock::new();
 static USER_AGENT: OnceLock<String> = OnceLock::new();
 
+/// The shared client-identity headers, tagged with the transport's `x-korigin`. The one
+/// list both transports build from, so adding an identity header cannot drift between
+/// them; the WS handshake also carries an explicit `User-Agent` (its transports take
+/// headers as data, while REST sets it on the client builder).
+fn identity_headers(korigin: &'static str) -> [(&'static str, &'static str); 5] {
+    [
+        ("X-Kraken-Client", CLIENT_NAME),
+        ("X-Kraken-Client-Version", CLIENT_VERSION),
+        ("X-Kraken-Agent-Client", agent_client()),
+        ("X-Kraken-Instance-Id", instance_id()),
+        ("x-korigin", korigin),
+    ]
+}
+
+/// Every WS handshake's client-identity headers — see [`identity_headers`].
+pub(crate) fn ws_handshake_headers() -> Vec<(&'static str, &'static str)> {
+    std::iter::once(("User-Agent", user_agent()))
+        .chain(identity_headers(KORIGIN_WS))
+        .collect()
+}
+
+/// The REST clients' default client-identity headers — see [`identity_headers`].
+pub(crate) fn rest_identity_headers() -> [(&'static str, &'static str); 5] {
+    identity_headers(KORIGIN_REST)
+}
+
 pub(crate) fn agent_client() -> &'static str {
     AGENT_CLIENT.get_or_init(resolve_agent_client).as_str()
 }
 
 pub(crate) fn instance_id() -> &'static str {
     INSTANCE_ID.get_or_init(resolve_instance_id).as_str()
+}
+
+/// Generate a fresh UUID v4 (used for feedback event ids and similar).
+pub(crate) fn new_uuid_v4() -> String {
+    Uuid::new_v4().to_string()
 }
 
 /// Structured User-Agent: `kraken-cli/0.2.0 (cursor)`.
@@ -136,12 +167,12 @@ fn resolve_instance_id() -> String {
             return existing;
         }
 
-        let generated = generate_uuid_v4();
+        let generated = Uuid::new_v4().to_string();
         let _ = write_instance_id(&path, &generated);
         return generated;
     }
 
-    generate_uuid_v4()
+    Uuid::new_v4().to_string()
 }
 
 fn instance_id_path() -> Option<PathBuf> {
@@ -166,62 +197,6 @@ fn write_instance_id(path: &Path, value: &str) -> std::io::Result<()> {
     }
     atomic_write_restricted(path, value.as_bytes())?;
     Ok(())
-}
-
-fn generate_uuid_v4() -> String {
-    let mut bytes = [0u8; 16];
-    fill_random_bytes(&mut bytes);
-
-    // UUID v4: set version and variant bits.
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0],
-        bytes[1],
-        bytes[2],
-        bytes[3],
-        bytes[4],
-        bytes[5],
-        bytes[6],
-        bytes[7],
-        bytes[8],
-        bytes[9],
-        bytes[10],
-        bytes[11],
-        bytes[12],
-        bytes[13],
-        bytes[14],
-        bytes[15]
-    )
-}
-
-fn fill_random_bytes(bytes: &mut [u8]) {
-    #[cfg(unix)]
-    {
-        if let Ok(mut file) = fs::File::open("/dev/urandom") {
-            if file.read_exact(bytes).is_ok() {
-                return;
-            }
-        }
-    }
-
-    // Fallback entropy source if OS randomness is unavailable.
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let mut state = now ^ ((std::process::id() as u128) << 64);
-
-    for chunk in bytes.chunks_mut(8) {
-        state ^= state << 13;
-        state ^= state >> 7;
-        state ^= state << 17;
-        let block = state.to_le_bytes();
-        chunk.copy_from_slice(&block[..chunk.len()]);
-        state = state.wrapping_add(0x9e3779b97f4a7c15u128);
-    }
 }
 
 fn is_uuid_like(value: &str) -> bool {
@@ -273,11 +248,19 @@ fn atomic_write_restricted(path: &Path, data: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
+// The only unsafe in the crate: Rust 2024 env mutation, justified on ENV_LOCK.
+#[allow(unsafe_code)]
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::Mutex;
 
+    use super::*;
+
+    /// SAFETY justification for every `unsafe` env access below: mutating the
+    /// process environment is only sound while no other thread touches it, and
+    /// all env mutation in this test binary lives in this module, serialized
+    /// behind this lock; the reads under test run on the same thread while it
+    /// is held.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     const ALL_AGENT_VARS: &[&str] = &[
@@ -295,13 +278,15 @@ mod tests {
 
     fn clear_agent_vars() {
         for var in ALL_AGENT_VARS {
-            std::env::remove_var(var);
+            unsafe { std::env::remove_var(var) };
         }
     }
 
+    /// Pins the generator/validator agreement: whatever we mint must pass the
+    /// gate that guards env- and file-sourced ids.
     #[test]
     fn generated_instance_id_is_uuid() {
-        let generated = generate_uuid_v4();
+        let generated = Uuid::new_v4().to_string();
         assert!(is_uuid_like(&generated));
     }
 
@@ -326,13 +311,11 @@ mod tests {
         assert_eq!(normalize_agent_client("  Cursor  "), "cursor");
     }
 
-    // -- Agent-specific env var detection --
-
     #[test]
     fn detect_cursor_from_cursor_agent_var() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("CURSOR_AGENT", "1");
+        unsafe { std::env::set_var("CURSOR_AGENT", "1") };
         assert_eq!(detect_from_environment(), "cursor");
         clear_agent_vars();
     }
@@ -341,7 +324,7 @@ mod tests {
     fn detect_cursor_from_trace_id_var() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("CURSOR_TRACE_ID", "abc123");
+        unsafe { std::env::set_var("CURSOR_TRACE_ID", "abc123") };
         assert_eq!(detect_from_environment(), "cursor");
         clear_agent_vars();
     }
@@ -350,7 +333,7 @@ mod tests {
     fn detect_claude_from_claudecode_var() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("CLAUDECODE", "1");
+        unsafe { std::env::set_var("CLAUDECODE", "1") };
         assert_eq!(detect_from_environment(), "claude");
         clear_agent_vars();
     }
@@ -359,7 +342,7 @@ mod tests {
     fn detect_openclaw_from_shell_var() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("OPENCLAW_SHELL", "exec");
+        unsafe { std::env::set_var("OPENCLAW_SHELL", "exec") };
         assert_eq!(detect_from_environment(), "openclaw");
         clear_agent_vars();
     }
@@ -368,7 +351,7 @@ mod tests {
     fn detect_codex_from_sandbox_var() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("CODEX_SANDBOX", "seatbelt");
+        unsafe { std::env::set_var("CODEX_SANDBOX", "seatbelt") };
         assert_eq!(detect_from_environment(), "codex");
         clear_agent_vars();
     }
@@ -377,7 +360,7 @@ mod tests {
     fn detect_goose_from_terminal_var() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("GOOSE_TERMINAL", "1");
+        unsafe { std::env::set_var("GOOSE_TERMINAL", "1") };
         assert_eq!(detect_from_environment(), "goose");
         clear_agent_vars();
     }
@@ -386,18 +369,16 @@ mod tests {
     fn detect_gemini_from_cli_var() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("GEMINI_CLI", "1");
+        unsafe { std::env::set_var("GEMINI_CLI", "1") };
         assert_eq!(detect_from_environment(), "gemini");
         clear_agent_vars();
     }
-
-    // -- Vendor-neutral AGENT env var --
 
     #[test]
     fn agent_env_var_known_value_normalized() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("AGENT", "claude-code");
+        unsafe { std::env::set_var("AGENT", "claude-code") };
         assert_eq!(detect_from_environment(), "claude");
         clear_agent_vars();
     }
@@ -406,7 +387,7 @@ mod tests {
     fn agent_env_var_unknown_value_passed_through() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("AGENT", "some-new-agent");
+        unsafe { std::env::set_var("AGENT", "some-new-agent") };
         assert_eq!(detect_from_environment(), "some-new-agent");
         clear_agent_vars();
     }
@@ -415,7 +396,7 @@ mod tests {
     fn agent_env_var_sanitized_and_lowercased() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("AGENT", "  My-Custom-Agent!@#  ");
+        unsafe { std::env::set_var("AGENT", "  My-Custom-Agent!@#  ") };
         assert_eq!(detect_from_environment(), "my-custom-agent");
         clear_agent_vars();
     }
@@ -424,7 +405,7 @@ mod tests {
     fn agent_env_var_truncated_to_32_chars() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("AGENT", "a]bcdefghijklmnopqrstuvwxyz-123456789");
+        unsafe { std::env::set_var("AGENT", "a]bcdefghijklmnopqrstuvwxyz-123456789") };
         let result = detect_from_environment();
         assert!(result.len() <= 32);
         assert_eq!(result, "abcdefghijklmnopqrstuvwxyz-12345");
@@ -435,30 +416,26 @@ mod tests {
     fn empty_agent_env_var_falls_through() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("AGENT", "");
+        unsafe { std::env::set_var("AGENT", "") };
         assert_eq!(detect_from_environment(), "direct");
         clear_agent_vars();
     }
-
-    // -- IDE detection --
 
     #[test]
     fn detect_vscode_without_agent_vars() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("VSCODE_PID", "12345");
+        unsafe { std::env::set_var("VSCODE_PID", "12345") };
         assert_eq!(detect_from_environment(), "vscode");
         clear_agent_vars();
     }
-
-    // -- Priority ordering --
 
     #[test]
     fn cursor_takes_priority_over_vscode() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("CURSOR_AGENT", "1");
-        std::env::set_var("VSCODE_PID", "12345");
+        unsafe { std::env::set_var("CURSOR_AGENT", "1") };
+        unsafe { std::env::set_var("VSCODE_PID", "12345") };
         assert_eq!(detect_from_environment(), "cursor");
         clear_agent_vars();
     }
@@ -467,8 +444,8 @@ mod tests {
     fn agent_specific_var_takes_priority_over_agent_env() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("CLAUDECODE", "1");
-        std::env::set_var("AGENT", "some-other-agent");
+        unsafe { std::env::set_var("CLAUDECODE", "1") };
+        unsafe { std::env::set_var("AGENT", "some-other-agent") };
         assert_eq!(detect_from_environment(), "claude");
         clear_agent_vars();
     }
@@ -477,13 +454,11 @@ mod tests {
     fn agent_env_takes_priority_over_vscode() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("AGENT", "aider");
-        std::env::set_var("VSCODE_PID", "12345");
+        unsafe { std::env::set_var("AGENT", "aider") };
+        unsafe { std::env::set_var("VSCODE_PID", "12345") };
         assert_eq!(detect_from_environment(), "aider");
         clear_agent_vars();
     }
-
-    // -- Fallback --
 
     #[test]
     fn detect_direct_when_no_signals() {
@@ -496,12 +471,10 @@ mod tests {
     fn empty_env_var_is_not_present() {
         let _g = ENV_LOCK.lock().unwrap();
         clear_agent_vars();
-        std::env::set_var("CURSOR_AGENT", "");
+        unsafe { std::env::set_var("CURSOR_AGENT", "") };
         assert_eq!(detect_from_environment(), "direct");
         clear_agent_vars();
     }
-
-    // -- Structured User-Agent --
 
     #[test]
     fn structured_user_agent_includes_agent_in_parens() {

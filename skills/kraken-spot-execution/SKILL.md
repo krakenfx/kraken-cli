@@ -52,3 +52,4 @@ Use this skill for:
 - Never execute live order commands without explicit user approval.
 - Route failures by `.error` category.
 - On `rate_limit`, read `suggestion` and `docs_url` fields, then adapt strategy.
+- If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.
