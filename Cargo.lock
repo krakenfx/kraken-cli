@@ -1706,7 +1706,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-cli"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1762,7 +1762,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "clap",
  "proptest",
@@ -1776,7 +1776,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-lab"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "humantime",
@@ -1800,7 +1800,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-paper"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "kraken-core",
@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-recording"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "duckdb",
@@ -1834,7 +1834,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-replay"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "kraken-core",
@@ -1856,7 +1856,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-session"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "clap",
@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-workspace"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "insta",
@@ -1899,7 +1899,7 @@ dependencies = [
 
 [[package]]
 name = "kraken-ws"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "futures-util",
  "kraken-core",

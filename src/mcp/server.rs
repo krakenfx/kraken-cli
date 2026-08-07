@@ -1,6 +1,7 @@
 //! MCP server (rmcp, stdio). Tool calls are rewritten to argv and re-enter the
 //! CLI's own clap parse + dispatch path, so tool and CLI behaviour cannot drift.
 
+use std::collections::BTreeMap;
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
@@ -12,6 +13,7 @@ use rmcp::model::{
 };
 use rmcp::service::{RequestContext, RoleServer};
 use serde::Serialize;
+use serde_json::Value;
 
 use super::registry::{GateMode, ToolRegistry};
 use crate::AppContext;
@@ -174,10 +176,75 @@ fn build_instructions(
 // namespaced under an `mcp_audit` key so consumers can select audit records
 // (`jq 'select(.mcp_audit)'`) while the stream stays valid JSONL. MCP uses
 // stdio transport, so there is no TCP source address; the trail identifies
-// callers by agent client, instance ID, and PID. Only argument *metadata* is
-// recorded, never values, so no credentials or account data can leak.
+// callers by agent client, instance ID, and PID.
+//
+// Argument *keys* are always recorded. Values are logged only for an allowlist
+// of financial parameters (amounts, assets, pairs, destinations, order
+// prices/sizes, …). Credentials and other non-financial fields never have
+// their values written -- even if somehow present on the call.
 
 const MCP_TRANSPORT: &str = "stdio";
+
+/// Argument ids whose values are safe and useful to retain on `tool_call`
+/// audit lines. Keys are compared after normalizing `--flag-name` → `flag_name`.
+const FINANCIAL_AUDIT_ARGS: &[&str] = &[
+    "address",
+    "amount",
+    "asset",
+    "asset_class",
+    "capital",
+    "cash_order_qty",
+    "close_ordertype",
+    "close_price",
+    "close_price2",
+    "currency",
+    "display_qty",
+    "displayvol",
+    "fee_preference",
+    "fee_rate",
+    "from",
+    "from_account",
+    "key", // withdrawal address key name (not an API secret)
+    "leverage",
+    "limit_price",
+    "margin",
+    "max_fee",
+    "max_leverage",
+    "oflags",
+    "order_id",
+    "order_qty",
+    "order_type",
+    "pair",
+    "pairs",
+    "preference",
+    "price",
+    "price2",
+    "rebase_multiplier",
+    "reduce_only",
+    "refid",
+    "side",
+    "size",
+    "slippage_rate",
+    "stop_price",
+    "stp_type",
+    "stptype",
+    "symbol",
+    "time_in_force",
+    "timeinforce",
+    "to",
+    "to_account",
+    "trailing_stop_deviation_unit",
+    "trailing_stop_max_deviation",
+    "trigger",
+    "trigger_price",
+    "trigger_price_type",
+    "trigger_reference",
+    "trigger_signal",
+    "txid",
+    "type",
+    "unit",
+    "volume",
+];
 
 /// One line of the MCP audit stream: a single [`AuditRecord`] namespaced under
 /// an `mcp_audit` key.
@@ -218,8 +285,17 @@ enum AuditEvent<'a> {
     /// A tool invocation was received.
     ToolCall {
         tool: &'a str,
+        /// Active workspace trading mode at call time: `"paper"` or `"live"`.
+        /// Re-resolved per invocation so a mid-session promote is visible.
+        trading_mode: &'static str,
+        /// True when fills are simulated (paper workspace); false for the real account.
+        paper: bool,
         arg_keys: Vec<String>,
         arg_count: usize,
+        /// Allowlisted financial argument values (amounts, assets, pairs, …).
+        /// Omitted from JSON when empty so read-only calls stay compact.
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        financial: BTreeMap<String, Value>,
         agent: &'static str,
         instance_id: &'static str,
         pid: u32,
@@ -227,6 +303,9 @@ enum AuditEvent<'a> {
     /// A tool invocation completed (executed or rejected).
     ToolResult {
         tool: &'a str,
+        /// Same resolution as [`AuditEvent::ToolCall::trading_mode`].
+        trading_mode: &'static str,
+        paper: bool,
         status: &'static str,
         error_code: Option<String>,
         duration_ms: u64,
@@ -266,13 +345,48 @@ fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
-fn argument_keys(args: &Option<serde_json::Map<String, serde_json::Value>>) -> Vec<String> {
+fn argument_keys(args: &Option<serde_json::Map<String, Value>>) -> Vec<String> {
     let Some(args) = args else {
         return Vec::new();
     };
     let mut keys: Vec<String> = args.keys().cloned().collect();
     keys.sort();
     keys
+}
+
+/// Normalize an MCP / clap argument id for allowlist checks: strip a leading
+/// `--` and map hyphens to underscores (`--max-fee` → `max_fee`).
+fn normalize_arg_id(raw: &str) -> String {
+    raw.trim()
+        .trim_start_matches("--")
+        .replace('-', "_")
+        .to_ascii_lowercase()
+}
+
+fn is_financial_audit_arg(raw: &str) -> bool {
+    let id = normalize_arg_id(raw);
+    // Defense in depth: never treat credential / transport globals as financial,
+    // even if someone expands the allowlist carelessly.
+    if super::schema::is_mcp_excluded_arg(&id) {
+        return false;
+    }
+    FINANCIAL_AUDIT_ARGS.binary_search(&id.as_str()).is_ok()
+}
+
+/// Collect allowlisted financial argument values for the MCP audit trail.
+/// Non-allowlisted keys (including secrets) contribute nothing; nulls are dropped.
+fn financial_arguments(args: &Option<serde_json::Map<String, Value>>) -> BTreeMap<String, Value> {
+    let mut out = BTreeMap::new();
+    let Some(args) = args else {
+        return out;
+    };
+    for (key, value) in args {
+        if value.is_null() || !is_financial_audit_arg(key) {
+            continue;
+        }
+        out.insert(normalize_arg_id(key), value.clone());
+    }
+    out
 }
 
 fn audit_error_code(error: &ErrorData) -> String {
@@ -327,11 +441,16 @@ impl ServerHandler for KrakenMcpServer {
         let started = Instant::now();
         let arg_keys = argument_keys(&request.arguments);
         let arg_count = arg_keys.len();
+        let financial = financial_arguments(&request.arguments);
+        let (trading_mode, paper) = audit_trading_mode(&self.ctx);
 
         audit_log(AuditEvent::ToolCall {
             tool: &tool_name,
+            trading_mode,
+            paper,
             arg_keys,
             arg_count,
+            financial,
             agent: crate::telemetry::agent_client(),
             instance_id: crate::telemetry::instance_id(),
             pid: std::process::id(),
@@ -343,15 +462,39 @@ impl ServerHandler for KrakenMcpServer {
             Ok(_) => ("executed", None),
             Err(e) => ("rejected", Some(audit_error_code(e))),
         };
+        // Re-resolve after dispatch: a promote/reset during the call must show
+        // on the result line, not only the pre-call snapshot.
+        let (trading_mode, paper) = audit_trading_mode(&self.ctx);
 
         audit_log(AuditEvent::ToolResult {
             tool: &tool_name,
+            trading_mode,
+            paper,
             status,
             error_code,
             duration_ms: started.elapsed().as_millis() as u64,
         });
 
         result
+    }
+}
+
+/// The active workspace's gate mode. Only a paper workspace relaxes the
+/// mode-routed trading verbs; anything else — no workspace, a live workspace,
+/// or a manifest that cannot be read — gates like the real account.
+fn resolve_gate_mode(ctx: &AppContext) -> GateMode {
+    match crate::commands::workspace_guard::active_manifest(ctx) {
+        Ok(Some(m)) if m.mode == kraken_workspace::WorkspaceMode::Paper => GateMode::Paper,
+        _ => GateMode::Master,
+    }
+}
+
+/// Audit labels for the active trading context. `"paper"` / `paper: true` only
+/// when the gate is the paper workspace; everything else is `"live"`.
+fn audit_trading_mode(ctx: &AppContext) -> (&'static str, bool) {
+    match resolve_gate_mode(ctx) {
+        GateMode::Paper => ("paper", true),
+        GateMode::Master => ("live", false),
     }
 }
 
@@ -958,6 +1101,92 @@ mod tests {
     }
 
     #[test]
+    fn financial_audit_allowlist_is_sorted_for_binary_search() {
+        let mut sorted = FINANCIAL_AUDIT_ARGS.to_vec();
+        sorted.sort_unstable();
+        assert_eq!(
+            FINANCIAL_AUDIT_ARGS,
+            sorted.as_slice(),
+            "FINANCIAL_AUDIT_ARGS must stay sorted for binary_search"
+        );
+    }
+
+    #[test]
+    fn financial_arguments_capture_trade_and_withdraw_values() {
+        let mut args = serde_json::Map::new();
+        args.insert("pair".into(), serde_json::json!("BTCUSD"));
+        args.insert("volume".into(), serde_json::json!("0.001"));
+        args.insert("price".into(), serde_json::json!("50000"));
+        args.insert("type".into(), serde_json::json!("limit"));
+        args.insert("acknowledged".into(), serde_json::json!(true));
+        let financial = financial_arguments(&Some(args));
+        assert_eq!(
+            financial.get("pair").and_then(Value::as_str),
+            Some("BTCUSD")
+        );
+        assert_eq!(
+            financial.get("volume").and_then(Value::as_str),
+            Some("0.001")
+        );
+        assert_eq!(
+            financial.get("price").and_then(Value::as_str),
+            Some("50000")
+        );
+        assert_eq!(financial.get("type").and_then(Value::as_str), Some("limit"));
+        assert!(
+            !financial.contains_key("acknowledged"),
+            "gate flags are not financial: {financial:?}"
+        );
+
+        let mut withdraw = serde_json::Map::new();
+        withdraw.insert("asset".into(), serde_json::json!("BTC"));
+        withdraw.insert("key".into(), serde_json::json!("cold-storage"));
+        withdraw.insert("amount".into(), serde_json::json!("0.1"));
+        withdraw.insert("--max-fee".into(), serde_json::json!("0.0001"));
+        let financial = financial_arguments(&Some(withdraw));
+        assert_eq!(financial.get("asset").and_then(Value::as_str), Some("BTC"));
+        assert_eq!(
+            financial.get("key").and_then(Value::as_str),
+            Some("cold-storage")
+        );
+        assert_eq!(financial.get("amount").and_then(Value::as_str), Some("0.1"));
+        assert_eq!(
+            financial.get("max_fee").and_then(Value::as_str),
+            Some("0.0001"),
+            "hyphenated / dashed flag names normalize into the map"
+        );
+    }
+
+    #[test]
+    fn financial_arguments_never_log_secret_values() {
+        let mut args = serde_json::Map::new();
+        args.insert("api_secret".into(), serde_json::json!("super-secret-value"));
+        args.insert("api_key".into(), serde_json::json!("attacker-key"));
+        args.insert("otp".into(), serde_json::json!("123456"));
+        args.insert("pair".into(), serde_json::json!("ETHUSD"));
+        args.insert("volume".into(), serde_json::json!("1"));
+        let financial = financial_arguments(&Some(args));
+        let rendered = serde_json::to_string(&financial).unwrap();
+        assert!(!rendered.contains("super-secret-value"), "{rendered}");
+        assert!(!rendered.contains("attacker-key"), "{rendered}");
+        assert!(!rendered.contains("123456"), "{rendered}");
+        assert_eq!(
+            financial.get("pair").and_then(Value::as_str),
+            Some("ETHUSD")
+        );
+        assert_eq!(financial.get("volume").and_then(Value::as_str), Some("1"));
+    }
+
+    #[test]
+    fn financial_arguments_empty_when_no_money_fields() {
+        let mut args = serde_json::Map::new();
+        args.insert("count".into(), serde_json::json!("10"));
+        args.insert("acknowledged".into(), serde_json::json!(true));
+        assert!(financial_arguments(&Some(args)).is_empty());
+        assert!(financial_arguments(&None).is_empty());
+    }
+
+    #[test]
     fn audit_error_code_is_stable_string() {
         let err = ErrorData::invalid_params("invalid", None);
         let code = audit_error_code(&err);
@@ -976,12 +1205,15 @@ mod tests {
         // stderr stream stays valid JSONL, with the record under `mcp_audit`.
         let line = AuditLine {
             mcp_audit: AuditRecord {
-                ts: "2026-07-01T00:00:00.000Z".parse().unwrap(),
+                ts: "2026-07-01T00:00:00.000Z".to_string(),
                 transport: MCP_TRANSPORT,
                 event: AuditEvent::ToolCall {
                     tool: "ticker",
+                    trading_mode: "live",
+                    paper: false,
                     arg_keys: vec!["pair".to_string()],
                     arg_count: 1,
+                    financial: BTreeMap::new(),
                     agent: "test-agent",
                     instance_id: "abc123",
                     pid: 42,
@@ -1003,8 +1235,89 @@ mod tests {
         );
         assert_eq!(record["event"], "tool_call");
         assert_eq!(record["tool"], "ticker");
+        assert_eq!(record["trading_mode"], "live");
+        assert_eq!(record["paper"], false);
         assert_eq!(record["transport"], "stdio");
         assert_eq!(record["arg_count"], 1);
+        assert!(
+            record.get("financial").is_none(),
+            "empty financial map must be omitted: {rendered}"
+        );
+    }
+
+    #[test]
+    fn audit_line_includes_financial_values_for_withdraw() {
+        let mut financial = BTreeMap::new();
+        financial.insert("amount".into(), serde_json::json!("0.1"));
+        financial.insert("asset".into(), serde_json::json!("BTC"));
+        financial.insert("key".into(), serde_json::json!("cold-storage"));
+
+        let line = AuditLine {
+            mcp_audit: AuditRecord {
+                ts: "2026-07-01T00:00:00.000Z".to_string(),
+                transport: MCP_TRANSPORT,
+                event: AuditEvent::ToolCall {
+                    tool: "kraken_withdraw",
+                    trading_mode: "live",
+                    paper: false,
+                    arg_keys: vec![
+                        "acknowledged".into(),
+                        "amount".into(),
+                        "asset".into(),
+                        "key".into(),
+                    ],
+                    arg_count: 4,
+                    financial,
+                    agent: "cursor",
+                    instance_id: "abc123",
+                    pid: 7,
+                },
+            },
+        };
+        let rendered = audit_line(&line).expect("event serializes");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("audit line is valid JSON");
+        let record = &parsed["mcp_audit"];
+        assert_eq!(record["tool"], "kraken_withdraw");
+        assert_eq!(record["trading_mode"], "live");
+        assert_eq!(record["paper"], false);
+        assert_eq!(record["financial"]["asset"], "BTC");
+        assert_eq!(record["financial"]["amount"], "0.1");
+        assert_eq!(record["financial"]["key"], "cold-storage");
+        assert!(
+            record["arg_keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|k| k == "acknowledged"),
+            "arg_keys still lists non-financial keys: {rendered}"
+        );
+    }
+
+    #[test]
+    fn audit_line_marks_paper_trading_mode() {
+        let line = AuditLine {
+            mcp_audit: AuditRecord {
+                ts: "2026-07-01T00:00:00.000Z".to_string(),
+                transport: MCP_TRANSPORT,
+                event: AuditEvent::ToolResult {
+                    tool: "kraken_paper_buy",
+                    trading_mode: "paper",
+                    paper: true,
+                    status: "executed",
+                    error_code: None,
+                    duration_ms: 12,
+                },
+            },
+        };
+        let rendered = audit_line(&line).expect("event serializes");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&rendered).expect("audit line is valid JSON");
+        let record = &parsed["mcp_audit"];
+        assert_eq!(record["event"], "tool_result");
+        assert_eq!(record["trading_mode"], "paper");
+        assert_eq!(record["paper"], true);
+        assert_eq!(record["status"], "executed");
     }
 
     #[test]

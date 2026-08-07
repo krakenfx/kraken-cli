@@ -3,6 +3,18 @@
 User-visible changes are recorded here. kraken-cli follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-08-07
+
+Patch release: financial detail in the MCP audit stream.
+
+The per-invocation audit records the MCP server writes to stderr now
+identify the financial context of every call. `tool_call` and
+`tool_result` lines carry the trading mode — paper or live, re-resolved
+on every call so a mid-session workspace promotion is visible — and
+`tool_call` lines add the values of allowlisted financial arguments
+(amounts, assets, pairs, prices). Values outside the allowlist, such as
+credentials and free-form text, never reach the log.
+
 ## [0.4.0] - 2026-07-27
 
 Version 0.4.0 adds a repeatable research loop around the trading CLI. Users can
