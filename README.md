@@ -1,8 +1,8 @@
 # Kraken CLI
 
-![version](https://img.shields.io/github/v/release/krakenfx/kraken-cli?color=blue)
-![license](https://img.shields.io/badge/license-MIT-green)
-![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)
+[![version](https://img.shields.io/github/v/release/krakenfx/kraken-cli?color=blue)](https://github.com/krakenfx/kraken-cli/releases)
+[![license](https://img.shields.io/badge/license-MIT-green)](https://github.com/krakenfx/kraken-cli/blob/main/LICENSE)
+[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](#installation)
 
 The first AI-native CLI for trading crypto, stocks, forex, and derivatives.
 
