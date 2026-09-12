@@ -141,9 +141,9 @@ impl SpotClient {
 
     /// Execute a private POST request with Spot signing, retry, and fresh nonce per attempt.
     ///
-    /// When `idempotent` is false, only transport-level errors (connect/timeout)
-    /// trigger retries. 5xx server errors are not retried because the request may
-    /// have been processed server-side (e.g. order placed, funds withdrawn).
+    /// When `idempotent` is false, only connect failures are retried. Timeouts
+    /// and 5xx are not retried because the request may already have been
+    /// processed server-side (e.g. order placed, funds withdrawn).
     pub async fn private_post(
         &self,
         endpoint: &str,
@@ -211,7 +211,7 @@ impl SpotClient {
                     }
                     return self.parse_spot_response(r, BodyLog::SizeOnly).await;
                 }
-                Err(e) if is_transient(&e) && attempt < MAX_RETRIES => {
+                Err(e) if should_retry_transport(&e, idempotent) && attempt < MAX_RETRIES => {
                     attempt += 1;
                     let backoff = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
                     tracing::warn!(
@@ -302,7 +302,7 @@ impl SpotClient {
                     }
                     return self.parse_spot_response(r, BodyLog::SizeOnly).await;
                 }
-                Err(e) if is_transient(&e) && attempt < MAX_RETRIES => {
+                Err(e) if should_retry_transport(&e, idempotent) && attempt < MAX_RETRIES => {
                     attempt += 1;
                     let backoff = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
                     tracing::warn!(
@@ -403,7 +403,7 @@ impl SpotClient {
 
                     return Ok(bytes.to_vec());
                 }
-                Err(e) if is_transient(&e) && attempt < MAX_RETRIES => {
+                Err(e) if should_retry_transport(&e, idempotent) && attempt < MAX_RETRIES => {
                     attempt += 1;
                     let backoff = INITIAL_BACKOFF_MS * 2u64.pow(attempt - 1);
                     tracing::warn!(
@@ -917,6 +917,22 @@ fn is_transient(err: &reqwest::Error) -> bool {
     err.is_timeout() || err.is_connect()
 }
 
+/// Connect failures never reached the venue. A request timeout after send()
+/// may already have executed a non-idempotent order or withdrawal.
+fn should_retry_transport_kind(is_connect: bool, is_timeout: bool, idempotent: bool) -> bool {
+    if is_connect {
+        true
+    } else if is_timeout {
+        idempotent
+    } else {
+        false
+    }
+}
+
+fn should_retry_transport(err: &reqwest::Error, idempotent: bool) -> bool {
+    should_retry_transport_kind(err.is_connect(), err.is_timeout(), idempotent)
+}
+
 /// UTF-8-safe string truncation by character count.
 pub(crate) fn truncate(s: &str, max_chars: usize) -> &str {
     match s.char_indices().nth(max_chars) {
@@ -1325,6 +1341,22 @@ mod tests {
         assert!(
             logged.contains("body_bytes"),
             "expected byte-length field, got: {logged}"
+        );
+    }
+
+    #[test]
+    fn non_idempotent_timeout_is_not_retried() {
+        assert!(
+            !should_retry_transport_kind(false, true, false),
+            "timeout after send must not retry AddOrder/Withdraw"
+        );
+        assert!(
+            should_retry_transport_kind(true, false, false),
+            "connect failure never reached the venue"
+        );
+        assert!(
+            should_retry_transport_kind(false, true, true),
+            "idempotent timeout may retry"
         );
     }
 
