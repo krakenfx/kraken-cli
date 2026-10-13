@@ -81,7 +81,7 @@ kraken order sell BTCUSD 0.001 --type trailing-stop --price +500 -o json 2>/dev/
 Trailing stop that triggers a limit order instead of market.
 
 ```bash
-kraken order sell BTCUSD 0.001 --type trailing-stop-limit --price +500 --price2 -100 -o json 2>/dev/null
+kraken order sell BTCUSD 0.001 --type trailing-stop-limit --price +500 --price2=-100 -o json 2>/dev/null
 ```
 
 ## Spot Order Modifiers

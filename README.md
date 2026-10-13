@@ -59,6 +59,12 @@ Verify it works:
 kraken status && kraken ticker BTCUSD
 ```
 
+> [!NOTE]
+> `command not found: kraken` right after install? The installer puts `kraken` in `~/.cargo/bin` and adds it to your PATH for new terminals only.
+>
+> - Terminal: open a new window, or run `source "$HOME/.cargo/env"`.
+> - Claude Code, Cursor, Codex, or another agent: restart it. Until then, use the full path `~/.cargo/bin/kraken`.
+
 Pre-built binaries are also available on the [GitHub Releases](https://github.com/krakenfx/kraken-cli/releases) page.
 
 <details>
@@ -191,7 +197,7 @@ Authenticated commands (trading, balances, order management) require a Kraken AP
 
 ### Getting API keys
 
-**Spot** (covers trading, balances, funding, earn, subaccounts): [Settings > API](https://www.kraken.com) on kraken.com. Full guide: [How to create a spot API key](https://support.kraken.com/articles/360000919966-how-to-create-an-api-key).
+**Spot** (covers trading, balances, funding, earn, subaccounts): **Settings > API** on kraken.com. Step-by-step guide: [How to create a spot API key](https://support.kraken.com/articles/360000919966-how-to-create-an-api-key).
 
 **Futures** (only for `kraken futures` commands): [Settings > Create Key](https://www.kraken.com/login-futures) on the Futures interface. Full guide: [How to create a Futures API key](https://support.kraken.com/hc/en-us/articles/360022839451-How-to-create-an-API-key-for-Kraken-Futures).
 
@@ -208,7 +214,7 @@ export KRAKEN_FUTURES_API_SECRET="your-futures-secret"  # optional
 
 ### Config file (for humans)
 
-Store credentials in `~/.config/kraken/config.toml`:
+Store credentials in `~/.config/kraken/config.toml` (Linux) or `~/Library/Application Support/kraken/config.toml` (macOS):
 
 ```toml
 [auth]
@@ -220,7 +226,7 @@ default_pair = "BTCUSD"
 output = "table"
 ```
 
-Or use the interactive wizard: `kraken setup`.
+Or use the interactive wizard: `kraken setup`. Run it in a normal terminal, because it reads your input. Inside an AI agent, use the environment variables above. Never paste API keys into an AI chat.
 
 ### Credential resolution
 
@@ -228,7 +234,7 @@ Highest precedence first:
 
 1. Command-line flags (`--api-key`, `--api-secret`)
 2. Environment variables (`KRAKEN_API_KEY`, `KRAKEN_API_SECRET`)
-3. Config file (`~/.config/kraken/config.toml`)
+3. Config file (`~/.config/kraken/config.toml` on Linux, `~/Library/Application Support/kraken/config.toml` on macOS)
 
 ### Security
 
@@ -270,6 +276,25 @@ kraken mcp -s all --allow-dangerous  # all services, no per-call confirmation
 kraken mcp -s market,trade,paper     # specific services
 ```
 
+### Claude Code
+
+Install the plugin (MCP server and skills):
+
+```text
+/plugin marketplace add krakenfx/kraken-cli
+/plugin install kraken-cli@kraken
+```
+
+Or add only the MCP server. The full path works even before `kraken` is on your PATH:
+
+```bash
+claude mcp add kraken -- "$HOME/.cargo/bin/kraken" mcp -s market,paper,feedback
+```
+
+If you installed `kraken` while Claude Code was running, restart Claude Code first.
+
+### Other MCP clients
+
 Configure your MCP client (Claude Desktop, ChatGPT, Codex, Gemini CLI, Cursor, VS Code, Windsurf, etc.):
 
 ```json
@@ -277,11 +302,13 @@ Configure your MCP client (Claude Desktop, ChatGPT, Codex, Gemini CLI, Cursor, V
   "mcpServers": {
     "kraken": {
       "command": "kraken",
-      "args": ["mcp", "-s", "all"]
+      "args": ["mcp", "-s", "market,paper,feedback"]
     }
   }
 }
 ```
+
+This starts market data and paper trading only. To add live trading, use `market,paper,trade` or `all`, with a least-privilege API key. If the client shows "Failed to connect", set `command` to the full path that `command -v kraken` prints.
 
 Gemini CLI users can install directly: `gemini extensions install https://github.com/krakenfx/kraken-cli`
 
@@ -882,10 +909,16 @@ Ships with 59 agent skills covering trading strategies, market analysis, and por
 <details>
 <summary>Troubleshooting</summary>
 
+**`command not found: kraken` after install**
+
+The installer puts `kraken` in `~/.cargo/bin`. Open a new terminal, or restart your agent. To run it right now, use the full path: `~/.cargo/bin/kraken --version`.
+
 **macOS blocks the binary ("Apple could not verify")**
 
+This only affects a binary downloaded with a web browser. The one-liner install is not affected. Remove the quarantine flag:
+
 ```bash
-xattr -d com.apple.quarantine /usr/local/bin/kraken
+xattr -d com.apple.quarantine "$(command -v kraken)"
 ```
 
 **"EAPI:Invalid key" or authentication errors**
@@ -896,9 +929,9 @@ Check that `KRAKEN_API_KEY` and `KRAKEN_API_SECRET` are set correctly. Keys are 
 
 The CLI does not pre-throttle or retry rate-limited requests. The Kraken API server enforces rate limits, and the CLI returns the error immediately with a `suggestion` field containing tier-specific limits and a `docs_url` pointing to the relevant Kraken documentation. Read the suggestion and adjust request frequency. For sustained high-frequency use, prefer WebSocket streaming over REST polling.
 
-**"No tools found" in MCP client**
+**"Failed to connect" or "No tools found" in MCP client**
 
-Verify `kraken` is on your PATH. Run `kraken mcp -s market` in a terminal to confirm the server starts. Check that your client configuration matches the JSON format in the [MCP Server](#mcp-server) section.
+The client cannot find `kraken` on its PATH. Restart the client, or use the full path (`~/.cargo/bin/kraken`) as the command. Run `~/.cargo/bin/kraken mcp -s market` in a terminal to confirm the server starts. Check that your client configuration matches the JSON format in the [MCP Server](#mcp-server) section.
 
 **Spot paper trading state errors**
 

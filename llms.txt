@@ -10,7 +10,7 @@ Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken wit
 
 ## Machine Contracts
 
-- [agents/tool-catalog.json](agents/tool-catalog.json): Canonical command catalog (134 commands, with parameter schemas and `dangerous` flags)
+- [agents/tool-catalog.json](agents/tool-catalog.json): Canonical command catalog (174 commands, with parameter schemas and `dangerous` flags)
 - [agents/error-catalog.json](agents/error-catalog.json): Error categories and retry guidance
 
 ## Workflow Skills

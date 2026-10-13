@@ -41,7 +41,7 @@ No config file needed. No interactive prompts. The CLI reads credentials from th
 
 1. Command-line flags (`--api-key`, `--api-secret`)
 2. Environment variables (`KRAKEN_API_KEY`, `KRAKEN_API_SECRET`)
-3. Config file (`~/.config/kraken/config.toml`)
+3. Config file (`~/.config/kraken/config.toml` on Linux, `~/Library/Application Support/kraken/config.toml` on macOS)
 
 ### Required permissions by command group
 
@@ -462,11 +462,13 @@ Configure your MCP client:
   "mcpServers": {
     "kraken": {
       "command": "kraken",
-      "args": ["mcp", "-s", "all"]
+      "args": ["mcp", "-s", "market,paper,feedback"]
     }
   }
 }
 ```
+
+Add services such as `trade` only with a least-privilege API key. If the client shows "Failed to connect", use the full path from `command -v kraken` as `command`.
 
 **Service groups**: `market`, `account`, `trade`, `funding`, `earn`, `subaccount`, `futures`, `futures-paper`, `paper`, `auth`, `feedback`, or `all`. Default exposed groups are `market,account,paper,feedback`.
 
