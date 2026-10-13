@@ -3,6 +3,25 @@
 User-visible changes are recorded here. kraken-cli follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-10-13
+
+Patch release: first-run setup from an AI agent.
+
+- `kraken setup` without a terminal (inside an agent or a pipe) now fails
+  with a `validation` error that says to set `KRAKEN_API_KEY` and
+  `KRAKEN_API_SECRET`. The wizard banner now goes to stderr, so stdout
+  stays one JSON value.
+- The Claude Code plugin installs with
+  `/plugin marketplace add krakenfx/kraken-cli`.
+- README: Claude Code setup, what to do when `kraken` is not found right
+  after install, MCP client config that starts market and paper services
+  only, the macOS config path, and the quarantine fix scoped to browser
+  downloads.
+- The `kraken-order-types` skill passes a negative `--price2` as
+  `--price2=-100`, and `llms.txt` lists the correct command count.
+- Dependencies: `h2` 0.4.20 and `rustls` 0.23.45 fix RUSTSEC-2026-0258 and
+  RUSTSEC-2026-0285, and the yanked `chacha20` 0.10.1 is replaced.
+
 ## [0.4.1] - 2026-08-07
 
 Patch release: financial detail in the MCP audit stream.
@@ -128,5 +147,7 @@ attestations, and Minisign signatures.
 
 Version 0.3.2 is the previous public release.
 
+[0.4.2]: https://github.com/krakenfx/kraken-cli/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/krakenfx/kraken-cli/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/krakenfx/kraken-cli/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/krakenfx/kraken-cli/releases/tag/v0.3.2

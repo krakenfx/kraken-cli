@@ -25,7 +25,7 @@ include = [
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 # Deliberate floor: bumped manually to current stable. Gated in CI by
 # test-msrv, which reads the version from here alone.

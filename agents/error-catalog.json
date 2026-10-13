@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "cli_version": "0.4.1",
+  "cli_version": "0.4.2",
   "description": "Error categories emitted by kraken-cli. Agents should route on the error field, not message strings.",
   "usage_errors": {
     "exit_code": 2,
