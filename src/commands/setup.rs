@@ -6,21 +6,31 @@ use crate::errors::Result;
 use crate::output::CommandOutput;
 
 pub(crate) async fn run() -> Result<CommandOutput> {
+    // An agent or pipe can never answer the prompts; refuse with the fix instead of
+    // dialoguer's raw "IO error: not a terminal".
+    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        return Err(crate::errors::KrakenError::Validation(
+            "kraken setup needs a terminal to read your API keys — run it in a terminal \
+             window, or set KRAKEN_API_KEY and KRAKEN_API_SECRET instead"
+                .into(),
+        ));
+    }
     tracing::info!("setup wizard started");
 
-    println!("Kraken CLI Setup");
-    println!("================");
-    println!();
-    println!("This wizard will configure your Kraken API credentials.");
+    // The banner goes to stderr with dialoguer's prompts, so stdout stays one JSON value.
+    eprintln!("Kraken CLI Setup");
+    eprintln!("================");
+    eprintln!();
+    eprintln!("This wizard will configure your Kraken API credentials.");
     let config_path_display = config::config_path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "the kraken config file".into());
-    println!("Your API secret will be stored in {config_path_display} (mode 0600).");
-    println!();
-    println!("SECURITY NOTE: Never share your API secret. For automation, consider using");
-    println!("environment variables (KRAKEN_API_KEY, KRAKEN_API_SECRET) instead of storing");
-    println!("credentials on disk.");
-    println!();
+    eprintln!("Your API secret will be stored in {config_path_display} (mode 0600).");
+    eprintln!();
+    eprintln!("SECURITY NOTE: Never share your API secret. For automation, consider using");
+    eprintln!("environment variables (KRAKEN_API_KEY, KRAKEN_API_SECRET) instead of storing");
+    eprintln!("credentials on disk.");
+    eprintln!();
 
     let api_key: String = dialoguer::Input::new()
         .with_prompt("Spot API Key")

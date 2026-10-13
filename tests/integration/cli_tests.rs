@@ -1065,6 +1065,30 @@ fn ws_symbol_channels_require_at_least_one_pair() {
 }
 
 #[test]
+fn setup_without_a_terminal_returns_only_a_json_error_with_the_fix() {
+    // An agent runs `setup` with no TTY: it used to print the banner to stdout ahead of
+    // dialoguer's raw "not a terminal" error, breaking the JSON-only stdout contract.
+    let home = tempfile::tempdir().unwrap();
+    let out = kraken_in(&home)
+        .args(["setup", "-o", "json"])
+        .write_stdin("")
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let envelope: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(envelope["error"], "validation");
+    assert!(
+        envelope["message"]
+            .as_str()
+            .unwrap()
+            .contains("KRAKEN_API_KEY")
+    );
+    assert!(!config_dir_in(&home).join("config.toml").exists());
+}
+
+#[test]
 fn env_var_rejects_zero_ws_reconnect_base() {
     // Zero is the fixed point of the multiplicative backoff (0*2=0): the schedule
     // would never escalate and a down venue would be dialed in a hot loop.
