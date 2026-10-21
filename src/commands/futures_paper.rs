@@ -896,7 +896,10 @@ async fn execute_order(
 fn execute_orders() -> Result<CommandOutput> {
     let _lock = futures_paper::StateLock::acquire()?;
     let state = futures_paper::load_state()?;
+    Ok(format_open_orders(&state))
+}
 
+fn format_open_orders(state: &FuturesPaperState) -> CommandOutput {
     let headers = vec![
         "[FP] Order ID".into(),
         "Symbol".into(),
@@ -904,12 +907,14 @@ fn execute_orders() -> Result<CommandOutput> {
         "Type".into(),
         "Size".into(),
         "Price".into(),
+        "Stop Price".into(),
+        "Trigger".into(),
         "Status".into(),
         "Client ID".into(),
     ];
 
     let rows: Vec<Vec<String>> = if state.open_orders.is_empty() {
-        vec![vec!["—".into(); 8]]
+        vec![vec!["—".into(); 10]]
     } else {
         state
             .open_orders
@@ -923,6 +928,12 @@ fn execute_orders() -> Result<CommandOutput> {
                     format!("{:.8}", o.size),
                     o.price
                         .map(|p| format!("{p:.2}"))
+                        .unwrap_or_else(|| "—".into()),
+                    o.stop_price
+                        .map(|p| format!("{p:.2}"))
+                        .unwrap_or_else(|| "—".into()),
+                    o.trigger_signal
+                        .map(|t| t.to_string())
                         .unwrap_or_else(|| "—".into()),
                     o.status.to_string(),
                     o.client_order_id.clone().unwrap_or_else(|| "—".into()),
@@ -942,6 +953,8 @@ fn execute_orders() -> Result<CommandOutput> {
                 "type": o.order_type.to_string(),
                 "size": o.size,
                 "price": o.price,
+                "stop_price": o.stop_price,
+                "trigger_signal": o.trigger_signal.map(|t| t.to_string()),
                 "status": o.status.to_string(),
                 "client_order_id": o.client_order_id,
                 "reduce_only": o.reduce_only,
@@ -950,17 +963,20 @@ fn execute_orders() -> Result<CommandOutput> {
         })
         .collect();
 
-    Ok(CommandOutput::new(
+    CommandOutput::new(
         fp_json(json!({ "open_orders": json_orders, "count": state.open_orders.len() })),
         headers,
         rows,
-    ))
+    )
 }
 
 fn execute_order_status(order_id: &str) -> Result<CommandOutput> {
     let _lock = futures_paper::StateLock::acquire()?;
     let state = futures_paper::load_state()?;
+    format_order_status(&state, order_id)
+}
 
+fn format_order_status(state: &FuturesPaperState, order_id: &str) -> Result<CommandOutput> {
     let order = state
         .open_orders
         .iter()
@@ -983,6 +999,20 @@ fn execute_order_status(order_id: &str) -> Result<CommandOutput> {
                 .map(|p| format!("{p:.2}"))
                 .unwrap_or_else(|| "—".into()),
         ),
+        (
+            "Stop Price".into(),
+            order
+                .stop_price
+                .map(|p| format!("{p:.2}"))
+                .unwrap_or_else(|| "—".into()),
+        ),
+        (
+            "Trigger Signal".into(),
+            order
+                .trigger_signal
+                .map(|t| t.to_string())
+                .unwrap_or_else(|| "—".into()),
+        ),
         ("Status".into(), order.status.to_string()),
         (
             "Client Order ID".into(),
@@ -1001,6 +1031,8 @@ fn execute_order_status(order_id: &str) -> Result<CommandOutput> {
             "type": order.order_type.to_string(),
             "size": order.size,
             "price": order.price,
+            "stop_price": order.stop_price,
+            "trigger_signal": order.trigger_signal.map(|t| t.to_string()),
             "status": order.status.to_string(),
             "client_order_id": order.client_order_id,
             "leverage": order.leverage,
@@ -1678,6 +1710,62 @@ mod tests {
         assert_eq!(
             data.get("mode").and_then(|v| v.as_str()),
             Some("futures_paper")
+        );
+    }
+
+    #[test]
+    fn orders_and_order_status_surface_stop_price_and_trigger_signal() {
+        let mut state = FuturesPaperState::new(10000.0, "USD", DEFAULT_FUTURES_TAKER_FEE_RATE);
+        let snap = MarketSnapshot {
+            bid: 82700.0,
+            ask: 82800.0,
+            last: 82750.0,
+            mark: 82750.0,
+            index: 82750.0,
+            ask_levels: vec![(82800.0, 10.0)],
+            bid_levels: vec![(82700.0, 10.0)],
+        };
+        let placed = state
+            .place_order(
+                OrderParams {
+                    symbol: "PF_XBTUSD".into(),
+                    side: PositionSide::Long,
+                    size: 0.1,
+                    order_type: FuturesOrderType::Stop,
+                    price: None,
+                    stop_price: Some(85000.0),
+                    trigger_signal: Some(TriggerSignal::Mark),
+                    client_order_id: None,
+                    reduce_only: false,
+                    leverage: Some(10.0),
+                    trailing_stop_max_deviation: None,
+                    trailing_stop_deviation_unit: None,
+                },
+                &snap,
+            )
+            .unwrap();
+
+        let orders_out = format_open_orders(&state);
+        let first_order = &orders_out.data["open_orders"][0];
+        assert_eq!(first_order["stop_price"], json!(85000.0));
+        assert_eq!(first_order["trigger_signal"], json!("mark"));
+        assert_eq!(orders_out.rows[0][6], "85000.00");
+        assert_eq!(orders_out.rows[0][7], "mark");
+
+        let status_out = format_order_status(&state, &placed.order_id).unwrap();
+        assert_eq!(status_out.data["stop_price"], json!(85000.0));
+        assert_eq!(status_out.data["trigger_signal"], json!("mark"));
+        assert!(
+            status_out
+                .rows
+                .iter()
+                .any(|r| r[0] == "Stop Price" && r[1] == "85000.00")
+        );
+        assert!(
+            status_out
+                .rows
+                .iter()
+                .any(|r| r[0] == "Trigger Signal" && r[1] == "mark")
         );
     }
 }
