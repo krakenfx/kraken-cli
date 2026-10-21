@@ -668,12 +668,8 @@ impl FuturesPaperState {
 
         self.validate_reduce_only(params)?;
 
-        let notional = params.size * stop_price;
-        let margin_delta = if params.reduce_only {
-            0.0
-        } else {
-            notional / leverage
-        };
+        let eff_price = params.price.unwrap_or(stop_price);
+        let margin_delta = self.compute_margin_delta(params, eff_price, leverage);
         self.check_margin(margin_delta, mark_prices)?;
 
         let order_id = self.next_id();
@@ -3236,5 +3232,57 @@ mod tests {
         let s = test_state();
         let err = s.resolve_leverage(Some(300.0), "PF_XBTUSD");
         assert!(err.is_err(), "Leverage > 200 should be rejected");
+    }
+
+    #[test]
+    fn triggered_order_nets_margin_against_opposite_position() {
+        let mut s = test_state();
+        s.leverage_preferences.insert("PF_XBTUSD".into(), 10.0);
+        let snap = market_snapshot(82700.0, 82800.0);
+
+        // Open a 0.1 BTC Short position (uses 827.0 margin)
+        let short_params = OrderParams {
+            symbol: "PF_XBTUSD".into(),
+            side: PositionSide::Short,
+            size: 0.1,
+            order_type: FuturesOrderType::Market,
+            price: None,
+            stop_price: None,
+            trigger_signal: None,
+            client_order_id: None,
+            reduce_only: false,
+            leverage: Some(10.0),
+            trailing_stop_max_deviation: None,
+            trailing_stop_deviation_unit: None,
+        };
+        s.place_order(short_params, &snap).unwrap();
+        let used_after_short = s.used_margin();
+        assert!((used_after_short - 827.0).abs() < 1e-6);
+
+        // Place a 0.1 BTC Stop Buy order (same size, opposite side, without reduce_only).
+        // Net new exposure is 0.0, so reserved_margin must be 0.0 (consistent with limit/edit_order).
+        let stop_params = OrderParams {
+            symbol: "PF_XBTUSD".into(),
+            side: PositionSide::Long,
+            size: 0.1,
+            order_type: FuturesOrderType::Stop,
+            price: None,
+            stop_price: Some(85000.0),
+            trigger_signal: Some(TriggerSignal::Last),
+            client_order_id: None,
+            reduce_only: false,
+            leverage: Some(10.0),
+            trailing_stop_max_deviation: None,
+            trailing_stop_deviation_unit: None,
+        };
+        let placed = s.place_order(stop_params, &snap).unwrap();
+        assert_eq!(s.open_orders[0].reserved_margin, 0.0);
+        assert!((s.used_margin() - used_after_short).abs() < 1e-6);
+
+        // Increasing size to 0.3 BTC should reserve margin only for the 0.2 BTC net new exposure.
+        s.edit_order(&placed.order_id, Some(0.3), None, None)
+            .unwrap();
+        let expected_reserved = (0.2 * 85000.0) / 10.0;
+        assert!((s.open_orders[0].reserved_margin - expected_reserved).abs() < 1e-6);
     }
 }
