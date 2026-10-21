@@ -981,6 +981,9 @@ impl FuturesPaperState {
         }
         if let Some(sp) = new_stop_price {
             self.open_orders[idx].stop_price = Some(sp);
+            if self.open_orders[idx].order_type == FuturesOrderType::TrailingStop {
+                self.open_orders[idx].trailing_anchor = Some(sp);
+            }
         }
         self.open_orders[idx].reserved_margin = new_reserved;
         self.open_orders[idx].updated_at = Utc::now();
@@ -2371,6 +2374,40 @@ mod tests {
         s.edit_order(&s.open_orders[0].id.clone(), None, None, Some(47000.0))
             .unwrap();
         assert_eq!(s.open_orders[0].stop_price, Some(47000.0));
+    }
+
+    #[test]
+    fn edit_order_updates_trailing_stop_anchor() {
+        let mut s = test_state();
+        s.leverage_preferences.insert("PF_XBTUSD".into(), 10.0);
+        let mark: HashMap<String, f64> = HashMap::from([("PF_XBTUSD".into(), 50000.0)]);
+
+        let params = OrderParams {
+            symbol: "PF_XBTUSD".into(),
+            side: PositionSide::Long,
+            size: 1.0,
+            order_type: FuturesOrderType::TrailingStop,
+            price: None,
+            stop_price: Some(90000.0),
+            trigger_signal: Some(TriggerSignal::Last),
+            client_order_id: None,
+            reduce_only: false,
+            leverage: Some(10.0),
+            trailing_stop_max_deviation: Some(2.0),
+            trailing_stop_deviation_unit: Some("percent".into()),
+        };
+        let placed = s.place_triggered_order(&params, 10.0, &mark).unwrap();
+        assert_eq!(s.open_orders[0].stop_price, Some(90000.0));
+        assert_eq!(s.open_orders[0].trailing_anchor, Some(90000.0));
+
+        s.edit_order(&placed.order_id, None, None, Some(85000.0))
+            .unwrap();
+        assert_eq!(s.open_orders[0].stop_price, Some(85000.0));
+        assert_eq!(
+            s.open_orders[0].trailing_anchor,
+            Some(85000.0),
+            "Editing stop_price on a TrailingStop order must also update trailing_anchor",
+        );
     }
 
     #[test]
