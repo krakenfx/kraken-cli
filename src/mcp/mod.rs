@@ -21,12 +21,25 @@ const VALID_SERVICES: &[&str] = &[
     "workspace",
     "auth",
     "feedback",
+    // 17 REST commands, no credential required, exposed as MCP tools and
+    // scoped per workspace like spot paper.
+    "futures-paper",
 ];
 
-// futures-ws tools are excluded because the group is absent from VALID_SERVICES,
-// so they never pass the service filter in registry build. Only websocket needs
-// explicit post-filter exclusion here.
-const STREAMING_GROUPS: &[&str] = &["websocket"];
+/// Service groups MCP v1 cannot serve, with the reason to report. One table
+/// keeps `parse_services`, the filter, and the caller's error message from
+/// drifting apart. `futures-ws` appears here only so a `-s websocket` error can
+/// mention it: the group is absent from `VALID_SERVICES`, so it can never be
+/// requested and never needs filtering.
+const STREAMING_GROUPS: &[&str] = &["websocket", "futures-ws"];
+
+/// Why a streaming group yields no tools. A live stream cannot be hosted inside
+/// a request/response tool, so one reason covers every entry above.
+pub(crate) const STREAMING_REASON: &str = "streaming groups are excluded in MCP v1";
+
+pub(crate) fn exclusion_reason(group: &str) -> Option<&'static str> {
+    STREAMING_GROUPS.contains(&group).then_some(STREAMING_REASON)
+}
 
 pub(crate) fn parse_services(input: &str) -> Result<Vec<String>> {
     let trimmed = input.trim();
@@ -66,7 +79,7 @@ pub(crate) fn parse_services(input: &str) -> Result<Vec<String>> {
 pub(crate) fn apply_exclusions(services: &[String]) -> Vec<String> {
     services
         .iter()
-        .filter(|s| !STREAMING_GROUPS.contains(&s.as_str()))
+        .filter(|s| exclusion_reason(s).is_none())
         .cloned()
         .collect()
 }
@@ -126,5 +139,45 @@ mod tests {
         let input: Vec<String> = vec!["market".into(), "account".into()];
         let result = apply_exclusions(&input);
         assert_eq!(result, vec!["market", "account"]);
+    }
+
+    #[test]
+    fn parse_accepts_a_group_with_no_auth_requirement() {
+        // `futures-paper` needs no credentials, so a mixed `-s` list must parse
+        // rather than be rejected as a typo.
+        assert_eq!(
+            parse_services("market,futures-paper").unwrap(),
+            vec!["market", "futures-paper"]
+        );
+    }
+
+    #[test]
+    fn futures_paper_is_served_not_excluded() {
+        // 17 REST commands with no credential requirement, exposed as MCP tools
+        // and scoped per workspace like spot paper.
+        let input: Vec<String> = vec!["futures-paper".into()];
+        assert_eq!(apply_exclusions(&input), vec!["futures-paper"]);
+        assert_eq!(exclusion_reason("futures-paper"), None);
+    }
+
+    #[test]
+    fn exclusion_reason_is_the_streaming_reason_for_streaming_groups() {
+        assert_eq!(exclusion_reason("websocket"), Some(STREAMING_REASON));
+        // Named for the error message only; absent from VALID_SERVICES.
+        assert_eq!(exclusion_reason("futures-ws"), Some(STREAMING_REASON));
+    }
+
+    #[test]
+    fn exclusion_reason_is_none_for_served_groups() {
+        for group in [
+            "market",
+            "account",
+            "paper",
+            "workspace",
+            "futures",
+            "futures-paper",
+        ] {
+            assert_eq!(exclusion_reason(group), None, "{group} should be served");
+        }
     }
 }

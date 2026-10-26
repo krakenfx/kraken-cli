@@ -1,0 +1,150 @@
+{
+  "catalog_commands": 174,
+  "cli_version": "0.4.1",
+  "description": "Catalog commands the MCP v1 server does not expose, with a reason each. Derived from agents/tool-catalog.json against the tools the server actually registers; pinned by mcp_coverage_file_matches_derived_set. Regenerate with: cargo test --release --lib mcp_coverage_json_regeneration -- --ignored",
+  "mcp_tools": 146,
+  "schema_version": 1,
+  "uncovered": [
+    {
+      "command": "kraken futures ws ticker <MARKET...>",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken futures ws trades <MARKET...>",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken futures ws book <MARKET...>",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken futures ws fills",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken futures ws open-orders",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken futures ws open-positions",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken futures ws balances",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken futures ws notifications",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken futures ws account-log",
+      "group": "futures-ws",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws ticker <PAIR...>",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws trades <PAIR...>",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws book <PAIR...>",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws ohlc <PAIR...>",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws instrument [PAIR...]",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws executions",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws balances",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws level3 <PAIR...>",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws add-order",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws amend-order",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws cancel-order",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws cancel-all",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws cancel-after <TIMEOUT>",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws batch-add",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken ws batch-cancel",
+      "group": "websocket",
+      "reason": "streaming group, excluded in MCP v1"
+    },
+    {
+      "command": "kraken auth set",
+      "group": "auth",
+      "reason": "reads or writes a credential from stdin — not MCP-shaped"
+    },
+    {
+      "command": "kraken auth reset",
+      "group": "auth",
+      "reason": "deletes local credentials — not MCP-shaped"
+    },
+    {
+      "command": "kraken setup",
+      "group": "utility",
+      "reason": "interactive only (prompts, not request/response)"
+    },
+    {
+      "command": "kraken shell",
+      "group": "utility",
+      "reason": "interactive only (prompts, not request/response)"
+    }
+  ],
+  "uncovered_count": 28
+}

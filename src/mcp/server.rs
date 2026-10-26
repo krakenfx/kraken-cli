@@ -653,14 +653,33 @@ pub(crate) async fn run_server(
     allow_dangerous: bool,
 ) -> crate::errors::Result<()> {
     let parsed_services = super::parse_services(services)?;
+    let excluded: Vec<String> = parsed_services
+        .iter()
+        .filter(|s| super::exclusion_reason(s).is_some())
+        .cloned()
+        .collect();
     let active_services = super::apply_exclusions(&parsed_services);
 
     if active_services.is_empty() {
-        return Err(KrakenError::Validation(
-            "No REST-eligible services remain after filtering. \
-             Streaming groups (websocket, futures-ws) are excluded in MCP v1."
-                .into(),
-        ));
+        // Name the groups. A bare "Unknown service" blames the caller for asking
+        // for a group the CLI really has.
+        let detail = excluded.join(", ");
+        return Err(KrakenError::Validation(format!(
+            "No REST-eligible services remain after filtering: {detail} \
+             ({}).",
+            super::STREAMING_REASON
+        )));
+    }
+
+    // A requested group that yields no tools must not vanish silently — a
+    // client that asked for it has no other way to notice. stderr is free here:
+    // stdout is the protocol.
+    for group in &excluded {
+        tracing::warn!(
+            service = %group,
+            reason = super::STREAMING_REASON,
+            "requested MCP service group contributes no tools; continuing without it"
+        );
     }
 
     // Resolve once so a long-lived server cannot change its safety gate

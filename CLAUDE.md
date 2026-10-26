@@ -41,7 +41,7 @@ Public market data commands (ticker, orderbook, ohlc, trades, spreads, status) r
 
 ## Safety Rules
 
-1. Never execute any command marked `dangerous` without explicit user confirmation. The `dangerous` field in `agents/tool-catalog.json` is the authoritative list (41 commands). Four of them (`order buy/sell/cancel/cancel-all`) also carry `paper_safe: true`: inside a paper workspace they execute simulated fills and need no confirmation.
+1. Never execute any command marked `dangerous` without explicit user confirmation. The `dangerous` field in `agents/tool-catalog.json` is the authoritative list (42 commands). Four of them (`order buy/sell/cancel/cancel-all`) also carry `paper_safe: true`: inside a paper workspace they execute simulated fills and need no confirmation.
 2. Use `--validate` flag to dry-run order commands before submitting.
 3. Use `kraken paper` (spot) or `kraken futures paper` (futures) commands for testing strategies safely.
 4. Gate all order placement, cancellation, withdrawal, transfer, and staking operations behind user approval.

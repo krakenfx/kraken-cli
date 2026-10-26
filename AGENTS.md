@@ -350,7 +350,7 @@ Catalog: 174 request/response commands. See `agents/tool-catalog.json`; CLI-only
 
 ## Dangerous Commands
 
-The catalog marks 41 commands as `dangerous: true`. Four of them (`order buy/sell/cancel/cancel-all`) also carry `paper_safe: true` — inside a paper workspace (KRAKEN_WORKSPACE set to a paper account) they execute simulated fills and need no confirmation; against the real account they stay gated. These move real money, cancel real orders, or mutate account state. Gate every one with confirmation logic.
+The catalog marks 42 commands as `dangerous: true`. Four of them (`order buy/sell/cancel/cancel-all`) also carry `paper_safe: true` — inside a paper workspace (KRAKEN_WORKSPACE set to a paper account) they execute simulated fills and need no confirmation; against the real account they stay gated. These move real money, cancel real orders, or mutate account state. Gate every one with confirmation logic.
 
 The authoritative source is the `dangerous` field in `agents/tool-catalog.json`.
 
@@ -468,7 +468,7 @@ Configure your MCP client:
 }
 ```
 
-**Service groups**: `market`, `account`, `trade`, `funding`, `earn`, `subaccount`, `futures`, `futures-paper`, `paper`, `auth`, `feedback`, or `all`. Default exposed groups are `market,account,paper,feedback`.
+**Service groups**: `market`, `account`, `trade`, `funding`, `earn`, `subaccount`, `futures`, `futures-paper`, `paper`, `workspace`, `auth`, `feedback`, or `all`. The CLI's default is `market,account,paper,workspace,feedback`. `futures-paper` is a real CLI group whose 17 commands are not registered as MCP tools, so requesting it contributes no tools — the server reports that instead of failing as an unknown service. Marketplace listings ship their own narrower config (`market,paper,feedback`); that is a listing choice, not the CLI default. See `agents/mcp-coverage.json` for the full list of catalog commands MCP does not expose, with a reason each.
 
 **Streaming commands are CLI-only.** `session start` (and bare `kraken playground`, its demo composition), `record`, `replay`, the `streamd` verbs, and `ws ping` never appear as MCP tools — a request/response tool cannot host a live stream. An MCP-only agent gets the whole loop *around* a session (order, note, state, stop, show, score, explain), but opening one takes a shell: background `kraken session start … -o json &` and parse the `session_started` line for the handle.
 
@@ -505,5 +505,6 @@ Configure your MCP client:
 |------|--------|-------------|
 | `agents/tool-catalog.json` | JSON | All 174 commands with parameters, types, safety flags, and examples |
 | `agents/error-catalog.json` | JSON | 10 error categories with retry guidance |
+| `agents/mcp-coverage.json` | JSON | Catalog commands MCP does not expose, with a reason each |
 | `agents/examples/` | Shell | Runnable workflow examples |
 | `skills/` | SKILL.md | Goal-oriented workflow skills for agents |

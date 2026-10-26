@@ -162,8 +162,15 @@ Tapes live in the shared library (`tapes/` under the config dir); one writer per
 For MCP-compatible clients (Claude Desktop, ChatGPT, Codex, Gemini CLI, Cursor, VS Code, Windsurf), use the built-in MCP server:
 
 ```bash
-kraken mcp -s market,account,paper,feedback,futures-paper
+kraken mcp -s market,account,paper,workspace,feedback
 ```
+
+That is the CLI default. For the full set of catalog commands MCP does not expose,
+with a reason each, see `agents/mcp-coverage.json`.
+
+`futures-paper` needs no credentials and is exposed as MCP tools. Its state is
+scoped per workspace, like `paper`, so point `KRAKEN_WORKSPACE` at the account you
+want rather than relying on a shared default.
 
 This exposes CLI commands as structured MCP tools over stdio. No subprocess wrappers needed.
 

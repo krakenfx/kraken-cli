@@ -6,7 +6,6 @@ use super::Command;
 use super::earn::EarnCommand;
 use super::funding::WithdrawalCommand;
 use super::futures::{FuturesCommand, FuturesTradingCommand};
-use super::futures_paper::FuturesPaperCommand;
 use super::streaming::StreamingCommand;
 use super::subaccount::SubaccountCommand;
 use super::trade::OrderCommand;
@@ -67,26 +66,15 @@ pub(crate) fn enforce(ctx: &AppContext, command: &Command) -> Result<()> {
         Refusal::NoPaperEquivalent(what) => {
             kraken_workspace::policy::unsupported(what, &manifest.name, manifest.mode).into()
         }
-        Refusal::FuturesPaperMutation => kraken_workspace::WorkspaceError::FuturesUnscoped {
-            workspace: manifest.name,
-        }
-        .into(),
     })
 }
 
 enum Refusal {
     NoPaperEquivalent(&'static str),
-    FuturesPaperMutation,
 }
 
 fn classify(command: &Command) -> Option<Refusal> {
-    if let Some(what) = no_paper_equivalent(command) {
-        return Some(Refusal::NoPaperEquivalent(what));
-    }
-    if futures_paper_mutation(command) {
-        return Some(Refusal::FuturesPaperMutation);
-    }
-    None
+    no_paper_equivalent(command).map(Refusal::NoPaperEquivalent)
 }
 
 /// The permanent refusal set: money surfaces with no paper equivalent.
@@ -137,24 +125,6 @@ fn ws_order_method(cmd: &WsCommand) -> Option<&'static str> {
         MethodCommand::BatchCancel(_) => Some("ws batch-cancel"),
         MethodCommand::Ping => None,
     }
-}
-
-/// Futures paper state is one global snapshot: reads pass —
-/// they are honest about what they show — but a mutation from inside a
-/// workspace would corrupt state shared with every other scope.
-fn futures_paper_mutation(command: &Command) -> bool {
-    let Command::Futures(FuturesCommand::Paper(cmd)) = command else {
-        return false;
-    };
-    !matches!(
-        cmd,
-        FuturesPaperCommand::Balance(_)
-            | FuturesPaperCommand::Status(_)
-            | FuturesPaperCommand::Orders(_)
-            | FuturesPaperCommand::OrderStatus(_)
-            | FuturesPaperCommand::Positions(_)
-            | FuturesPaperCommand::Fills(_)
-    )
 }
 
 /// The order verbs the paper engine cannot simulate. They call the venue

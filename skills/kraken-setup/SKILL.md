@@ -121,12 +121,13 @@ The CLI ships with a built-in MCP server. Point any MCP-compatible client (Claud
 
 See `skills/kraken-mcp-integration/SKILL.md` for the per-client config blocks and the full service reference.
 
-The default MCP config in every `kraken-cli` marketplace listing (Claude, Cursor, Codex, Gemini) is `-s market,paper,feedback`:
+The default MCP config in every `kraken-cli` marketplace listing (Claude, Cursor, Codex, Gemini) is `-s market,paper,feedback` — a deliberately narrow, credential-free set. The CLI's own default is wider: `market,account,paper,workspace,feedback`.
 
 | Service | Auth | Why it's in the default |
-|---------|------|-------------------------|
+|---------|------|------------------------|
 | `market` | None | Public price data, orderbooks, OHLC. |
 | `paper`  | None | Simulated trading with live prices. |
+| `feedback` | None | Submits CLI feedback to Kraken. |
 
 A fresh install can never place a real order. Live trading is an explicit
 opt-in: widen the service list in your MCP client's config to `-s market,trade,paper`

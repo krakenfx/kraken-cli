@@ -70,11 +70,6 @@ pub enum WorkspaceError {
         workspace: String,
         mode: WorkspaceMode,
     },
-    /// Futures paper state is still global (one snapshot for every scope) —
-    /// mutating it from inside a workspace would corrupt shared state.
-    /// → envelope `validation`.
-    #[error("futures paper is not workspace-scoped yet; run it without a workspace")]
-    FuturesUnscoped { workspace: String },
     /// A second `run start` (or a `workspace reset`) while a session is still
     /// recording. → envelope `validation`.
     #[error(
@@ -136,7 +131,6 @@ impl WorkspaceError {
             | Self::LiveUnavailable { .. }
             | Self::PairNotAllowed { .. }
             | Self::Unsupported { .. }
-            | Self::FuturesUnscoped { .. }
             | Self::SessionActive { .. }
             | Self::NoActiveSession
             | Self::SessionNotFound { .. }

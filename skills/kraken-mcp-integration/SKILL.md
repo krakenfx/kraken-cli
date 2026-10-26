@@ -36,10 +36,12 @@ Add this to your MCP client configuration (Claude Desktop: `claude_desktop_confi
 }
 ```
 
-`-s market,paper,feedback` is the default service list: public market data, paper
-trading, and the local feedback tool. No real funds can be touched until you opt in explicitly by
-expanding the service list. See [Enabling live trading](#enabling-live-trading)
-below.
+`-s market,paper,feedback` is the service list every `kraken-cli` marketplace
+listing ships (a deliberately narrow, credential-free config). It is not the CLI
+default — the CLI defaults to `market,account,paper,workspace,feedback`, which
+adds read-only account queries and the workspace/session tools. No real funds can
+be touched until you opt in explicitly by expanding the service list. See
+[Enabling live trading](#enabling-live-trading) below.
 
 Credential resolution follows the standard CLI precedence: command-line
 flags, then `KRAKEN_API_KEY` / `KRAKEN_API_SECRET` in the MCP server's `env`
@@ -79,20 +81,29 @@ Keep the service list to what you need. MCP clients typically handle 50-100 tool
 
 | Service | Auth | Tools | Risk |
 |---------|------|-------|------|
-| market | No | ~10 | None |
-| account | Yes | ~18 | Read-only |
-| trade | Yes | ~9 | Orders (dangerous) |
-| funding | Yes | ~10 | Withdrawals (dangerous) |
-| earn | Yes | ~6 | Staking (dangerous) |
-| subaccount | Yes | ~2 | Transfers (dangerous) |
-| futures | Mixed | ~39 | Orders (dangerous) |
-| paper | No | ~10 | None (simulation) |
-| auth | No | ~3 | Read-only (auth set/auth reset excluded) |
+| market | No | 11 | None |
+| account | Yes | 18 | Read-only |
+| trade | Yes | 9 | Orders (dangerous) |
+| funding | Yes | 10 | Withdrawals (dangerous) |
+| earn | Yes | 6 | Staking (dangerous) |
+| subaccount | Yes | 2 | Transfers (dangerous) |
+| futures | Mixed | 39 | Orders (dangerous) |
+| futures-paper | No | 17 | None (simulation, workspace-scoped) |
+| paper | No | 16 | None (simulation) |
+| workspace | No | 15 | Paper account, sessions, lab |
+| auth | No | 2 | Read-only (`auth set`/`auth reset` are not MCP tools) |
+| feedback | No | 1 | Submits feedback to Kraken |
+
+Tool counts are MCP tools, not CLI commands. Three service groups expose no MCP
+tools at all: `websocket` and `futures-ws` (streaming) and `utility` (interactive).
+Requesting one contributes no tools and the server says so on stderr. See
+`agents/mcp-coverage.json` for the derived list with a reason per command.
 
 ## Enabling live trading
 
 Every `kraken-cli` marketplace listing ships with `-s market,paper,feedback` by default,
-so a fresh install can never place a real order. To opt in to live trading,
+so a fresh install can never place a real order. That is the listing's config, not the
+CLI's own default (`market,account,paper,workspace,feedback`). To opt in to live trading,
 edit the MCP server args in your client's config and widen the service list:
 
 ```json
@@ -112,7 +123,8 @@ edit the MCP server args in your client's config and widen the service list:
 
 Recommended upgrade path:
 
-1. Start with `market,paper,feedback` (the default).
+1. Start with `market,paper,feedback` — the marketplace listing config, and
+   credential-free. The CLI's own default is `market,account,paper,workspace,feedback`.
 2. Add `trade` once you are comfortable and have an API key scoped to orders
    only. See the "Recommended key scope" section of `skills/kraken-setup/SKILL.md`
    before generating a key.

@@ -334,53 +334,100 @@ fn ws_add_order_is_refused_at_dispatch_not_at_stream_time() {
 }
 
 #[test]
-fn futures_paper_mutations_refuse_inside_a_workspace_but_reads_pass() {
-    // Futures paper state is one global snapshot: a mutation
-    // from inside a workspace would corrupt shared state; reads stay honest.
+fn futures_paper_mutations_are_isolated_per_workspace() {
+    // Futures paper state is scoped per workspace, so a mutation inside one
+    // cannot corrupt another: two workspaces hold independent accounts, and a
+    // reset in one leaves the other untouched.
     let home = tempfile::tempdir().unwrap();
+    for name in ["w1", "w2"] {
+        kraken_in(&home)
+            .args([
+                "workspace",
+                "create",
+                name,
+                "--capital",
+                "1000",
+                "--mode",
+                "paper",
+                "-o",
+                "json",
+            ])
+            .assert()
+            .success();
+        kraken_in(&home)
+            .args([
+                "--workspace",
+                name,
+                "futures",
+                "paper",
+                "init",
+                "--balance",
+                "7000",
+                "-o",
+                "json",
+            ])
+            .assert()
+            .success();
+    }
+
+    // `futures paper` reports money as JSON numbers, unlike spot paper's exact
+    // decimal strings — read the numeric form.
+    let balance = |name: &str| -> f64 {
+        let out = kraken_in(&home)
+            .args([
+                "--workspace",
+                name,
+                "futures",
+                "paper",
+                "balance",
+                "-o",
+                "json",
+            ])
+            .output()
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        json["collateral"].as_f64().unwrap()
+    };
+
+    assert_eq!(balance("w1"), 7000.0);
+    assert_eq!(balance("w2"), 7000.0);
+
+    // A reset in w1 must not touch w2.
     kraken_in(&home)
         .args([
-            "workspace",
-            "create",
+            "--workspace",
             "w1",
-            "--capital",
-            "1000",
-            "--mode",
+            "futures",
             "paper",
+            "reset",
+            "--balance",
+            "1111",
             "-o",
             "json",
         ])
         .assert()
         .success();
-    kraken_in(&home)
-        .args([
-            "--workspace",
-            "w1",
-            "futures",
-            "paper",
-            "init",
-            "-o",
-            "json",
-        ])
-        .assert()
-        .failure()
-        .stdout(predicate::str::contains("not workspace-scoped"));
-    let read = kraken_in(&home)
-        .args([
-            "--workspace",
-            "w1",
-            "futures",
-            "paper",
-            "status",
-            "-o",
-            "json",
-        ])
-        .output()
-        .unwrap();
-    let stdout = String::from_utf8_lossy(&read.stdout);
+
+    assert_eq!(balance("w1"), 1111.0, "w1 took its own reset");
+    assert_eq!(balance("w2"), 7000.0, "w2 is unaffected by w1's reset");
+
+    // The two accounts live in separate files under the workspace scope.
+    let root = config_dir_in(&home);
+    let w1_state = root
+        .join("workspaces")
+        .join("w1")
+        .join("paper")
+        .join("futures_state.json");
+    let w2_state = root
+        .join("workspaces")
+        .join("w2")
+        .join("paper")
+        .join("futures_state.json");
+    assert!(w1_state.exists(), "w1 has its own state file: {w1_state:?}");
+    assert!(w2_state.exists(), "w2 has its own state file: {w2_state:?}");
     assert!(
-        !stdout.contains("not workspace-scoped"),
-        "reads pass the guard (whatever else they report): {stdout}"
+        !root.join("paper").join("futures_state.json").exists(),
+        "no shared global state file is written"
     );
 }
 

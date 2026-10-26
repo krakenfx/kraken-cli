@@ -915,7 +915,7 @@ mod tests {
     /// (`enforce_dangerous_gate`). Changing the danger classification must be a
     /// conscious edit here, so this fails loudly if a flag is added or removed,
     /// guarding against silently un-gating a real-money operation. Keep in sync
-    /// with CLAUDE.md ("41 commands").
+    /// with CLAUDE.md ("42 commands").
     #[test]
     fn dangerous_command_set_is_pinned() {
         const EXPECTED_DANGEROUS: &[&str] = &[
@@ -931,6 +931,7 @@ mod tests {
             "futures edit-order",
             "futures order buy",
             "futures order sell",
+            "futures paper reset",
             "futures set-leverage",
             "futures set-pnl-preference",
             "futures set-subaccount-status",
@@ -1127,6 +1128,17 @@ mod tests {
             .filter(|c| c["dangerous"].as_bool() == Some(true))
             .count();
         let groups = catalog["groups"].as_object().unwrap().len();
+        // A count claim may also be scoped to one service group ("the
+        // futures-paper group's 17 commands"). Accepting any group's size keeps
+        // those honest claims from being read as a total, while still failing
+        // on a number that matches nothing in the catalog.
+        let mut per_group: HashMap<&str, usize> = HashMap::new();
+        for cmd in commands {
+            *per_group
+                .entry(cmd["group"].as_str().unwrap_or("unknown"))
+                .or_default() += 1;
+        }
+        let group_sizes: std::collections::BTreeSet<usize> = per_group.values().copied().collect();
         let errors: Value = serde_json::from_str(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/agents/error-catalog.json"
@@ -1139,9 +1151,11 @@ mod tests {
             for n in count_claims(text, " commands") {
                 command_claims += 1;
                 assert!(
-                    n == total || n == dangerous,
+                    n == total || n == dangerous || group_sizes.contains(&n),
                     "{name} claims {n} commands; the catalog has {total} \
-                     (dangerous: {dangerous})"
+                     (dangerous: {dangerous}) and its groups hold \
+                     {group_sizes:?} — so {n} matches nothing. A group-scoped \
+                     count must name its group in the same sentence"
                 );
             }
             for n in count_claims(text, " groups") {
@@ -1161,6 +1175,200 @@ mod tests {
             command_claims >= 5,
             "only {command_claims} command-count claims found — if the docs \
              dropped their numbers, retire this pin consciously"
+        );
+    }
+
+    /// Why a catalog command has no MCP tool. The reason is part of the
+    /// contract: a reader deciding whether to work around the gap needs to know
+    /// whether the command is unreachable by design or simply not built yet.
+    fn uncovered_reason(canonical_key: &str, group: &str) -> &'static str {
+        match canonical_key {
+            "auth set" => "reads or writes a credential from stdin — not MCP-shaped",
+            "auth reset" => "deletes local credentials — not MCP-shaped",
+            _ => match group {
+                "websocket" | "futures-ws" => "streaming group, excluded in MCP v1",
+                "utility" => "interactive only (prompts, not request/response)",
+                _ => "no reason recorded",
+            },
+        }
+    }
+
+    /// A catalog command MCP v1 does not expose, with the reason.
+    struct UncoveredCommand {
+        command: String,
+        group: String,
+        reason: &'static str,
+    }
+
+    /// Derive the catalog commands MCP v1 cannot serve.
+    fn uncovered_catalog_commands() -> Vec<UncoveredCommand> {
+        let catalog = load_catalog().unwrap();
+        let commands = catalog
+            .get("commands")
+            .and_then(|c| c.as_array())
+            .expect("catalog missing 'commands'");
+
+        // The widest service list the server accepts, minus the groups that
+        // yield no tools — i.e. `-s all` as the server really builds it.
+        let active: Vec<String> = super::super::VALID_SERVICES
+            .iter()
+            .filter(|s| super::super::exclusion_reason(s).is_none())
+            .map(|s| s.to_string())
+            .collect();
+        let registry = ToolRegistry::build(&active).unwrap();
+        let exposed: std::collections::BTreeSet<&str> = registry
+            .tools()
+            .iter()
+            .map(|e| e.canonical_key.as_str())
+            .collect();
+
+        commands
+            .iter()
+            .filter_map(|cmd| {
+                let command = cmd.get("command")?.as_str()?.to_string();
+                let group = cmd
+                    .get("group")
+                    .and_then(|g| g.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                Some((command, group))
+            })
+            .filter(|(command, _)| !exposed.contains(canonical_key_from_catalog(command).as_str()))
+            .map(|(command, group)| {
+                let reason = uncovered_reason(&canonical_key_from_catalog(&command), &group);
+                UncoveredCommand {
+                    command,
+                    group,
+                    reason,
+                }
+            })
+            .collect()
+    }
+
+    /// Rewrite `agents/mcp-coverage.json` from the registry.
+    ///
+    /// Ignored by default so a normal run only asserts. After a rename, a newly
+    /// registered group, or a removed command, run this and commit the file:
+    ///
+    /// ```text
+    /// cargo test --release --lib mcp_coverage_json_regeneration -- --ignored
+    /// ```
+    #[test]
+    #[ignore = "regeneration: rewrites agents/mcp-coverage.json from the registry"]
+    fn mcp_coverage_json_regeneration() {
+        let derived = uncovered_catalog_commands();
+        let catalog = load_catalog().unwrap();
+        let catalog_commands = catalog
+            .get("commands")
+            .and_then(|c| c.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let uncovered: Vec<serde_json::Value> = derived
+            .iter()
+            .map(|u| {
+                serde_json::json!({
+                    "command": u.command,
+                    "group": u.group,
+                    "reason": u.reason,
+                })
+            })
+            .collect();
+        let doc = serde_json::json!({
+            "schema_version": 1,
+            "cli_version": catalog.get("cli_version").cloned().unwrap_or(serde_json::Value::Null),
+            "description": "Catalog commands the MCP v1 server does not expose, with a reason each. Derived from agents/tool-catalog.json against the tools the server actually registers; pinned by mcp_coverage_file_matches_derived_set. Regenerate with: cargo test --release --lib mcp_coverage_json_regeneration -- --ignored",
+            "catalog_commands": catalog_commands,
+            "mcp_tools": catalog_commands - derived.len(),
+            "uncovered_count": derived.len(),
+            "uncovered": uncovered,
+        });
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/agents/mcp-coverage.json");
+        let mut rendered = serde_json::to_string_pretty(&doc).unwrap();
+        rendered.push('\n');
+        std::fs::write(path, rendered).unwrap();
+        eprintln!("wrote {path} ({} uncovered)", derived.len());
+    }
+
+    /// Pin `agents/mcp-coverage.json` against what the server actually
+    /// registers. The converse of `catalog_and_clap_command_surfaces_match`:
+    /// that test pins what clap and the catalog agree on, this one pins what
+    /// the catalog offers but MCP does not. Without it, a rename, a newly
+    /// registered group, or a removed command changes what agents can reach
+    /// with nothing failing.
+    #[test]
+    fn mcp_coverage_file_matches_derived_set() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/agents/mcp-coverage.json");
+        let raw =
+            std::fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
+        let file: Value =
+            serde_json::from_str(&raw).unwrap_or_else(|e| panic!("{path} is not valid JSON: {e}"));
+
+        let derived = uncovered_catalog_commands();
+        let derived_keys: std::collections::BTreeSet<&str> =
+            derived.iter().map(|u| u.command.as_str()).collect();
+
+        let entries = file
+            .get("uncovered")
+            .and_then(|v| v.as_array())
+            .unwrap_or_else(|| panic!("{path} is missing the 'uncovered' array"));
+        let file_keys: std::collections::BTreeSet<&str> = entries
+            .iter()
+            .map(|e| {
+                e.get("command")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or_else(|| panic!("{path}: entry missing 'command'"))
+            })
+            .collect();
+
+        assert_eq!(
+            derived_keys,
+            file_keys,
+            "{path} is out of date — regenerate it from the registry. \
+             Derived but absent from the file: {:?}; \
+             in the file but no longer derived: {:?}",
+            derived_keys.difference(&file_keys).collect::<Vec<_>>(),
+            file_keys.difference(&derived_keys).collect::<Vec<_>>(),
+        );
+
+        // Reasons are pinned too: an unexplained gap is the failure mode this
+        // file exists to prevent.
+        for entry in entries {
+            let command = entry.get("command").and_then(|c| c.as_str()).unwrap();
+            let group = entry
+                .get("group")
+                .and_then(|g| g.as_str())
+                .unwrap_or("unknown");
+            let expected = uncovered_reason(&canonical_key_from_catalog(command), group);
+            let actual = entry
+                .get("reason")
+                .and_then(|r| r.as_str())
+                .unwrap_or_else(|| panic!("{path}: '{command}' has no reason"));
+            assert_eq!(actual, expected, "{command}: reason mismatch in {path}");
+        }
+
+        // Counts are pinned so a silent tool loss fails here rather than only
+        // in a reader's surprise.
+        let catalog_commands = load_catalog()
+            .unwrap()
+            .get("commands")
+            .and_then(|c| c.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let mcp_tools = catalog_commands - derived.len();
+        assert_eq!(
+            file.get("catalog_commands").and_then(|v| v.as_u64()),
+            Some(catalog_commands as u64),
+            "{path}: catalog_commands does not match tool-catalog.json"
+        );
+        assert_eq!(
+            file.get("mcp_tools").and_then(|v| v.as_u64()),
+            Some(mcp_tools as u64),
+            "{path}: mcp_tools does not match the registry"
+        );
+        assert_eq!(
+            file.get("uncovered_count").and_then(|v| v.as_u64()),
+            Some(entries.len() as u64),
+            "{path}: uncovered_count does not match the 'uncovered' array"
         );
     }
 }

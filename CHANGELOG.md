@@ -3,6 +3,49 @@
 User-visible changes are recorded here. kraken-cli follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The MCP server no longer reports a real service group as unknown.
+
+`-s futures-paper` returned `Unknown service: 'futures-paper'` even though
+`futures paper` is a real CLI service group with 17 REST commands and no
+credential requirement. The group now parses and is filtered like the streaming
+groups, and the server names it and the reason instead of blaming the caller. A
+mixed `-s` list that includes it no longer fails; the server warns on stderr
+that the group contributes no tools.
+
+`agents/mcp-coverage.json` records every catalog command MCP does not expose,
+with a reason each. It is pinned by a test in `src/mcp/registry.rs`, so a rename
+or a newly registered group fails the suite instead of silently changing what
+agents can reach.
+
+The default service list is now stated correctly across the docs: the CLI
+defaults to `market,account,paper,workspace,feedback`, while marketplace
+listings ship the narrower `market,paper,feedback`.
+
+The paper-backtest skill now states that limit orders pay the configured
+`fee_rate` too, so a strategy resting limit orders is charged more on paper
+than it would pay live.
+
+**Futures paper is exposed as MCP tools.** The 17 `futures paper` commands were a
+real CLI service group with no credential requirement, yet absent from the MCP
+registry — `-s futures-paper` returned `Unknown service`. They are now tools, and
+their state is scoped per workspace like spot paper, so MCP clients no longer
+share one global futures paper account. `futures paper reset` is now flagged
+`dangerous`, matching `paper reset` and `workspace reset`.
+
+**The config directory honors `XDG_CONFIG_HOME` on every platform.** On Windows
+the `dirs` crate resolves `config_dir()` through `SHGetKnownFolderPath`, which
+ignores `HOME` and `XDG_CONFIG_HOME` — so callers that set those to isolate state,
+including the integration tests, were silently redirected into the real user
+config directory. An interrupted run then left workspaces and a stale tape lock
+behind, which broke every later run.
+
+**The Windows process-liveness test is fixed.** It asserted that an impossible
+PID was not alive, but the Windows `process_alive` deliberately reports alive for
+any PID (there is no portable probe). The assertion is now unix-only, so the suite
+can pass on Windows.
+
 ## [0.4.1] - 2026-08-07
 
 Patch release: financial detail in the MCP audit stream.

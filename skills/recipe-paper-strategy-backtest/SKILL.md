@@ -21,6 +21,17 @@ Run a strategy through multiple paper runs to validate consistency before live d
 
 Paper trading applies configurable fees (default 0.26% taker) and optional flat-rate slippage to market orders. However, it does not simulate partial fills, order book depth, or latency. Live trading on Kraken has variable maker/taker fees by volume tier, depth-dependent slippage, and possible partial fills on limit orders. Enable `--slippage-rate` (e.g., `0.001` for 0.1%) at `workspace create` for more conservative estimates. A strategy that is only marginally profitable on paper with fees and slippage enabled is likely unprofitable live.
 
+### Limit orders pay the taker fee too
+
+The paper engine charges the configured `fee_rate` on **every** fill, including a
+resting limit order that would earn the maker rate live. There is no maker/taker
+distinction: `fee = notional * fee_rate` regardless of how the order filled. The
+0.26% default is the taker rate, so a strategy that rests limit orders — grid,
+retracement entries, TWAP — is charged *more* than it would pay live. That bias runs
+one way: it makes such strategies look worse on paper than they are, and it hides the
+fee advantage that is usually their reason for existing. Measure it before trusting a
+result: `expected resting fills x (0.26% - your maker rate)`.
+
 ## Steps
 
 1. Define strategy parameters (pair, entry/exit rules, position size)

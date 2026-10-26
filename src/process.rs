@@ -76,7 +76,11 @@ mod tests {
     fn process_alive_is_true_for_self_and_false_for_an_impossible_pid() {
         // This test process is, by definition, alive.
         assert!(process_alive(i32::try_from(std::process::id()).unwrap()));
-        // `i32::MAX - 1` is far above any system's pid_max, so no such process exists.
+        // `i32::MAX - 1` is far above any system's pid_max, so no such process
+        // exists — a claim only `process_alive` on unix can make. The Windows
+        // fallback reports alive for any pid by design (no portable probe), so
+        // the negative case cannot hold there and is not asserted.
+        #[cfg(unix)]
         assert!(!process_alive(i32::MAX - 1));
     }
 

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use clap::Subcommand;
 use enum_dispatch::enum_dispatch;
@@ -209,125 +210,142 @@ pub(crate) struct SetLeverage {
 // Only the leaves that fetch live market data build an HTTP client, so
 // `init`/`reset` and pure state reads stay fully offline.
 impl Execute for Init {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
         let Self {
             balance,
             currency,
             fee_rate,
         } = self;
-        execute_init(balance, &currency, fee_rate)
+        let base = ctx.scoped_base()?;
+        execute_init(&base, balance, &currency, fee_rate)
     }
 }
 
 impl Execute for Reset {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
         let Self {
             balance,
             currency,
             fee_rate,
         } = self;
-        execute_reset(balance, currency.as_deref(), fee_rate)
+        let base = ctx.scoped_base()?;
+        execute_reset(&base, balance, currency.as_deref(), fee_rate)
     }
 }
 
 impl Execute for Balance {
     async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
-        execute_balance(ctx.futures()?).await
+        let base = ctx.scoped_base()?;
+        execute_balance(&base, ctx.futures()?).await
     }
 }
 
 impl Execute for Status {
     async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
-        execute_status(ctx.futures()?).await
+        let base = ctx.scoped_base()?;
+        execute_status(&base, ctx.futures()?).await
     }
 }
 
 impl Execute for Buy {
     async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
-        execute_order(PositionSide::Long, self.order, ctx.futures()?).await
+        let base = ctx.scoped_base()?;
+        execute_order(&base, PositionSide::Long, self.order, ctx.futures()?).await
     }
 }
 
 impl Execute for Sell {
     async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
-        execute_order(PositionSide::Short, self.order, ctx.futures()?).await
+        let base = ctx.scoped_base()?;
+        execute_order(&base, PositionSide::Short, self.order, ctx.futures()?).await
     }
 }
 
 impl Execute for Orders {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
-        execute_orders()
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let base = ctx.scoped_base()?;
+        execute_orders(&base)
     }
 }
 
 impl Execute for OrderStatus {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
-        execute_order_status(&self.order_id)
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let base = ctx.scoped_base()?;
+        execute_order_status(&base, &self.order_id)
     }
 }
 
 impl Execute for EditOrder {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
         let Self {
             order_id,
             size,
             price,
             stop_price,
         } = self;
-        execute_edit_order(&order_id, &size, &price, &stop_price)
+        let base = ctx.scoped_base()?;
+        execute_edit_order(&base, &order_id, &size, &price, &stop_price)
     }
 }
 
 impl Execute for Cancel {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
         let Self {
             order_id,
             cli_ord_id,
         } = self;
-        execute_cancel(order_id.as_deref(), cli_ord_id.as_deref())
+        let base = ctx.scoped_base()?;
+        execute_cancel(&base, order_id.as_deref(), cli_ord_id.as_deref())
     }
 }
 
 impl Execute for CancelAll {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
-        execute_cancel_all(self.symbol.as_deref())
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let base = ctx.scoped_base()?;
+        execute_cancel_all(&base, self.symbol.as_deref())
     }
 }
 
 impl Execute for BatchOrder {
     async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
-        execute_batch_order(&self.orders_json, ctx.futures()?).await
+        let base = ctx.scoped_base()?;
+        execute_batch_order(&base, &self.orders_json, ctx.futures()?).await
     }
 }
 
 impl Execute for Positions {
     async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
-        execute_positions(ctx.futures()?).await
+        let base = ctx.scoped_base()?;
+        execute_positions(&base, ctx.futures()?).await
     }
 }
 
 impl Execute for Fills {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
-        execute_fills()
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let base = ctx.scoped_base()?;
+        execute_fills(&base)
     }
 }
 
 impl Execute for History {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
-        execute_history()
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let base = ctx.scoped_base()?;
+        execute_history(&base)
     }
 }
 
 impl Execute for Leverage {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
-        execute_leverage(self.symbol.as_deref())
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
+        let base = ctx.scoped_base()?;
+        execute_leverage(&base, self.symbol.as_deref())
     }
 }
 
 impl Execute for SetLeverage {
-    async fn execute(self, _ctx: &AppContext) -> Result<CommandOutput> {
+    async fn execute(self, ctx: &AppContext) -> Result<CommandOutput> {
         let Self { symbol, leverage } = self;
-        execute_set_leverage(&symbol, &leverage)
+        let base = ctx.scoped_base()?;
+        execute_set_leverage(&base, &symbol, &leverage)
     }
 }
 
@@ -497,7 +515,7 @@ async fn fetch_funding_rate(client: &FuturesClient, symbol: &str) -> Result<f64>
         .ok_or_else(|| KrakenError::Parse("No funding rate entries".into()))
 }
 
-async fn reconcile_best_effort(state: &mut FuturesPaperState, client: &FuturesClient) {
+async fn reconcile_best_effort(base: &Path, state: &mut FuturesPaperState, client: &FuturesClient) {
     let symbols: Vec<String> = state
         .positions
         .iter()
@@ -556,12 +574,12 @@ async fn reconcile_best_effort(state: &mut FuturesPaperState, client: &FuturesCl
         &maint_rates,
     );
 
-    if let Err(e) = futures_paper::save_state(state) {
+    if let Err(e) = futures_paper::save_state(state, base) {
         tracing::warn!(error = %e, "could not save reconciled state");
     }
 }
 
-fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<CommandOutput> {
+fn execute_init(base: &Path, balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<CommandOutput> {
     if !balance.is_finite() || balance <= 0.0 {
         return Err(KrakenError::Validation(
             "Starting balance must be a finite positive number".into(),
@@ -575,15 +593,15 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<C
         ));
     }
 
-    let _lock = futures_paper::StateLock::acquire()?;
-    let path = futures_paper::futures_paper_state_path()?;
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let path = futures_paper::futures_paper_state_path(base);
     if path.exists() {
         return Err(KrakenError::Validation(
             "Futures paper account already initialized. Use 'kraken futures paper reset' to start over.".into(),
         ));
     }
     let state = FuturesPaperState::new(balance, currency, rate);
-    futures_paper::save_state(&state)?;
+    futures_paper::save_state(&state, base)?;
 
     let cur = currency.to_uppercase();
     let fee_pct = format!("{:.4}%", rate * 100.0);
@@ -606,6 +624,7 @@ fn execute_init(balance: f64, currency: &str, fee_rate: Option<f64>) -> Result<C
 }
 
 fn execute_reset(
+    base: &Path,
     balance: Option<f64>,
     currency: Option<&str>,
     fee_rate: Option<f64>,
@@ -625,10 +644,10 @@ fn execute_reset(
         ));
     }
 
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
     state.reset(balance, currency, fee_rate);
-    futures_paper::save_state(&state)?;
+    futures_paper::save_state(&state, base)?;
 
     let pairs = vec![
         ("Mode".into(), "[FUTURES PAPER] Simulated Trading".into()),
@@ -651,10 +670,10 @@ fn execute_reset(
     ))
 }
 
-async fn execute_balance(client: &FuturesClient) -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client).await;
+async fn execute_balance(base: &Path, client: &FuturesClient) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
+    reconcile_best_effort(base, &mut state, client).await;
 
     let mark_prices = build_mark_prices(&state, client).await;
     let upnl = state.unrealized_pnl(&mark_prices);
@@ -689,10 +708,10 @@ async fn execute_balance(client: &FuturesClient) -> Result<CommandOutput> {
     ))
 }
 
-async fn execute_status(client: &FuturesClient) -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client).await;
+async fn execute_status(base: &Path, client: &FuturesClient) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
+    reconcile_best_effort(base, &mut state, client).await;
 
     let mark_prices = build_mark_prices(&state, client).await;
     let upnl = state.unrealized_pnl(&mark_prices);
@@ -743,6 +762,7 @@ async fn execute_status(client: &FuturesClient) -> Result<CommandOutput> {
 }
 
 async fn execute_order(
+    base: &Path,
     side: PositionSide,
     order: OrderRequest,
     client: &FuturesClient,
@@ -815,9 +835,9 @@ async fn execute_order(
         )));
     }
 
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client).await;
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
+    reconcile_best_effort(base, &mut state, client).await;
 
     let mut snapshot = fetch_ticker(client, &symbol).await?;
     let (ask_levels, bid_levels) = fetch_orderbook_levels(client, &symbol).await;
@@ -840,7 +860,7 @@ async fn execute_order(
     };
 
     let result = state.place_order(params, &snapshot)?;
-    futures_paper::save_state(&state)?;
+    futures_paper::save_state(&state, base)?;
 
     let fill_json: Vec<Value> = result
         .fills
@@ -893,9 +913,9 @@ async fn execute_order(
     ))
 }
 
-fn execute_orders() -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let state = futures_paper::load_state()?;
+fn execute_orders(base: &Path) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let state = futures_paper::load_state(base)?;
 
     let headers = vec![
         "[FP] Order ID".into(),
@@ -957,9 +977,9 @@ fn execute_orders() -> Result<CommandOutput> {
     ))
 }
 
-fn execute_order_status(order_id: &str) -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let state = futures_paper::load_state()?;
+fn execute_order_status(base: &Path, order_id: &str) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let state = futures_paper::load_state(base)?;
 
     let order = state
         .open_orders
@@ -1010,6 +1030,7 @@ fn execute_order_status(order_id: &str) -> Result<CommandOutput> {
 }
 
 fn execute_edit_order(
+    base: &Path,
     order_id: &str,
     size_str: &Option<String>,
     price_str: &Option<String>,
@@ -1037,10 +1058,10 @@ fn execute_edit_order(
         })
         .transpose()?;
 
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
     state.edit_order(order_id, new_size, new_price, new_stop_price)?;
-    futures_paper::save_state(&state)?;
+    futures_paper::save_state(&state, base)?;
 
     let pairs = vec![
         ("Mode".into(), "[FUTURES PAPER] Simulated Trading".into()),
@@ -1057,11 +1078,11 @@ fn execute_edit_order(
     ))
 }
 
-fn execute_cancel(order_id: Option<&str>, cli_ord_id: Option<&str>) -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
+fn execute_cancel(base: &Path, order_id: Option<&str>, cli_ord_id: Option<&str>) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
     let cancelled = state.cancel_order(order_id, cli_ord_id)?;
-    futures_paper::save_state(&state)?;
+    futures_paper::save_state(&state, base)?;
 
     let pairs = vec![
         ("Mode".into(), "[FUTURES PAPER] Simulated Trading".into()),
@@ -1080,11 +1101,11 @@ fn execute_cancel(order_id: Option<&str>, cli_ord_id: Option<&str>) -> Result<Co
     ))
 }
 
-fn execute_cancel_all(symbol: Option<&str>) -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
+fn execute_cancel_all(base: &Path, symbol: Option<&str>) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
     let cancelled = state.cancel_all(symbol);
-    futures_paper::save_state(&state)?;
+    futures_paper::save_state(&state, base)?;
 
     let pairs = vec![
         ("Mode".into(), "[FUTURES PAPER] Simulated Trading".into()),
@@ -1101,7 +1122,7 @@ fn execute_cancel_all(symbol: Option<&str>) -> Result<CommandOutput> {
     ))
 }
 
-async fn execute_batch_order(orders_json: &str, client: &FuturesClient) -> Result<CommandOutput> {
+async fn execute_batch_order(base: &Path, orders_json: &str, client: &FuturesClient) -> Result<CommandOutput> {
     let json_str = if let Some(path) = orders_json.strip_prefix('@') {
         std::fs::read_to_string(path).map_err(|e| {
             KrakenError::Io(std::io::Error::new(
@@ -1116,9 +1137,9 @@ async fn execute_batch_order(orders_json: &str, client: &FuturesClient) -> Resul
     let parsed: Vec<Value> = serde_json::from_str(&json_str)
         .map_err(|e| KrakenError::Validation(format!("Invalid batch order JSON: {e}")))?;
 
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client).await;
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
+    reconcile_best_effort(base, &mut state, client).await;
 
     let mut snapshots = HashMap::new();
     let symbols: Vec<String> = parsed
@@ -1153,7 +1174,7 @@ async fn execute_batch_order(orders_json: &str, client: &FuturesClient) -> Resul
         .collect::<Result<Vec<_>>>()?;
 
     let results = state.batch_orders(batch, &snapshots);
-    futures_paper::save_state(&state)?;
+    futures_paper::save_state(&state, base)?;
 
     let json_results: Vec<Value> = results
         .iter()
@@ -1293,10 +1314,10 @@ fn parse_batch_row(v: &Value) -> Result<OrderParams> {
     })
 }
 
-async fn execute_positions(client: &FuturesClient) -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
-    reconcile_best_effort(&mut state, client).await;
+async fn execute_positions(base: &Path, client: &FuturesClient) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
+    reconcile_best_effort(base, &mut state, client).await;
 
     let mark_prices = build_mark_prices(&state, client).await;
 
@@ -1370,9 +1391,9 @@ async fn execute_positions(client: &FuturesClient) -> Result<CommandOutput> {
     ))
 }
 
-fn execute_fills() -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let state = futures_paper::load_state()?;
+fn execute_fills(base: &Path) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let state = futures_paper::load_state(base)?;
 
     let headers = vec![
         "[FP] Fill ID".into(),
@@ -1439,9 +1460,9 @@ fn execute_fills() -> Result<CommandOutput> {
     ))
 }
 
-fn execute_history() -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let state = futures_paper::load_state()?;
+fn execute_history(base: &Path) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let state = futures_paper::load_state(base)?;
 
     let headers = vec![
         "[FP] ID".into(),
@@ -1493,9 +1514,9 @@ fn execute_history() -> Result<CommandOutput> {
     ))
 }
 
-fn execute_leverage(symbol: Option<&str>) -> Result<CommandOutput> {
-    let _lock = futures_paper::StateLock::acquire()?;
-    let state = futures_paper::load_state()?;
+fn execute_leverage(base: &Path, symbol: Option<&str>) -> Result<CommandOutput> {
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let state = futures_paper::load_state(base)?;
 
     let entries: Vec<(&String, &f64)> = match symbol {
         Some(s) => state
@@ -1529,7 +1550,7 @@ fn execute_leverage(symbol: Option<&str>) -> Result<CommandOutput> {
     ))
 }
 
-fn execute_set_leverage(symbol: &str, leverage_str: &str) -> Result<CommandOutput> {
+fn execute_set_leverage(base: &Path, symbol: &str, leverage_str: &str) -> Result<CommandOutput> {
     validate_symbol(symbol)?;
     let leverage: f64 = leverage_str
         .parse()
@@ -1541,12 +1562,12 @@ fn execute_set_leverage(symbol: &str, leverage_str: &str) -> Result<CommandOutpu
         )));
     }
 
-    let _lock = futures_paper::StateLock::acquire()?;
-    let mut state = futures_paper::load_state()?;
+    let _lock = futures_paper::StateLock::acquire(base)?;
+    let mut state = futures_paper::load_state(base)?;
     state
         .leverage_preferences
         .insert(symbol.to_uppercase(), leverage);
-    futures_paper::save_state(&state)?;
+    futures_paper::save_state(&state, base)?;
 
     let pairs = vec![
         ("Mode".into(), "[FUTURES PAPER] Simulated Trading".into()),

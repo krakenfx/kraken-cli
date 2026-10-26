@@ -148,9 +148,20 @@ impl std::fmt::Display for CredentialSource {
 }
 
 /// Returns the config directory path: `~/.config/kraken/`.
+///
+/// Honors `XDG_CONFIG_HOME` on every platform (not just Unix). On Windows the
+/// `dirs` crate resolves `config_dir()` to `%APPDATA%` and ignores `HOME` and
+/// `XDG_CONFIG_HOME`, which silently redirected integration tests (and any
+/// agent that sets those vars to isolate state) into the real user config dir.
+/// Checking `XDG_CONFIG_HOME` first keeps the binary deterministic and lets
+/// callers isolate state on all platforms.
 pub(crate) fn config_dir() -> Result<PathBuf> {
-    let base = dirs::config_dir()
-        .ok_or_else(|| KrakenError::Config("Cannot determine config directory".into()))?;
+    let base = if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+        PathBuf::from(xdg)
+    } else {
+        dirs::config_dir()
+            .ok_or_else(|| KrakenError::Config("Cannot determine config directory".into()))?
+    };
     Ok(base.join("kraken"))
 }
 

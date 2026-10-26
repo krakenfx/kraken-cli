@@ -452,7 +452,7 @@ documented below but excluded from the catalog.
 | auth | 4 | No | Credential management |
 | utility | 2 | No | Interactive setup and REPL shell |
 
-41 commands are marked `dangerous` (orders, withdrawals, transfers, cancel-all, staking, account and margin settings). The authoritative list is the `dangerous` field in [agents/tool-catalog.json](agents/tool-catalog.json).
+42 commands are marked `dangerous` (orders, withdrawals, transfers, cancel-all, staking, account and margin settings). The authoritative list is the `dangerous` field in [agents/tool-catalog.json](agents/tool-catalog.json).
 
 <details>
 <summary>Full command reference</summary>

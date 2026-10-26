@@ -393,7 +393,6 @@ impl From<kraken_workspace::WorkspaceError> for KrakenError {
             | WorkspaceError::LiveUnavailable { .. }
             | WorkspaceError::PairNotAllowed { .. }
             | WorkspaceError::Unsupported { .. }
-            | WorkspaceError::FuturesUnscoped { .. }
             | WorkspaceError::SessionActive { .. }
             | WorkspaceError::NoActiveSession
             | WorkspaceError::SessionNotFound { .. }
@@ -586,7 +585,7 @@ mod tests {
             unsupported.to_string().contains("workspace promote"),
             "the refusal names the promotion path: {unsupported}"
         );
-        let cases: [(KrakenError, ErrorCategory); 12] = [
+        let cases: [(KrakenError, ErrorCategory); 11] = [
             (not_found, ErrorCategory::Validation),
             (
                 WorkspaceError::PairNotAllowed {
@@ -598,13 +597,6 @@ mod tests {
                 ErrorCategory::Validation,
             ),
             (unsupported, ErrorCategory::Validation),
-            (
-                WorkspaceError::FuturesUnscoped {
-                    workspace: "w1".into(),
-                }
-                .into(),
-                ErrorCategory::Validation,
-            ),
             (
                 WorkspaceError::Exists("btc-momentum".into()).into(),
                 ErrorCategory::Validation,

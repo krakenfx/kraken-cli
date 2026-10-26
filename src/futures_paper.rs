@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::config;
 use crate::errors::{KrakenError, Result};
 
 pub(crate) const DEFAULT_FUTURES_TAKER_FEE_RATE: f64 = 0.0005;
@@ -1654,17 +1653,22 @@ pub(crate) struct ReconcileResult {
 // Persistence (isolated from spot paper)
 // ---------------------------------------------------------------------------
 
-pub(crate) fn futures_paper_state_path() -> Result<PathBuf> {
-    Ok(config::config_dir()?
-        .join("paper")
-        .join("futures_state.json"))
+/// The futures-paper state file under a resolved scope root. `base` is the
+/// workspace-scoped root the caller resolved (the flat config dir when no
+/// workspace is set, or `<config_dir>/workspaces/<name>` for a named one) —
+/// the same scoping spot paper applies to its journal. Scoping the state file
+/// keeps concurrent MCP clients (or CLI shells) that set different
+/// `KRAKEN_WORKSPACE` values on separate paper accounts instead of sharing one
+/// global futures_state.json.
+pub(crate) fn futures_paper_state_path(base: &Path) -> PathBuf {
+    base.join("paper").join("futures_state.json")
 }
 
 /// Advisory lock over the futures paper state file. A thin wrapper around the
-/// shared [`FileLock`](kraken_recording::FileLock) that preserves the no-argument
-/// `acquire()` call site used throughout the futures-paper commands. Overlapping
-/// futures-paper commands are a conflict: the loser is rejected with
-/// `validation`, not queued.
+/// shared [`FileLock`](kraken_recording::FileLock) that preserves the
+/// `acquire(base)` call site used throughout the futures-paper commands.
+/// Overlapping futures-paper commands are a conflict: the loser is rejected
+/// with `validation`, not queued.
 pub(crate) struct StateLock {
     // Held purely for its `Drop`; the inner `FileLock` owns the lock lifecycle.
     #[allow(dead_code)]
@@ -1672,17 +1676,17 @@ pub(crate) struct StateLock {
 }
 
 impl StateLock {
-    pub(crate) fn acquire() -> Result<Self> {
+    pub(crate) fn acquire(base: &Path) -> Result<Self> {
         let inner = kraken_recording::FileLock::acquire(
-            &futures_paper_state_path()?,
+            &futures_paper_state_path(base),
             "Futures paper state",
         )?;
         Ok(Self { inner })
     }
 }
 
-pub(crate) fn load_state() -> Result<FuturesPaperState> {
-    let path = futures_paper_state_path()?;
+pub(crate) fn load_state(base: &Path) -> Result<FuturesPaperState> {
+    let path = futures_paper_state_path(base);
     if !path.exists() {
         return Err(KrakenError::Validation(
             "Futures paper account not initialized. Run 'kraken futures paper init' first.".into(),
@@ -1693,8 +1697,8 @@ pub(crate) fn load_state() -> Result<FuturesPaperState> {
     Ok(state)
 }
 
-pub(crate) fn save_state(state: &FuturesPaperState) -> Result<()> {
-    let path = futures_paper_state_path()?;
+pub(crate) fn save_state(state: &FuturesPaperState, base: &Path) -> Result<()> {
+    let path = futures_paper_state_path(base);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -2511,12 +2515,28 @@ mod tests {
 
     #[test]
     fn state_path_isolated_from_spot() {
-        let futures_path = futures_paper_state_path().unwrap();
-        let spot_path =
-            crate::commands::paper::global_events_path(&crate::config::config_dir().unwrap());
+        let base = crate::config::config_dir().unwrap();
+        let futures_path = futures_paper_state_path(&base);
+        let spot_path = crate::commands::paper::global_events_path(&base);
         assert_ne!(futures_path, spot_path);
         assert!(futures_path.to_string_lossy().contains("futures_state"));
         assert!(spot_path.to_string_lossy().contains("journal.jsonl"));
+    }
+
+    #[test]
+    fn state_path_scopes_under_a_named_workspace() {
+        let base = std::path::Path::new("/cfg");
+        let flat = futures_paper_state_path(base);
+        assert_eq!(flat, std::path::Path::new("/cfg/paper/futures_state.json"));
+        let scoped = futures_paper_state_path(&kraken_workspace::workspace_dir(
+            base,
+            &"btc-momentum".parse().unwrap(),
+        ));
+        assert_eq!(
+            scoped,
+            std::path::Path::new("/cfg/workspaces/btc-momentum/paper/futures_state.json")
+        );
+        assert_ne!(flat, scoped);
     }
 
     #[test]

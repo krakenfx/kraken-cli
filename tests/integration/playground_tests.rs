@@ -100,11 +100,27 @@ fn demo_refuses_a_live_mode_playground_workspace() {
     )
     .unwrap();
 
-    kraken_in(&home)
+    // The dead-WS env + timeout keep this from hanging if the refusal is ever
+    // missing: a live-mode playground that slips through would otherwise start
+    // streaming forever. Here we expect the refusal to happen BEFORE the
+    // stream opens, so the command exits non-zero with the refusal on stdout.
+    let out = kraken_in(&home)
+        .env("KRAKEN_WS_PUBLIC_URL", "wss://127.0.0.1:1")
+        .env("KRAKEN_DANGER_ALLOW_ANY_URL_HOST", "1")
+        .env("KRAKEN_WS_RECONNECT_BASE_MS", "1")
+        .timeout(std::time::Duration::from_secs(15))
         .args(["playground", "-o", "json"])
-        .assert()
-        .failure()
-        .stdout(predicate::str::contains("simulated fills only"));
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !out.status.success(),
+        "a live-mode playground workspace must be refused: {out:?}"
+    );
+    assert!(
+        stdout.contains("simulated fills only"),
+        "refusal message missing from stdout: {stdout}"
+    );
 }
 
 /// The trade example names the first `--symbols` pair — guidance pointing at

@@ -1,6 +1,7 @@
 # Machine-readable catalogs: collapse in diffs, exclude from language stats.
 agents/tool-catalog.json linguist-generated
 agents/error-catalog.json linguist-generated
+agents/mcp-coverage.json linguist-generated
 
 .internal/ export-ignore
 .internal/** export-ignore

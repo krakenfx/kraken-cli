@@ -8,7 +8,7 @@ Machine-readable contracts for building AI agents on top of `kraken-cli`.
 
 - Coverage: **174 commands** with parameters, types, defaults, and examples
 - Every command includes: group, description, auth requirement, `dangerous` flag, and parameter schemas
-- 41 commands are marked `dangerous: true` (orders, withdrawals, transfers, cancel-all, staking, account and margin settings)
+- 42 commands are marked `dangerous: true` (orders, withdrawals, transfers, cancel-all, staking, account and margin settings)
 
 `error-catalog.json` is the error routing contract.
 
@@ -20,7 +20,20 @@ Machine-readable contracts for building AI agents on top of `kraken-cli`.
 |------|---------|
 | `tool-catalog.json` | Canonical command catalog (174 commands) |
 | `error-catalog.json` | Error categories with retry guidance |
+| `mcp-coverage.json` | Catalog commands MCP v1 does not expose, with a reason each |
 | `examples/` | Runnable shell examples |
+
+## MCP Coverage
+
+`mcp-coverage.json` is the derived answer to "what can the CLI do that an MCP
+client cannot reach?" Every catalog command is checked against the tools the
+server actually registers, and the ones absent are listed with a reason: a
+streaming group, a command that reads or deletes credentials, or an interactive
+command.
+
+The file is pinned by a test in `src/mcp/registry.rs`, so a rename, a newly
+registered group, or a removed command fails the suite instead of quietly
+changing what agents can reach.
 
 ## Using the Catalog
 

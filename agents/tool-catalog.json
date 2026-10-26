@@ -3924,7 +3924,7 @@
       "group": "futures-paper",
       "description": "Reset futures paper account (clear positions, orders, fills).",
       "auth_required": false,
-      "dangerous": false,
+      "dangerous": true,
       "parameters": [
         { "name": "--balance", "type": "number", "required": false, "description": "New starting collateral" },
         { "name": "--currency", "type": "string", "required": false, "description": "New collateral currency" },
