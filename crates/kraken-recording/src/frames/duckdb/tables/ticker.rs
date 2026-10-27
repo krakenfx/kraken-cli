@@ -1,13 +1,19 @@
 //! The `ticker` table: one row per ticker entry.
 
-use kraken_core::ChannelData;
-use kraken_core::subscribe::message::{MessageType, TickerData};
-
-use crate::error::Result;
-use crate::frames::duckdb::table::{
-    Cell, ColType, Column, DriftPolicy, Recordable, Row, Stored, TableSpec, read_decimal, read_rows,
+use crate::{
+    error::Result,
+    frames::duckdb::{
+        table::{
+            Cell, ColType, Column, DriftPolicy, Recordable, Row, Stored, TableSpec, read_decimal,
+            read_rows,
+        },
+        tables::{RowEntry, group_frames, message_type},
+    },
 };
-use crate::frames::duckdb::tables::{RowEntry, group_frames, message_type};
+use kraken_core::{
+    ChannelData,
+    subscribe::message::{MessageType, TickerData},
+};
 
 static TICKER: TableSpec = TableSpec::new(
     "ticker",

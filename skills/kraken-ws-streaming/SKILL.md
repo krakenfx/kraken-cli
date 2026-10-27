@@ -147,16 +147,20 @@ kraken futures ws account-log -o json 2>/dev/null
 
 ## WebSocket Order Mutations (Spot)
 
-Place, amend, and cancel orders over WebSocket for lower latency:
+Place, amend, and cancel orders over WebSocket for lower latency. Each one
+needs explicit human approval; `add-order` and `batch-add` take `--validate`
+for a dry run, the others have none:
 
 ```bash
-kraken ws add-order -o json 2>/dev/null
-kraken ws amend-order -o json 2>/dev/null
-kraken ws cancel-order -o json 2>/dev/null
+kraken ws add-order --order-type limit --side buy --symbol BTC/USD --order-qty 0.001 --limit-price 50000 --validate -o json 2>/dev/null
+kraken ws amend-order --order-id OABC12 --limit-price 51000 -o json 2>/dev/null
+kraken ws cancel-order --order-id OABC12 -o json 2>/dev/null
 kraken ws cancel-all -o json 2>/dev/null
-kraken ws batch-add -o json 2>/dev/null
-kraken ws batch-cancel -o json 2>/dev/null
+kraken ws batch-add --symbol BTC/USD --orders '[{"order_type":"limit","side":"buy","order_qty":0.001,"limit_price":50000},{"order_type":"limit","side":"sell","order_qty":0.001,"limit_price":70000}]' --validate -o json 2>/dev/null
+kraken ws batch-cancel --orders OABC12 ODEF34 -o json 2>/dev/null
 ```
+
+`batch-add` takes 2 to 15 orders and `batch-cancel` 2 to 50 IDs.
 
 Dead man's switch over WebSocket:
 
@@ -189,5 +193,5 @@ For multi-feed agents, run each stream in a background process and merge events.
 
 - WebSocket order mutations are flagged as dangerous. Require human approval.
 - Never treat NDJSON stream output as a single JSON document.
-- Handle stream disconnects gracefully; the CLI reconnects automatically with paced exponential backoff and reconnect safety budgeting (up to 12 attempts per stream lifecycle).
+- Handle stream disconnects gracefully. Spot `kraken ws` streams reconnect with paced exponential backoff until interrupted, and print a `"type":"reconnected"` line before the fresh snapshot. `kraken futures ws` streams print no such line and exit with a `websocket` error after 12 reconnects in a row that never stay up for 30 seconds.
 - If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

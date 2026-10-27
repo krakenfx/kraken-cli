@@ -1,0 +1,16 @@
+{
+  "error": [],
+  "result": {
+    "L4UESK-KG3EQ-UFO4T5": {
+      "refid": "TJKLXF-PGMUI-4NTLXU",
+      "time": 1688464484.1787,
+      "type": "trade",
+      "subtype": "",
+      "aclass": "currency",
+      "asset": "ZGBP",
+      "amount": "-24.5000",
+      "fee": "0.0490",
+      "balance": "459567.9171"
+    }
+  }
+}

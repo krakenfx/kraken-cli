@@ -1,3 +1,17 @@
-# Emits JUnit for GitLab's MR test widget (wired up in .gitlab-ci.yml).
+# One process per test means a hang burns the whole job timeout without naming
+# the test. Values are set against a saturated run, not an idle one: ~200 of
+# these tests spawn the `kraken` binary, so under full parallelism a healthy 4s
+# test was observed at 34s. 30s therefore only flags, and the kill is 5 periods
+# out (150s) — a false kill costs more than a slow test.
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 5 }
+
+[profile.ci]
+slow-timeout = { period = "30s", terminate-after = 5 }
+# Two 15s harness timeouts in one test once set this suite's wall-clock floor and
+# stayed invisible: only the JUnit XML carried per-test durations.
+final-status-level = "slow"
+
+# Emits JUnit so CI can show per-test results.
 [profile.ci.junit]
 path = "junit.xml"

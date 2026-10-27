@@ -1,0 +1,36 @@
+---
+source: crates/kraken-mcp/tests/seam_snapshots.rs
+expression: "json!({ \"command\": host.recorded(), \"result\": result, })"
+---
+{
+  "command": [
+    {
+      "market": {
+        "ticker": {
+          "pairs": [
+            "BTC/USD",
+            "ETH/USD"
+          ],
+          "all": false,
+          "asset_class": "forex",
+          "watch": null
+        }
+      }
+    }
+  ],
+  "result": {
+    "resultType": "complete",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"BTC/USD\":{\"last\":\"50000.0\"}}"
+      }
+    ],
+    "structuredContent": {
+      "BTC/USD": {
+        "last": "50000.0"
+      }
+    },
+    "isError": false
+  }
+}

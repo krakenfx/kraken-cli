@@ -1,15 +1,15 @@
 //! `ping` — application-level keepalive / latency probe.
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/ping>. The request is just
-//! `{method: "ping"}` (no params); the server answers `{method: "pong"}`, echoing `req_id`
-//! when one was sent. Unlike other acks, `pong` omits `success` — absence reads as success.
+//! `{method: "ping"}` (no params); the server answers `{method: "pong"}`,
+//! echoing `req_id` when one was sent. Unlike other acks, `pong` omits
+//! `success` — absence reads as success.
 
+use crate::{MethodReply, Request, endpoint::Endpoint};
 use serde::Serialize;
 
-use crate::endpoint::Endpoint;
-use crate::{MethodReply, Request};
-
-/// `ping` request params — none; the field-less struct serializes to an omitted `params`.
+/// `ping` request params — none; the field-less struct serializes to an omitted
+/// `params`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct PingParams {}
 

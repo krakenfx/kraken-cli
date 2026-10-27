@@ -1,0 +1,20 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "id": "TCJA"
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "id",
+      "TCJA"
+    ]
+  ],
+  "footer": []
+}

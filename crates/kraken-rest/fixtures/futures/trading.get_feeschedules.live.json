@@ -1,0 +1,59 @@
+{
+  "result": "success",
+  "serverTime": "2026-10-20T14:40:44.657Z",
+  "feeSchedules": [
+    {
+      "uid": "4845910e-81a7-4578-bdeb-8faada1b972f",
+      "name": "Incentive Rebate MTF Linear Fees",
+      "tiers": [
+        {
+          "makerFee": 0.02,
+          "takerFee": 0.05,
+          "usdVolume": 0.0
+        },
+        {
+          "makerFee": 0.0175,
+          "takerFee": 0.045,
+          "usdVolume": 5000000.0
+        },
+        {
+          "makerFee": 0.015,
+          "takerFee": 0.04,
+          "usdVolume": 10000000.0
+        }
+      ]
+    },
+    {
+      "uid": "535cacd9-217d-442b-98e3-489c81019eb9",
+      "name": "Consumer MTF Linear Fees",
+      "tiers": [
+        {
+          "makerFee": 0.25,
+          "takerFee": 0.25,
+          "usdVolume": 0.0
+        }
+      ]
+    },
+    {
+      "uid": "723888f7-0a8e-4183-8648-f920a22339e3",
+      "name": "MTF Linear Rebate Fees",
+      "tiers": [
+        {
+          "makerFee": 0.02,
+          "takerFee": 0.05,
+          "usdVolume": 0.0
+        },
+        {
+          "makerFee": 0.0175,
+          "takerFee": 0.045,
+          "usdVolume": 5000000.0
+        },
+        {
+          "makerFee": 0.015,
+          "takerFee": 0.04,
+          "usdVolume": 10000000.0
+        }
+      ]
+    }
+  ]
+}

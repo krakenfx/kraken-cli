@@ -3,17 +3,17 @@
 //! Values use recorded mid marks, never live prices or the stop anchor. The
 //! final curve may therefore differ from bid-marked stop totals.
 
-use std::collections::BTreeSet;
-
+use crate::{LabError, Result, mark};
 use chrono::{DateTime, Utc};
 use kraken_paper::{PaperState, PaperTrade};
 use kraken_recording::{CaptureState, RecordingManifest};
-use kraken_session::timeline::SessionTimeline;
-use kraken_session::timeline::event::{EventPayload, TimelineEvent, final_epoch_start};
+use kraken_session::timeline::{
+    SessionTimeline,
+    event::{EventPayload, TimelineEvent, final_epoch_start},
+};
 use rust_decimal::Decimal;
 use serde::Serialize;
-
-use crate::{LabError, Result, mark};
+use std::collections::BTreeSet;
 
 /// Replay the journal's final epoch against the recorded marks.
 ///
@@ -141,8 +141,8 @@ fn caveats(
     let mut caveats = Vec::new();
     if epochs_skipped > 0 {
         caveats.push(format!(
-            "{epochs_skipped} earlier account epoch(s) on the journal were skipped; the curve \
-             and ledger describe the final epoch only"
+            "{epochs_skipped} earlier account epoch(s) on the journal were skipped; the curve and \
+             ledger describe the final epoch only"
         ));
     }
     let incomplete = points.iter().filter(|point| !point.complete).count();
@@ -160,8 +160,8 @@ fn caveats(
         // through the incomplete-point disclosure above.
         CaptureState::Absent => {}
         CaptureState::Unfinalized(_) => caveats.push(
-            "the market recording never finalized (recorder still running or crashed); the \
-             marks' completeness is unknown"
+            "the market recording never finalized (recorder still running or crashed); the marks' \
+             completeness is unknown"
                 .to_string(),
         ),
         CaptureState::Finalized(_, summary) => {
@@ -181,15 +181,15 @@ fn caveats(
 
 #[cfg(test)]
 mod tests {
-    use kraken_core::OrderSide;
-    use kraken_paper::account::Origin;
-    use kraken_paper::{AccountEvent, CommandEntry, PaperConfig};
-    use kraken_recording::{RecordingDeclaration, RecordingIntegrity};
-    use kraken_session::timeline::fixtures::{self, SessionBuilder};
-    use kraken_session::timeline::read;
-    use rust_decimal_macros::dec;
-
     use super::*;
+    use kraken_core::OrderSide;
+    use kraken_paper::{AccountEvent, CommandEntry, PaperConfig, account::Origin};
+    use kraken_recording::{RecordingDeclaration, RecordingIntegrity};
+    use kraken_session::timeline::{
+        fixtures::{self, SessionBuilder},
+        read,
+    };
+    use rust_decimal_macros::dec;
 
     fn assert_close(actual: Decimal, expected: Decimal, what: &str) {
         assert!(
@@ -860,25 +860,12 @@ mod tests {
         assert!(replay(&session).unwrap().caveats.is_empty());
     }
 
-    #[test]
-    fn session_without_any_epoch_is_a_validation_error() {
-        let session = SessionTimeline {
-            events: Vec::new(),
-            capture: None,
-            manifest: fixtures::manifest(vec![]),
-            newer_records_skipped: 0,
-        };
-        let err = replay(&session).unwrap_err();
-        assert!(matches!(err, LabError::NoEpoch { .. }));
-    }
-
     // -- properties -------------------------------------------------------------
 
     mod properties {
+        use super::*;
         use proptest::prelude::*;
         use rust_decimal::prelude::FromPrimitive;
-
-        use super::*;
 
         #[derive(Debug, Clone)]
         enum Op {

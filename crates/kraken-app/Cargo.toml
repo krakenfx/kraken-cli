@@ -1,0 +1,94 @@
+[package]
+description            = "The kraken-cli engine: the runtime context and the work behind every command"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-app"
+publish                = false
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+# Every front-end is a thin adapter over this crate: it owns the runtime
+# context, the command work, and the gates. What it deliberately does not own
+# is any front-end: `kraken-shell` and `kraken-mcp` depend on it, so reaching
+# them from here would be a cycle.
+[features]
+# Off by default: the bundled libduckdb C++ build is ~92% of a CI build job's
+# wall clock. Releases opt back in via `dist-workspace.toml`; with it off,
+# `record --to duckdb` reports a clean validation error and `--to jsonl` still
+# works. A union, never a behavior toggle: every member that can read DuckDB
+# gets the backend together.
+record-duckdb = ["kraken-recording/duckdb", "kraken-session/duckdb"]
+
+[dependencies]
+anyhow  = "1.0.104"
+chrono  = { workspace = true }
+clap    = { workspace = true, features = ["env"] }
+colored = "3.1.1"
+# duckdb >=1.10503 pins `comfy-table ~7.1`; anything above 7.1.x is
+# unresolvable until upstream relaxes it (duckdb-rs Cargo.toml, comfy-table dep).
+comfy-table      = "7.1.4"
+dialoguer        = "0.12"
+dirs             = { workspace = true }
+futures-util     = { workspace = true }
+humantime        = { workspace = true }
+indicatif        = "0.18.6"
+itertools        = "0.15.0"
+kraken-auth      = { workspace = true }
+kraken-contract  = { workspace = true }
+kraken-core      = { workspace = true, features = ["clap"] }
+kraken-lab       = { workspace = true }
+kraken-paper     = { workspace = true }
+kraken-recipe    = { workspace = true }
+kraken-recording = { workspace = true }
+kraken-replay    = { workspace = true }
+kraken-rest      = { workspace = true }
+kraken-session   = { workspace = true, features = ["clap"] }
+kraken-workspace = { workspace = true }
+kraken-ws        = { workspace = true }
+reqwest          = { workspace = true, features = ["json", "query"] }
+# serde-float: wire prices are JSON numbers, so Decimal must (de)serialize as a
+# number, not rust_decimal's default string form.
+rust_decimal        = { workspace = true }
+rust_decimal_macros = { workspace = true }
+secrecy             = { workspace = true, features = ["serde"] }
+serde               = { workspace = true }
+serde_json          = { workspace = true }
+serde_with          = { workspace = true }
+strum               = { workspace = true }
+thiserror           = { workspace = true }
+tokio               = { workspace = true, features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-stream        = { workspace = true }
+tokio-tungstenite   = { workspace = true }
+tokio-util          = { workspace = true }
+tracing             = { workspace = true }
+tracing-subscriber  = { version = "0.3.23", features = ["env-filter", "json"] }
+url                 = { workspace = true }
+uuid                = { version = "1.28.0", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+# `kill(pid, 0)` liveness probe and SIGTERM delivery for playground's recorder
+# supervision (`process::process_alive` / `process::terminate`).
+libc = "0.2.191"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+# Builds base64 test secrets.
+base64 = { workspace = true }
+# Surface snapshots for the MCP tool contract (tests/mcp_surface.rs).
+insta = { workspace = true }
+# Journal-accurate fixture sessions for the timeline consumers' tests;
+# feature unification turns fixtures on for every root test target.
+kraken-session = { workspace = true, features = ["fixtures"] }
+predicates     = "3.1.4"
+# Pins the P&L decomposition identity (explain pnl) over random fill
+# sequences, not just example inputs.
+proptest = "1.12.0"
+tempfile = { workspace = true }
+# test-util's paused clock keeps time-based tests (WS read-idle timeout)
+# instant and deterministic.
+tokio    = { version = "1.53.3", features = ["test-util"] }
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

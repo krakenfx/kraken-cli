@@ -1,16 +1,17 @@
 //! The method-reply envelope every reply shares, mirroring the channel side's
 //! `DataMessage` envelope.
 
+use super::result::{Method, MethodReply};
+use crate::{
+    error::{Error, Result},
+    wire::Request,
+};
 use serde::Deserialize;
 
-use super::result::{Method, MethodReply};
-use crate::error::{Error, Result};
-use crate::wire::Request;
-
-/// A method reply envelope — order replies, `pong`, and subscribe/unsubscribe acks all
-/// share this shape. The method-tagged result body is flattened in, so serde decodes it
-/// straight into its typed [`MethodReply`] at ingest; [`Self::into_result`] extracts the
-/// one a request statically expects.
+/// A method reply envelope — order replies, `pong`, and subscribe/unsubscribe
+/// acks all share this shape. The method-tagged result body is flattened in, so
+/// serde decodes it straight into its typed [`MethodReply`] at ingest;
+/// [`Self::into_result`] extracts the one a request statically expects.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MethodResponse {
     #[serde(flatten)]
@@ -18,17 +19,20 @@ pub struct MethodResponse {
     /// Some replies (e.g. `pong`) omit `success`; absent reads as success.
     pub success: Option<bool>,
     pub error: Option<String>,
-    /// On a *rejected* subscribe, the server names the offending pair at the top level
-    /// (captured live: `{"error":"Currency pair not supported BOGUS/NOPE","method":
-    /// "subscribe","success":false,"symbol":"BOGUS/NOPE",...}`) — a successful ack nests
-    /// its echo under `result` instead. The connection actor evicts by this.
+    /// On a *rejected* subscribe, the server names the offending pair at the
+    /// top level (captured live: `{"error":"Currency pair not supported
+    /// BOGUS/NOPE","method": "subscribe","success":false,"symbol":"BOGUS/
+    /// NOPE",...}`) — a successful ack nests its echo under `result`
+    /// instead. The connection actor evicts by this.
     pub symbol: Option<String>,
     pub req_id: Option<u64>,
     /// When the server received the request on the wire (RFC3339). Present on
     /// subscribe/method acks; absent on `pong`. Surfaced for the live monitor's
-    /// server-side latency and clock-offset estimate — never required by the trade path.
+    /// server-side latency and clock-offset estimate — never required by the
+    /// trade path.
     pub time_in: Option<String>,
-    /// When the server sent the acknowledgement on the wire (RFC3339). See [`Self::time_in`].
+    /// When the server sent the acknowledgement on the wire (RFC3339). See
+    /// [`Self::time_in`].
     pub time_out: Option<String>,
 }
 
@@ -42,11 +46,12 @@ impl MethodResponse {
         self.success != Some(false)
     }
 
-    /// Extract the typed result a request statically expects. A correlated server
-    /// rejection becomes [`Error::ServerRejected`]; an id-less one — the server refused
-    /// the whole frame before correlating — becomes [`Error::FrameRejected`], so batch
-    /// callers can tell the two apart. Anything but the expected result variant —
-    /// absent when one is required, or a different method's — is a parse error.
+    /// Extract the typed result a request statically expects. A correlated
+    /// server rejection becomes [`Error::ServerRejected`]; an id-less one —
+    /// the server refused the whole frame before correlating — becomes
+    /// [`Error::FrameRejected`], so batch callers can tell the two apart.
+    /// Anything but the expected result variant — absent when one is
+    /// required, or a different method's — is a parse error.
     pub fn into_result<P: Request>(self) -> Result<P::Response> {
         if self.success == Some(false) {
             let message = self.error.unwrap_or_else(|| "unknown error".to_string());
@@ -63,8 +68,7 @@ impl MethodResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AddOrderParams;
-    use crate::Inbound;
+    use crate::{AddOrderParams, Inbound};
 
     #[test]
     fn a_captured_subscribe_rejection_names_its_symbol_at_the_top_level() {
@@ -155,11 +159,12 @@ mod tests {
         assert!(reply.parse::<Inbound>().is_err());
     }
 
-    /// [`Method`] is derived from [`MethodReply`], but its wire strings come from
-    /// strum's snake_case while the reply tags come from serde's — two casing
-    /// algorithms that could diverge on a future name. Pin their agreement here. A bare
-    /// `{method, req_id}` frame is every method's minimal reply (rejections omit
-    /// `result`; `ping`/`pong` never carry one), so all eleven must decode from it.
+    /// [`Method`] is derived from [`MethodReply`], but its wire strings come
+    /// from strum's snake_case while the reply tags come from serde's — two
+    /// casing algorithms that could diverge on a future name. Pin their
+    /// agreement here. A bare `{method, req_id}` frame is every method's
+    /// minimal reply (rejections omit `result`; `ping`/`pong` never carry
+    /// one), so all eleven must decode from it.
     #[test]
     fn every_method_in_the_catalogue_dispatches_to_a_reply() {
         use strum::IntoEnumIterator;

@@ -15,11 +15,14 @@
 
 use insta::assert_json_snapshot;
 use kraken_lab::{Criteria, Replay, Scorecard, replay, score};
-use kraken_paper::OrderSide;
-use kraken_paper::account::Origin;
-use kraken_session::manifest::{SessionOutcome, SessionSource};
-use kraken_session::timeline::SessionTimeline;
-use kraken_session::timeline::fixtures::{self, SessionBuilder};
+use kraken_paper::{OrderSide, account::Origin};
+use kraken_session::{
+    manifest::{SessionOutcome, SessionSource},
+    timeline::{
+        SessionTimeline,
+        fixtures::{self, SessionBuilder},
+    },
+};
 use rust_decimal_macros::dec;
 
 /// A stopped one-fill session: buy 0.1 BTC at 50k mid (0.26% fee), mark to 52k.

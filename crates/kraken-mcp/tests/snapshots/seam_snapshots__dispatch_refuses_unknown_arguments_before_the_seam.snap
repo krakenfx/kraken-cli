@@ -1,0 +1,8 @@
+---
+source: crates/kraken-mcp/tests/seam_snapshots.rs
+expression: refusal
+---
+{
+  "code": -32602,
+  "message": "`ticker` takes no argument named `api_key`; it accepts: pairs, all, asset_class"
+}

@@ -1,0 +1,32 @@
+{
+  "result": "success",
+  "serverTime": "2026-10-20T14:40:38.008Z",
+  "ticker": {
+    "symbol": "PF_XBTUSD",
+    "last": 83086,
+    "lastTime": "2026-10-20T14:40:37.200338121Z",
+    "tag": "perpetual",
+    "pair": "XBT:USD",
+    "markPrice": 83095.13370219732,
+    "bid": 83079,
+    "bidSize": 0.061,
+    "ask": 83080,
+    "askSize": 0.0255,
+    "vol24h": 3776.6588,
+    "volumeQuote": 309329362.4178,
+    "openInterest": 2339.2319,
+    "open24h": 81836,
+    "high24h": 83277,
+    "low24h": 81100,
+    "vwap24h": 81905.56224401314,
+    "lastSize": 0.0002,
+    "fundingRate": 1.6372682597389727,
+    "fundingRatePrediction": 1.626015604574764,
+    "relativeFundingRate": 0.000019957408333333,
+    "relativeFundingRatePrediction": 0.000019575895833333,
+    "suspended": false,
+    "indexPrice": 83091.84,
+    "postOnly": false,
+    "change24h": 1.53
+  }
+}

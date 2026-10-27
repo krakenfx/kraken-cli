@@ -1,0 +1,26 @@
+{
+  "result": "success",
+  "fills": [
+    {
+      "fill_id": "3d57ed09-fbd6-44f1-8e8b-b10e551c5e73",
+      "symbol": "PI_XBTUSD",
+      "side": "buy",
+      "order_id": "693af756-055e-47ef-99d5-bcf4c456ebc5",
+      "size": 5490,
+      "price": 9400,
+      "fillTime": "2020-07-22T13:37:27.077Z",
+      "fillType": "maker"
+    },
+    {
+      "fill_id": "56b86ada-73b0-454d-a95a-e29e3e85b349",
+      "symbol": "PI_XBTUSD",
+      "side": "buy",
+      "order_id": "3f513c4c-683d-44ab-a73b-d296abbea201",
+      "size": 5000,
+      "price": 9456,
+      "fillTime": "2020-07-21T12:41:52.790Z",
+      "fillType": "taker"
+    }
+  ],
+  "serverTime": "2020-07-22T13:44:24.311Z"
+}

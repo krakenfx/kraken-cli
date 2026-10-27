@@ -1,0 +1,19 @@
+{
+  "result": "success",
+  "participants": [
+    {
+      "id": 1,
+      "participant": {
+        "contractType": "flexible_futures",
+        "contract": null,
+        "maxSize": null,
+        "maxPosition": null,
+        "acceptLong": true,
+        "acceptShort": false,
+        "timeFrame": "ALL",
+        "enabled": true
+      }
+    }
+  ],
+  "serverTime": "2026-10-20T12:00:00.000Z"
+}

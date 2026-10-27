@@ -1,0 +1,5 @@
+---
+source: crates/kraken-mcp/tests/seam_snapshots.rs
+expression: server.get_info().instructions.unwrap()
+---
+Kraken exchange CLI tools. Active services: market, trade, funding. Mode: guarded. Workspace: sandbox (mode: paper) — a simulated account; order tools execute paper fills and run without acknowledgment. Services not loaded: account, paper, workspace, futures, futures-paper, earn, auth, subaccount, feedback. To enable them, the user must update their MCP client config to: {"command": "kraken-mcp", "args": ["--services", "all"]} and restart the MCP connection. Dangerous tools (orders, withdrawals, cancellations, and workspace_create with mode "live") are put to the user for approval through MCP elicitation. Clients that cannot present one accept "acknowledged": true in arguments instead. To run without per-call confirmation, the user must add "--allow-dangerous" to args in their MCP client config and restart.

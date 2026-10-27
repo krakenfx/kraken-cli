@@ -1,11 +1,11 @@
-//! Strictly-typed params and results for the request/response methods — everything
-//! that implements [`Request`](crate::Request).
+//! Strictly-typed params and results for the request/response methods —
+//! everything that implements [`Request`](crate::Request).
 //!
 //! Source: the order-management methods under
 //! <https://docs.kraken.com/api/docs/websocket-v2> (each submodule links its own page).
 //!
-//! Each method lives in its own submodule, pairing the request params with the result
-//! it decodes into:
+//! Each method lives in its own submodule, pairing the request params with the
+//! result it decodes into:
 //!
 //! - [`add_order`] / [`amend_order`] / [`cancel_order`]
 //! - [`cancel_all`] / [`cancel_all_orders_after`]
@@ -13,10 +13,11 @@
 //! - [`ping`]
 //!
 //! Params serialize via serde with `skip_serializing_if`, so the command layer
-//! builds typed structs rather than hand-built maps; the auth token is flattened in
-//! at send time by [`Wire`](crate::Wire). Each params type implements
-//! [`Request`](crate::Request) to bind its wire `method`. Order methods ride the
-//! authenticated endpoint; `ping` overrides the defaults to ride the public one.
+//! builds typed structs rather than hand-built maps; the auth token is
+//! flattened in at send time by [`Wire`](crate::Wire). Each params type
+//! implements [`Request`](crate::Request) to bind its wire `method`. Order
+//! methods ride the authenticated endpoint; `ping` overrides the defaults to
+//! ride the public one.
 
 mod add_order;
 mod amend_order;

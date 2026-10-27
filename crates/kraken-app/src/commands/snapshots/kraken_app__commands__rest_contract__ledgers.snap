@@ -1,0 +1,48 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "ledger": {
+      "L4UESK-KG3EQ-UFO4T5": {
+        "refid": "TJKLXF-PGMUI-4NTLXU",
+        "time": "1688464484.1787",
+        "ledger_type": "trade",
+        "subtype": "",
+        "aclass": "currency",
+        "asset": "GBP",
+        "amount": -24.5,
+        "fee": 0.049,
+        "balance": 459567.9171
+      },
+      "LMKZCZ-Z3GVL-CXKK4H": {
+        "refid": "TBZIP2-F6QOU-TMB6FY",
+        "time": "1688444262.8888",
+        "ledger_type": "trade",
+        "subtype": "",
+        "aclass": "currency",
+        "asset": "USD",
+        "amount": 0.9852,
+        "fee": 0.001,
+        "balance": 52732.1132
+      }
+    },
+    "count": 2
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "ledger",
+      "{\"L4UESK-KG3EQ-UFO4T5\":{\"refid\":\"TJKLXF-PGMUI-4NTLXU\",\"time\":\"1688464484.1787\",\"ledger_type\":\"trade\",\"subtype\":\"\",\"aclass\":\"currency\",\"asset\":\"GBP\",\"amount\":-24.5,\"fee\":0.049,\"balance\":459567.9171},\"LMKZCZ-Z3GVL-CXKK4H\":{\"refid\":\"TBZIP2-F6QOU-TMB6FY\",\"time\":\"1688444262.8888\",\"ledger_type\":\"trade\",\"subtype\":\"\",\"aclass\":\"currency\",\"asset\":\"USD\",\"amount\":0.9852,\"fee\":0.001,\"balance\":52732.1132}}"
+    ],
+    [
+      "count",
+      "2"
+    ]
+  ],
+  "footer": []
+}

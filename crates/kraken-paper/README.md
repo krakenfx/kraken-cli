@@ -4,21 +4,21 @@ The event-sourced spot paper-trading engine.
 
 ## Purpose
 
-Owns the money rules of spot paper trading: order validation and the fill
-state machine (`PaperState` and its `decide_*`/`apply` pair), exact-`Decimal`
+Owns the money rules of spot paper trading: order validation and the fill state
+machine (`PaperState` and its `decide_*`/`apply` pair), exact-`Decimal`
 valuation, and the journal-backed account store (`PaperAccount` over
 `events.jsonl`). It defends one boundary: everything above it — CLI flags,
 config directories, sessions, live prices — stays out.
 
 ## Architecture
 
-Ports & Adapters. Prices are **arguments** (`decide_market_order(side, pair,
-volume, ask, bid)`), never a market-data dependency; persistence is composed
-from kraken-recording's `Sink`/`Source` pair; where a journal lives on disk is
-the caller's policy (`PaperAccount::open_at` takes the path). State is a fold:
-`decide_*` validates and computes without mutating, `apply` folds recorded
-events back into state, so a replayed journal always reproduces the live
-account exactly.
+Ports & Adapters. Prices are **arguments**
+(`decide_market_order(side, pair, volume, ask, bid)`), never a market-data
+dependency; persistence is composed from kraken-recording's `Sink`/`Source`
+pair; where a journal lives on disk is the caller's policy
+(`PaperAccount::open_at` takes the path). State is a fold: `decide_*` validates
+and computes without mutating, `apply` folds recorded events back into state, so
+a replayed journal always reproduces the live account exactly.
 
 - `lib.rs` — engine: money guards, pair parsing, order/trade vocabulary,
   `PaperState`
@@ -40,8 +40,8 @@ What never enters: clap, config-dir resolution, session naming, network I/O.
 
 `PaperError` — `Rejected` (refused up front; → envelope `validation`),
 `Incompatible` (journal from a newer build; → `config`), `Journal` (storage
-failure, transparent over `kraken_recording::Error`; → its categories).
-The binary bridges these to the JSON envelope exactly once, in `src/errors.rs`.
+failure, transparent over `kraken_recording::Error`; → its categories). The
+binary bridges these to the JSON envelope exactly once, in `src/errors.rs`.
 
 ## Testing
 

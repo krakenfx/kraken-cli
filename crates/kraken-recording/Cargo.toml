@@ -1,12 +1,12 @@
 [package]
-name = "kraken-recording"
-version.workspace = true
-edition.workspace = true
+description            = "Unified event recording: durable persistence for market frames, actions, simulations with JSONL and DuckDB backends"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-recording"
+publish                = false
+repository.workspace   = true
 rust-version.workspace = true
-description = "Unified event recording: durable persistence for market frames, actions, simulations with JSONL and DuckDB backends"
-license.workspace = true
-repository.workspace = true
-publish = false
+version.workspace      = true
 
 [features]
 # The columnar backend. Off by default so a dependant stays free of the
@@ -14,15 +14,15 @@ publish = false
 duckdb = ["dep:duckdb", "dep:rust_decimal", "dep:strum"]
 
 [dependencies]
-chrono = { workspace = true }
-duckdb = { workspace = true, optional = true }
-kraken-core = { workspace = true }
+chrono       = { workspace = true }
+duckdb       = { workspace = true, optional = true }
+kraken-core  = { workspace = true }
 rust_decimal = { workspace = true, optional = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-strum = { workspace = true, optional = true }
-thiserror = { workspace = true }
-tracing = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+strum        = { workspace = true, optional = true }
+thiserror    = { workspace = true }
+tracing      = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

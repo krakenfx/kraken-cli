@@ -1,0 +1,44 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "participants": [
+      {
+        "id": 1,
+        "participant": {
+          "contractType": "flexible_futures",
+          "contract": null,
+          "maxSize": null,
+          "maxPosition": null,
+          "acceptLong": true,
+          "acceptShort": false,
+          "timeFrame": "ALL",
+          "enabled": true
+        }
+      }
+    ],
+    "serverTime": "2026-10-20T12:00:00.000Z"
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "result",
+      "success"
+    ],
+    [
+      "participants",
+      "[{\"id\":1,\"participant\":{\"contractType\":\"flexible_futures\",\"contract\":null,\"maxSize\":null,\"maxPosition\":null,\"acceptLong\":true,\"acceptShort\":false,\"timeFrame\":\"ALL\",\"enabled\":true}}]"
+    ],
+    [
+      "serverTime",
+      "2026-10-20T12:00:00.000Z"
+    ]
+  ],
+  "footer": []
+}

@@ -1,0 +1,11 @@
+{
+  "name": "kraken-cli-prettier",
+  "private": true,
+  "description": "Pinned prettier for markdown prose wrapping. Exact version only.",
+  "engines": {
+    "node": ">=22.23.4"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}

@@ -63,9 +63,9 @@ Check account balances and margin:
 kraken futures accounts -o json 2>/dev/null
 ```
 
-Key fields: `availableFunds`, `initialMargin`, `maintenanceMargin`, `unrealizedFunding`, `pnl`.
+Key fields of the multi-collateral account, under `.accounts.flex`: `marginEquity`, `availableMargin`, `initialMargin`, `maintenanceMargin`, `unrealizedFunding`, `pnl`.
 
-Margin ratio = maintenanceMargin / equity. When this approaches 1.0, liquidation risk is high.
+Margin ratio = `.accounts.flex.maintenanceMargin / .accounts.flex.marginEquity`. When this approaches 1.0, liquidation risk is high.
 
 ## Position Monitoring
 
@@ -88,7 +88,7 @@ Monitor P&L and size continuously. Set agent-side thresholds for:
 
 ## PnL Preferences
 
-Check P&L calculation method:
+Check which currency each symbol's P&L settles in:
 
 ```bash
 kraken futures pnl-preferences -o json 2>/dev/null
@@ -97,7 +97,7 @@ kraken futures pnl-preferences -o json 2>/dev/null
 Set preference for a specific symbol:
 
 ```bash
-kraken futures set-pnl-preference PF_XBTUSD FIFO -o json 2>/dev/null
+kraken futures set-pnl-preference PF_XBTUSD USD -o json 2>/dev/null
 ```
 
 ## Unwind Queue
@@ -134,9 +134,9 @@ Before placing a futures order, always:
 Close all positions:
 
 ```bash
-kraken futures cancel-all -o json 2>/dev/null
+kraken futures cancel-all --yes -o json 2>/dev/null
 # Then close each position with a reduce-only market order
-kraken futures order sell PF_XBTUSD <POSITION_SIZE> --reduce-only -o json 2>/dev/null
+kraken futures order sell PF_XBTUSD <POSITION_SIZE> --type market --reduce-only -o json 2>/dev/null
 ```
 
 Dead man's switch:
@@ -148,6 +148,7 @@ kraken futures cancel-after 300 -o json 2>/dev/null
 ## Hard Rules
 
 - `futures set-leverage` and `futures set-pnl-preference` are flagged dangerous. Never change either without explicit human approval — a leverage change also alters the margin requirement on open positions, in both directions.
+- Cancelling orders and closing positions need explicit human approval like any order; `--yes` only skips the CLI prompt, so pass it after the user approves.
 - Monitor margin ratio continuously during live sessions.
 - Alert when margin ratio exceeds 0.7 (conservative threshold).
 - Alert when unrealized loss exceeds a pre-defined stop-loss level.

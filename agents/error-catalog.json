@@ -1,11 +1,11 @@
 {
   "schema_version": "1.1.0",
-  "cli_version": "0.4.1",
+  "cli_version": "0.5.0",
   "description": "Error categories emitted by kraken-cli. Agents should route on the error field, not message strings.",
   "usage_errors": {
     "exit_code": 2,
     "description": "Argument and flag errors caught by the CLI parser (unknown flags, values outside a parameter's documented set) exit 2. When -o json was requested, stdout carries a validation error envelope and stderr is empty; otherwise usage text goes to stderr.",
-    "agent_action": "Validate argument values against the values arrays in tool-catalog.json before invoking. On exit 2 with -o json, parse the validation envelope on stdout, fix the arguments, and re-run; without -o json, read stderr."
+    "agent_action": "Validate argument values against each command's `input_schema` (enum, type, required) in tool-catalog.json before invoking. On exit 2 with -o json, parse the validation envelope on stdout, fix the arguments, and re-run; without -o json, read stderr."
   },
   "envelope_format": {
     "fields": {
@@ -28,6 +28,26 @@
       "suggestion": "Wait 5-15 seconds...",
       "retryable": true,
       "docs_url": "https://docs.kraken.com/api/docs/guides/spot-rest-ratelimits/"
+    },
+    "refusal_fields": {
+      "applies_to": "validation envelopes from live-workspace gates",
+      "refusal": "Which gate refused: allocation_budget, over_allocated, or unverified",
+      "workspace": "The live workspace that refused",
+      "funding": "allocation_budget only: the asset the order spends (a pair leg)",
+      "available": "allocation_budget only: ledger balance free of reservations, decimal string",
+      "required": "allocation_budget only: what the order needs, decimal string",
+      "reconciled": "allocation_budget only: false means available may be stale",
+      "backing": "over_allocated/unverified only: the allocation set against the real balance"
+    },
+    "example_refusal": {
+      "error": "validation",
+      "refusal": "allocation_budget",
+      "workspace": "prod",
+      "funding": "USD",
+      "available": "3.4844",
+      "required": "4",
+      "reconciled": true,
+      "message": "Validation error: Insufficient USD in live workspace 'prod': available 3.4844, required 4. The workspace spends only its own allocation ledger; reduce the order or cancel resting orders to free reserves."
     }
   },
   "categories": [
@@ -68,9 +88,9 @@
     },
     {
       "category": "network",
-      "description": "Network-level failure. Request could not reach the Kraken API.",
+      "description": "Network-level failure. The request could not reach the Kraken API, or it may have reached it and no usable answer came back.",
       "retryable": true,
-      "agent_action": "Retry with exponential backoff. Check connectivity.",
+      "agent_action": "Read `verify_first`. Without it, nothing was sent or the call was a read: retry with exponential backoff and check connectivity. With `\"verify_first\": true`, an order, cancel, withdrawal or transfer may already have executed, and the CLI does not resend it: check its state first. Spot orders: `kraken open-orders`, `kraken closed-orders`, `kraken trades-history` (match on `--cl-ord-id` or `--userref`). Futures orders: `kraken futures open-orders`, `kraken futures fills`, `kraken futures history-orders`. Withdrawals and transfers: `kraken withdrawal status`, `kraken ledgers`, `kraken futures transfers`. Send it again only if it is absent everywhere. The message prose restates the verdict ('verify its state before retrying') for older parsers.",
       "backoff_strategy": {
         "type": "exponential",
         "initial_delay_ms": 1000,
@@ -80,12 +100,14 @@
       "common_causes": [
         "DNS failure",
         "Connection timeout",
+        "No answer within 30s after sending (mutating calls: verify_first)",
         "TLS handshake failure",
         "Connection reset"
       ],
       "example_envelope": {
         "error": "network",
-        "message": "Network error: error sending request"
+        "message": "Network error: AddOrder got no usable response (error sending request for url (https://api.kraken.com/0/private/AddOrder): operation timed out); the request may have reached the exchange — verify its state before retrying",
+        "verify_first": true
       }
     },
     {
@@ -120,7 +142,8 @@
       "common_causes": [
         "Missing required argument",
         "Invalid pair format",
-        "Invalid number"
+        "Invalid number",
+        "Insufficient workspace funds (paper capital or live allocation ledger)"
       ],
       "example_envelope": {
         "error": "validation",
@@ -147,13 +170,13 @@
       "category": "websocket",
       "description": "WebSocket connection or protocol error.",
       "retryable": true,
-      "agent_action": "Streams self-heal: the CLI reconnects with paced exponential backoff (capped, jittered) until interrupted, and drops a subscription rejected again on a fresh token. For one-shot order methods the envelope's `verify_first` field is the verdict: `\"verify_first\": true` means the request may have reached the exchange — confirm via open-orders/query-orders before resubmitting. Envelopes without `verify_first` failed before anything was sent and are safe to retry. The message prose restates the verdict ('verify its state before retrying') for older parsers.",
+      "agent_action": "Spot streams self-heal: the CLI reconnects with paced exponential backoff (capped, jittered) until interrupted, and drops a subscription rejected again on a fresh token. `futures ws` stops with this error after 12 consecutive failed reconnects; restart it if you still need the feed. For one-shot order methods the envelope's `verify_first` field is the verdict: `\"verify_first\": true` means the request may have reached the exchange — confirm via open-orders/query-orders before resubmitting. Envelopes without `verify_first` failed before anything was sent and are safe to retry. The message prose restates the verdict ('verify its state before retrying') for older parsers.",
       "backoff_strategy": {
         "type": "exponential",
         "initial_delay_ms": 250,
         "max_delay_ms": 30000,
         "max_retries": null,
-        "note": "Streams reconnect until interrupted; there is no terminal retry cap. One-shot ws methods do not retry past their own timeout."
+        "note": "Spot streams reconnect until interrupted, with no retry cap. `futures ws` waits 1s to 30s (plus jitter) between attempts and gives up after 12 consecutive failed reconnects; a connection that stays up for 30s resets the count. One-shot ws methods do not retry past their own timeout."
       },
       "common_causes": [
         "Connection dropped",
@@ -186,17 +209,19 @@
     },
     {
       "category": "timeout",
-      "description": "A local operation did not complete within its time budget (e.g. `kraken session stop` waited for the recorder to release its recording lock after SIGTERM).",
+      "description": "An operation did not complete within its time budget: `kraken session stop` waited for the recorder to release its recording lock after SIGTERM, a WebSocket token request got no answer, or a browser sign-in was not finished in time.",
       "retryable": true,
-      "agent_action": "Re-run the command. If it persists, check `kraken session show` — the recorder may still be flushing a large dataset, or may have ignored the signal.",
+      "agent_action": "Re-run the command. If `session stop` keeps timing out, check `kraken session show` — the recorder may still be flushing a large tape, or may have ignored the signal.",
       "backoff_strategy": {
         "type": "agent_controlled",
         "note": "The CLI does not auto-retry. The agent decides when to re-run based on whether the underlying operation is still making progress."
       },
       "common_causes": [
-        "Recorder still checkpointing a large dataset",
+        "Recorder still checkpointing a large tape",
         "Signalled process ignored SIGTERM",
-        "Slow disk"
+        "Slow disk",
+        "WebSocket token request timed out",
+        "Browser sign-in not completed in time"
       ],
       "example_envelope": {
         "error": "timeout",

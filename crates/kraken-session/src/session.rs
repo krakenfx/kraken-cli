@@ -3,19 +3,20 @@
 //! This module owns the artifact and reader; allocation and reference policy
 //! remain above the storage layer.
 
-use std::path::{Path, PathBuf};
-
+use crate::{
+    Result, SessionError,
+    manifest::{RecordingBackend, SessionManifest},
+    timeline::{SessionTimeline, event::TimelineEvent},
+};
 use chrono::{DateTime, Utc};
-use kraken_paper::account::{AccountRecord, RECORD_VERSION};
-use kraken_paper::{AccountEvent, PaperState, VenueSnapshot, WindowAnchor};
+use kraken_paper::{
+    AccountEvent, PaperState, VenueSnapshot, WindowAnchor,
+    account::{AccountRecord, RECORD_VERSION},
+};
 use kraken_recording::{JsonlSource, line_seq};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-
-use crate::manifest::{RecordingBackend, SessionManifest};
-use crate::timeline::SessionTimeline;
-use crate::timeline::event::TimelineEvent;
-use crate::{Result, SessionError};
+use std::path::{Path, PathBuf};
 
 /// The session contract file inside a session directory.
 pub const SESSION_FILE: &str = "session.json";
@@ -39,8 +40,8 @@ pub fn session_file_path(scope: &Path, ordinal: u32) -> PathBuf {
     session_dir(scope, ordinal).join(SESSION_FILE)
 }
 
-/// `<scope>/sessions/s<n>/decisions.jsonl` — the session's own rationale log, the
-/// one [`read_window`] joins to fills.
+/// `<scope>/sessions/s<n>/decisions.jsonl` — the session's own rationale log,
+/// the one [`read_window`] joins to fills.
 pub fn session_decisions_path(scope: &Path, ordinal: u32) -> PathBuf {
     session_dir(scope, ordinal).join("decisions.jsonl")
 }
@@ -102,7 +103,8 @@ pub enum Zone {
     Below,
 }
 
-/// Reads an optional state cell, refusing damage instead of assuming round zero.
+/// Reads an optional state cell, refusing damage instead of assuming round
+/// zero.
 ///
 /// No read lock: the cell is replaced atomically as a whole file, so a
 /// concurrent read sees the old or the new document, never a torn one.
@@ -133,8 +135,8 @@ pub fn write_state(scope: &Path, ordinal: u32, cursor: SessionCursor) -> Result<
         .len();
     if size > MAX_STATE_BYTES {
         return Err(SessionError::Rejected(format!(
-            "session state is {size} bytes; the cap is {MAX_STATE_BYTES} — keep it a cursor, \
-             not a database"
+            "session state is {size} bytes; the cap is {MAX_STATE_BYTES} — keep it a cursor, not \
+             a database"
         )));
     }
     kraken_recording::write_json_atomic(&session_state_path(scope, ordinal), &state)?;
@@ -167,8 +169,8 @@ pub fn tape_file(backend: RecordingBackend) -> String {
     }
 }
 
-/// Parse a strict session ordinal: `s<n>`, digits only, no leading zeros, n ≥ 1.
-/// Anything else — including `r0`, `r01`, `R3` — is not a session directory.
+/// Parse a strict session ordinal: `s<n>`, digits only, no leading zeros, n ≥
+/// 1. Anything else — including `r0`, `r01`, `R3` — is not a session directory.
 pub fn parse_ordinal(name: &str) -> Option<u32> {
     let digits = name.strip_prefix('s')?;
     if digits.is_empty() || digits.starts_with('0') || !digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -189,7 +191,8 @@ pub struct SessionTracks {
 }
 
 /// Read one session's window of the shared journal as a [`SessionTimeline`], so
-/// every timeline consumer (explain, score, replay) works on sessions unchanged.
+/// every timeline consumer (explain, score, replay) works on sessions
+/// unchanged.
 ///
 /// The strict journal prefix becomes one synthetic `Attached` epoch at the
 /// frozen opening anchor. The window, decisions, and tape then share the
@@ -258,8 +261,8 @@ fn read_windowed_account_track(
         .position(|(_, record)| is_marker(record, START_MARKER, session_id))
         .ok_or_else(|| {
             SessionError::Rejected(format!(
-                "session '{session_id}' has no start marker in the journal — the journal may have been \
-                 replaced since the session was recorded"
+                "session '{session_id}' has no start marker in the journal — the journal may have \
+                 been replaced since the session was recorded"
             ))
         })?;
     let stop = records[start + 1..]

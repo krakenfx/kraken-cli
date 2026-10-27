@@ -1,0 +1,8 @@
+---
+source: tests/mcp_surface.rs
+expression: "relaxed.join(\"\\n\")"
+---
+kraken_order_buy
+kraken_order_cancel
+kraken_order_cancel_all
+kraken_order_sell

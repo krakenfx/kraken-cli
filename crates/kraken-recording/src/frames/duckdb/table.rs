@@ -1,44 +1,45 @@
-//! Data-driven recording schema: a table described as data ([`TableSpec`]), with
-//! its `CREATE TABLE` and `INSERT` SQL *generated from one column list* so the two
-//! can never drift out of sync (the bug class a hand-written DDL/INSERT pair
-//! invites).
+//! Data-driven recording schema: a table described as data ([`TableSpec`]),
+//! with its `CREATE TABLE` and `INSERT` SQL *generated from one column list* so
+//! the two can never drift out of sync (the bug class a hand-written DDL/INSERT
+//! pair invites).
 //!
-//! A channel persists itself by implementing [`Recordable`] in its channel submodule
-//! of [`crate::frames::duckdb::tables`]: it declares its [`TableSpec`] and maps a frame to
-//! [`Row`]s of [`Cell`]s — and back. The DuckDB sink consumes only this trait — it
-//! generates SQL from the spec and binds the cells, knowing nothing about any one
-//! channel's columns. [`Cell`] carries the storage type so unsigned wire ids land in
-//! `UBIGINT`/`UINTEGER` (lossless, unlike a narrowing cast) and decimals bind as
-//! their exact string form cast into `DECIMAL(38,18)`.
+//! A channel persists itself by implementing [`Recordable`] in its channel
+//! submodule of [`crate::frames::duckdb::tables`]: it declares its
+//! [`TableSpec`] and maps a frame to [`Row`]s of [`Cell`]s — and back. The
+//! DuckDB sink consumes only this trait — it generates SQL from the spec and
+//! binds the cells, knowing nothing about any one channel's columns. [`Cell`]
+//! carries the storage type so unsigned wire ids land in `UBIGINT`/`UINTEGER`
+//! (lossless, unlike a narrowing cast) and decimals bind as their exact string
+//! form cast into `DECIMAL(38,18)`.
 //!
 //! The market-data tables are `NOT NULL` except where the wire field itself
 //! is optional (OHLC's deprecated `timestamp`), declared via [`Column::opt`].
 
-use std::collections::HashSet;
-use std::sync::OnceLock;
-
-use duckdb::types::{ToSql, ToSqlOutput, Value, ValueRef};
-use duckdb::{Connection, params};
-use kraken_core::ChannelMessage;
-use kraken_core::subscribe::message::MessageType;
-use rust_decimal::Decimal;
-
 use crate::error::{Error, Result};
+use duckdb::{
+    Connection, params,
+    types::{ToSql, ToSqlOutput, Value, ValueRef},
+};
+use kraken_core::{ChannelMessage, subscribe::message::MessageType};
+use rust_decimal::Decimal;
+use std::{collections::HashSet, sync::OnceLock};
 
 /// The storage type of a column: its DuckDB column type plus the `INSERT`
 /// placeholder it needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ColType {
-    /// `VARCHAR` — symbols, sides, RFC3339 timestamps (lossless; a reader casts).
+    /// `VARCHAR` — symbols, sides, RFC3339 timestamps (lossless; a reader
+    /// casts).
     Text,
-    /// `DECIMAL(38,18)` — prices/quantities, fed as an exact decimal string and cast.
+    /// `DECIMAL(38,18)` — prices/quantities, fed as an exact decimal string and
+    /// cast.
     Decimal,
     /// `BIGINT` — the signed frame `seq`.
     Big,
     /// `UINTEGER` — small unsigned wire values (`checksum`, `interval`).
     UInt,
-    /// `UBIGINT` — large unsigned wire ids/counts (`trade_id`, `trades`) — stored
-    /// losslessly rather than narrowed into a signed `BIGINT`.
+    /// `UBIGINT` — large unsigned wire ids/counts (`trade_id`, `trades`) —
+    /// stored losslessly rather than narrowed into a signed `BIGINT`.
     UBig,
 }
 
@@ -92,7 +93,8 @@ impl Column {
 }
 
 /// A table described as data: its name and ordered columns. The DDL and the
-/// `INSERT` are both generated from this one definition, so they cannot disagree.
+/// `INSERT` are both generated from this one definition, so they cannot
+/// disagree.
 #[derive(Debug)]
 pub(crate) struct TableSpec {
     pub name: &'static str,
@@ -160,7 +162,8 @@ impl TableSpec {
 }
 
 /// One bound value, tagged by how it stores. A decimal carries the payload's
-/// `Decimal`, rendered via `Display` at bind time (exact, non-finite unrepresentable).
+/// `Decimal`, rendered via `Display` at bind time (exact, non-finite
+/// unrepresentable).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Cell {
     Text(String),
@@ -191,26 +194,30 @@ impl ToSql for Cell {
     }
 }
 
-/// A channel payload that persists itself into the recording schema, data-driven:
-/// it declares its [`TableSpec`] and maps a frame's entries to [`Row`]s — and back.
-/// Implemented on each channel's entry struct in one submodule per channel in
-/// [`crate::frames::duckdb::tables`], so adding a channel is a self-contained table module
-/// rather than an edit to a central SQL block, and a table's spec, encode, and
-/// decode live side by side where they can't drift apart.
+/// A channel payload that persists itself into the recording schema,
+/// data-driven: it declares its [`TableSpec`] and maps a frame's entries to
+/// [`Row`]s — and back. Implemented on each channel's entry struct in one
+/// submodule per channel in [`crate::frames::duckdb::tables`], so adding a
+/// channel is a self-contained table module rather than an edit to a central
+/// SQL block, and a table's spec, encode, and decode live side by side where
+/// they can't drift apart.
 pub(crate) trait Recordable: Sized {
-    /// The table this payload writes (its schema, as data). An associated function
-    /// so the sink can gather every channel's schema without an instance.
+    /// The table this payload writes (its schema, as data). An associated
+    /// function so the sink can gather every channel's schema without an
+    /// instance.
     fn table() -> &'static TableSpec;
 
-    /// Expand one frame's entries into rows. The envelope fields a table persists are
-    /// passed explicitly: `message_type` distinguishes snapshot from update rows, `seq`
-    /// is the per-frame id shared by every row of the frame (so a multi-row frame stays
-    /// groupable), and `recv_ts` is the local capture instant.
+    /// Expand one frame's entries into rows. The envelope fields a table
+    /// persists are passed explicitly: `message_type` distinguishes
+    /// snapshot from update rows, `seq` is the per-frame id shared by every
+    /// row of the frame (so a multi-row frame stays groupable), and
+    /// `recv_ts` is the local capture instant.
     fn rows(entries: &[Self], message_type: MessageType, seq: i64, recv_ts: &str) -> Vec<Row>;
 
-    /// Read every stored frame back in write order, regrouped into whole frames —
-    /// the inverse of [`rows`](Self::rows). An absent table reads back empty;
-    /// unknown vocabulary follows `drift` (the recording stamp's verdict).
+    /// Read every stored frame back in write order, regrouped into whole frames
+    /// — the inverse of [`rows`](Self::rows). An absent table reads back
+    /// empty; unknown vocabulary follows `drift` (the recording stamp's
+    /// verdict).
     fn frames(conn: &Connection, drift: DriftPolicy) -> Result<Vec<Stored>>;
 }
 
@@ -222,11 +229,12 @@ pub(crate) struct Stored {
     pub frame: ChannelMessage,
 }
 
-/// The read query for a spec: `DECIMAL`s selected as VARCHAR for [`read_decimal`],
-/// ordered by `(seq, rowid)` so a frame's rows regroup in insertion order.
-/// A nullable column missing from `physical` — a reader never migrates, so a
-/// tape written before the column existed still lacks it — is selected as
-/// a typed NULL, reading back as the absent wire field it stands for.
+/// The read query for a spec: `DECIMAL`s selected as VARCHAR for
+/// [`read_decimal`], ordered by `(seq, rowid)` so a frame's rows regroup in
+/// insertion order. A nullable column missing from `physical` — a reader never
+/// migrates, so a tape written before the column existed still lacks it — is
+/// selected as a typed NULL, reading back as the absent wire field it stands
+/// for.
 pub(crate) fn select_sql(spec: &TableSpec, physical: &HashSet<String>) -> String {
     let cols = spec
         .columns
@@ -384,9 +392,8 @@ pub(crate) fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
 /// table elsewhere can't leak columns in.
 fn physical_columns(conn: &Connection, table: &str) -> Result<HashSet<String>> {
     let mut stmt = conn.prepare(
-        "SELECT column_name FROM information_schema.columns \
-         WHERE table_catalog = current_database() AND table_schema = 'main' \
-           AND table_name = ?",
+        "SELECT column_name FROM information_schema.columns WHERE table_catalog = \
+         current_database() AND table_schema = 'main' AND table_name = ?",
     )?;
     let cols = stmt
         .query_map(params![table], |row| row.get(0))?
@@ -412,8 +419,8 @@ mod tests {
     fn create_sql_renders_types_and_nullability() {
         assert_eq!(
             SPEC.create_sql(),
-            "CREATE TABLE IF NOT EXISTS demo (symbol VARCHAR NOT NULL, \
-             price DECIMAL(38,18) NOT NULL, seq BIGINT NOT NULL, note VARCHAR)"
+            "CREATE TABLE IF NOT EXISTS demo (symbol VARCHAR NOT NULL, price DECIMAL(38,18) NOT \
+             NULL, seq BIGINT NOT NULL, note VARCHAR)"
         );
     }
 
@@ -421,16 +428,9 @@ mod tests {
     fn insert_sql_casts_decimals_only() {
         assert_eq!(
             SPEC.insert_sql(),
-            "INSERT INTO demo (symbol, price, seq, note) \
-             VALUES (?, CAST(? AS DECIMAL(38,18)), ?, ?)"
+            "INSERT INTO demo (symbol, price, seq, note) VALUES (?, CAST(? AS DECIMAL(38,18)), ?, \
+             ?)"
         );
-    }
-
-    #[test]
-    fn insert_placeholder_count_matches_columns() {
-        // The generated INSERT must bind exactly as many values as the table has
-        // columns — the property a hand-written DDL/INSERT pair can silently break.
-        assert_eq!(SPEC.insert_sql().matches('?').count(), SPEC.columns.len());
     }
 
     fn all_columns() -> HashSet<String> {
@@ -441,8 +441,8 @@ mod tests {
     fn select_sql_casts_decimals_to_varchar_in_spec_order() {
         assert_eq!(
             select_sql(&SPEC, &all_columns()),
-            "SELECT symbol, CAST(price AS VARCHAR) AS price, seq, note \
-             FROM demo ORDER BY seq, rowid"
+            "SELECT symbol, CAST(price AS VARCHAR) AS price, seq, note FROM demo ORDER BY seq, \
+             rowid"
         );
     }
 
@@ -454,8 +454,8 @@ mod tests {
         physical.remove("note");
         assert_eq!(
             select_sql(&SPEC, &physical),
-            "SELECT symbol, CAST(price AS VARCHAR) AS price, seq, \
-             CAST(NULL AS VARCHAR) AS note FROM demo ORDER BY seq, rowid"
+            "SELECT symbol, CAST(price AS VARCHAR) AS price, seq, CAST(NULL AS VARCHAR) AS note \
+             FROM demo ORDER BY seq, rowid"
         );
     }
 

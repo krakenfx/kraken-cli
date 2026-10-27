@@ -1,0 +1,32 @@
+{
+  "result": "success",
+  "instruments": [
+    {
+      "symbol": "PF_XBTUSD",
+      "pair": "XBT:USD",
+      "base": "XBT",
+      "quote": "USD",
+      "type": "flexible_futures",
+      "tickSize": 0.5,
+      "contractSize": 1,
+      "minimumTradeSize": 0.0001,
+      "impactMidSize": 1,
+      "maxPositionSize": 1000000,
+      "openingDate": "2022-01-01T00:00:00.000Z",
+      "isin": null,
+      "contractValueTradePrecision": 4,
+      "postOnly": false,
+      "suspended": false,
+      "feeScheduleUid": "5b755fea-c5b0-4307-a66e-b392cd5bd931",
+      "rebateLevels": {},
+      "mtf": false,
+      "tradfi": false,
+      "restricted": false,
+      "isExpired": false,
+      "marginLevels": [
+        { "contracts": 0, "initialMargin": 0.02, "maintenanceMargin": 0.01 }
+      ]
+    }
+  ],
+  "serverTime": "2026-10-20T12:00:00.000Z"
+}

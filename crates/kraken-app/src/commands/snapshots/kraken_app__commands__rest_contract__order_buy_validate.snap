@@ -1,0 +1,72 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "mode": "live",
+    "status": "validated",
+    "order_id": "OUF4EM-FRGI2-MQMWZD",
+    "pair": "BTCUSD",
+    "side": "buy",
+    "type": "limit",
+    "volume": "0.001",
+    "price": "50000",
+    "venue": {
+      "descr": {
+        "order": "buy 2.12340000 XBTUSD @ limit 25000.1 with 2:1 leverage",
+        "close": "close position @ stop loss 22000.0 -> limit 21000.0"
+      },
+      "txid": [
+        "OUF4EM-FRGI2-MQMWZD"
+      ]
+    }
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "Mode",
+      "[LIVE] Real Money"
+    ],
+    [
+      "Scope",
+      "the WHOLE real account, no workspace limit"
+    ],
+    [
+      "Action",
+      "Limit buy validated, NOT placed"
+    ],
+    [
+      "Order ID",
+      "OUF4EM-FRGI2-MQMWZD"
+    ],
+    [
+      "Pair",
+      "BTCUSD"
+    ],
+    [
+      "OrderSide",
+      "buy"
+    ],
+    [
+      "Type",
+      "limit"
+    ],
+    [
+      "Volume",
+      "0.00100000"
+    ],
+    [
+      "Price",
+      "50000.00"
+    ],
+    [
+      "Placed",
+      "no — --validate only checked the order"
+    ]
+  ],
+  "footer": []
+}

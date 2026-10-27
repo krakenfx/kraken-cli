@@ -1,0 +1,77 @@
+---
+source: crates/kraken-recipe/tests/snapshots.rs
+expression: draft
+---
+---
+name: btc-levels
+version: 0.1.0
+description: "Generated from session btc-dip using recipe-playground-price-alert."
+metadata:
+  openclaw:
+    category: "recipe"
+  requires:
+    bins: ["kraken"]
+    skills: ["recipe-playground-price-alert"]
+---
+
+# Recipe: btc-levels
+
+> **DRAFT — UNRESOLVED RULES.** This file records what a finished session ran;
+> it is not authored strategy logic. The trading rules live in the `recipe-playground-price-alert`
+> skill — review this draft deliberately before trusting it.
+
+Watch BTC levels on replayed January data.
+
+## Provenance
+
+- Source session: `btc-dip` (label `walk-1`)
+- Lab experiment: `walk` — grade evidence with `kraken lab score` and `kraken lab compare`
+- Window: 2026-01-01T00:00:00+00:00 → 2026-01-01T00:30:00+00:00
+- Replay source: `tape:btc-jan` (sha256:abc123)
+
+## Frozen defaults
+
+Strategy params, verbatim from the source session — tuning them is the intended workflow:
+
+```json
+{
+  "upper": 70000,
+  "lower": 60000,
+  "interval_s": 300
+}
+```
+
+## Observed decisions
+
+- total: 3
+- alert: 2
+- buy: 1
+- median gap between decisions: 450s
+
+## Start the next session
+
+Inside a paper workspace funded with 10000.0 USD:
+
+```bash
+kraken session start \
+  --symbols BTC/USD \
+  --channels trade \
+  --to jsonl \
+  --strategy recipe-playground-price-alert \
+  --strategy-params '{"upper":70000,"lower":60000,"interval_s":300}' \
+  --label btc-levels
+```
+
+## Review the run
+
+```bash
+kraken session show --session latest -o json
+kraken session decisions --session latest -o json
+kraken explain pnl --session latest -o json
+kraken lab score --session latest -o json
+```
+
+## Safety boundary
+
+Paper only. This draft never places live orders; the paper→live gate stays
+`kraken workspace promote`, backed by lab evidence on this scope.

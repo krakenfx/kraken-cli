@@ -2,13 +2,13 @@
 //! replay venue, the `run start --from` path, and the lab's seal
 //! enforcement — the one place that knows a source is JSONL-on-disk.
 
-use std::path::{Path, PathBuf};
-
-use kraken_recording::TapeRef;
-use kraken_session::manifest::RecordingBackend;
-use kraken_session::session::{parse_ordinal, session_dir, tape_file};
-
 use crate::{ReplayError, Result};
+use kraken_recording::TapeRef;
+use kraken_session::{
+    manifest::RecordingBackend,
+    session::{parse_ordinal, session_dir, tape_file},
+};
+use std::path::{Path, PathBuf};
 
 /// The JSONL file backing a replay source, erroring if it is absent. Replay
 /// reads JSONL only, so a tape recorded to DuckDB alone resolves to a
@@ -19,8 +19,8 @@ use crate::{ReplayError, Result};
 /// `session:s<n>` addresses the caller's scope's sessions tree (`scope`). In an
 /// unscoped context the two coincide.
 ///
-/// A `run:<ref>` addresses runs by ordinal (`session:s<n>`); label resolution is
-/// CLI-layer policy and sealed lab plans store ordinal refs, so anything
+/// A `run:<ref>` addresses runs by ordinal (`session:s<n>`); label resolution
+/// is CLI-layer policy and sealed lab plans store ordinal refs, so anything
 /// else is refused here.
 pub fn resolve_source_path(library: &Path, scope: &Path, tape: &TapeRef) -> Result<PathBuf> {
     let path = match tape {
@@ -29,8 +29,8 @@ pub fn resolve_source_path(library: &Path, scope: &Path, tape: &TapeRef) -> Resu
             let Some(ordinal) = parse_ordinal(name) else {
                 return Err(ReplayError::Source(format!(
                     "session ref '{tape}' does not name a session ordinal; replay sources address \
-                     sessions as session:s<n> — resolve a label to its ordinal first (see 'kraken session \
-                     list')"
+                     sessions as session:s<n> — resolve a label to its ordinal first (see 'kraken \
+                     session list')"
                 )));
             };
             session_dir(scope, ordinal).join(tape_file(RecordingBackend::Jsonl))
@@ -46,8 +46,8 @@ pub fn resolve_source_path(library: &Path, scope: &Path, tape: &TapeRef) -> Resu
             if kraken_recording::resolve(library, name, "duckdb").exists() =>
         {
             format!(
-                "tape '{tape}' was recorded to DuckDB only; replay reads JSONL — re-record \
-                 it with --to jsonl (see 'kraken tape list')"
+                "tape '{tape}' was recorded to DuckDB only; replay reads JSONL — re-record it \
+                 with --to jsonl (see 'kraken tape list')"
             )
         }
         TapeRef::Recording { .. } => {

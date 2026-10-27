@@ -2,17 +2,22 @@
 //!
 //! Orchestration lives here; the binary only resolves scope and renders models.
 
+use crate::{
+    LabError, Result, Scorecard, SessionRef, Verdict,
+    experiment::{Criteria, Experiment, PlannedSession, SessionPlan},
+    plan::{NextAction, NextState, SessionObservation, SessionStatus},
+    replay::Replay,
+    sha256_file,
+};
+use kraken_recording::{Source, TapeBackend, TapeRef, TapeSource, TapeState, describe_tape};
+use kraken_session::{
+    manifest::SessionManifest,
+    session::{SessionTracks, read_window, session_dir, session_file_path},
+};
 use std::path::PathBuf;
 
-use kraken_recording::{Source, TapeBackend, TapeRef, TapeSource, TapeState, describe_tape};
-use kraken_session::manifest::SessionManifest;
-use kraken_session::session::{SessionTracks, read_window, session_dir, session_file_path};
-
-use crate::experiment::{Criteria, Experiment, PlannedSession, SessionPlan};
-use crate::plan::{NextAction, NextState, SessionObservation, SessionStatus};
-use crate::{LabError, Result, Scorecard, SessionRef, Verdict, sha256_file};
-
-/// Local copy of the scope contract; this lower layer cannot depend on workspaces.
+/// Local copy of the scope contract; this lower layer cannot depend on
+/// workspaces.
 const JOURNAL_FILE: &str = "journal.jsonl";
 
 /// The lab's entry point. Owns the scope root, so the binary threads it once
@@ -102,8 +107,9 @@ impl Lab {
         self
     }
 
-    /// Freeze a pre-registered experiment: resolve and validate the session plan
-    /// (binding each replay leg to its sealed bytes), then seal and store it.
+    /// Freeze a pre-registered experiment: resolve and validate the session
+    /// plan (binding each replay leg to its sealed bytes), then seal and
+    /// store it.
     pub fn freeze(
         &self,
         name: &str,
@@ -132,6 +138,43 @@ impl Lab {
 
     pub fn show(&self, name: &str) -> Result<Experiment> {
         crate::store::load(&self.base, name)
+    }
+
+    /// The marked equity fold with its full point series — what
+    /// `Scorecard.curve` summarizes. Exposed so consumers can compute their
+    /// own metrics (Sharpe, rolling drawdown) without re-deriving the fold
+    /// from the journal and tape. The whole [`Replay`] comes back, not just
+    /// the curve: `epochs_skipped` and `caveats` are the fold's honesty
+    /// disclosures, and a series without them would misrepresent a
+    /// reset-truncated or hole-y recording. Refuses exactly what scoring
+    /// refuses — no summary, a partial journal, no account epoch — raising
+    /// the same `ReplayError` variants, so the refusal text matches
+    /// `lab score`'s byte for byte.
+    pub fn curve(&self, ordinal: u32) -> Result<Replay> {
+        let manifest = SessionManifest::load(&session_file_path(&self.base, ordinal))?;
+        if manifest.summary.is_none() {
+            return Err(kraken_replay::ReplayError::NotStopped {
+                session: manifest.id,
+            }
+            .into());
+        }
+        let timeline = read_window(SessionTracks {
+            journal: self.base.join(JOURNAL_FILE),
+            session_dir: session_dir(&self.base, ordinal),
+            manifest,
+        })?;
+        if timeline.newer_records_skipped > 0 {
+            return Err(kraken_replay::ReplayError::NewerJournal {
+                skipped: timeline.newer_records_skipped,
+            }
+            .into());
+        }
+        crate::replay(&timeline).map_err(|err| match err {
+            // Scoring surfaces this condition through explain-pnl's variant;
+            // raise the same one so the two verbs refuse identically.
+            LabError::NoEpoch { session } => kraken_replay::ReplayError::NoEpoch { session }.into(),
+            other => other,
+        })
     }
 
     /// Scores a stopped session, verifying any experiment seal before folding.
@@ -206,15 +249,17 @@ impl Lab {
         let current = sha256_file(&path)?;
         if current != sealed {
             return Err(LabError::Spec(format!(
-                "tape '{source}' no longer matches the frozen plan (sealed {sealed}, current {current}); a re-recorded tape must not satisfy a frozen session plan — register a new experiment"
+                "tape '{source}' no longer matches the frozen plan (sealed {sealed}, current \
+                 {current}); a re-recorded tape must not satisfy a frozen session plan — register \
+                 a new experiment"
             )));
         }
         Ok(Some(current))
     }
 
-    /// The single scoring seam: read a session's window of the shared journal and
-    /// fold it into a scorecard. A future pre-score gate or provenance check
-    /// lands here.
+    /// The single scoring seam: read a session's window of the shared journal
+    /// and fold it into a scorecard. A future pre-score gate or provenance
+    /// check lands here.
     fn read_and_score(&self, ordinal: u32) -> Result<Scorecard> {
         let manifest = SessionManifest::load(&session_file_path(&self.base, ordinal))?;
         let timeline = read_window(SessionTracks {
@@ -278,10 +323,10 @@ impl Lab {
         Ok(observations)
     }
 
-    /// Whether a session's recorder still holds a recording lock on a tape in the
-    /// session directory — the kernel drops it the instant the process dies, a
-    /// signal a recycled pid can't spoof. A lab run always records, so this is
-    /// exactly its liveness.
+    /// Whether a session's recorder still holds a recording lock on a tape in
+    /// the session directory — the kernel drops it the instant the process
+    /// dies, a signal a recycled pid can't spoof. A lab run always records,
+    /// so this is exactly its liveness.
     fn recorder_alive(&self, ordinal: u32, manifest: &SessionManifest) -> bool {
         let dir = session_dir(&self.base, ordinal);
         manifest
@@ -318,7 +363,8 @@ impl Lab {
             // that command uses, not just a non-empty check.
             crate::window::parse_window(window).map_err(|why| {
                 LabError::Spec(format!(
-                    "--session live:{window}: invalid window ({why}) — e.g. live:24h or live:2h 30m"
+                    "--session live:{window}: invalid window ({why}) — e.g. live:24h or live:2h \
+                     30m"
                 ))
             })?;
             return Ok(PlannedSession::Live {
@@ -333,8 +379,8 @@ impl Lab {
             let entry = describe_tape(&tape, &path, TapeBackend::Jsonl);
             if entry.state != TapeState::Finalized {
                 return Err(LabError::Spec(format!(
-                    "tape '{tape}' is not finalized (still recording, or crashed mid-capture); \
-                     a sealed session plan needs a finalized tape — see 'kraken tape list'"
+                    "tape '{tape}' is not finalized (still recording, or crashed mid-capture); a \
+                     sealed session plan needs a finalized tape — see 'kraken tape list'"
                 )));
             }
             // Finalized only means a sidecar summary exists, not that any frames
@@ -362,11 +408,9 @@ impl Lab {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
-    use rust_decimal_macros::dec;
-
     use super::*;
+    use rust_decimal_macros::dec;
+    use std::path::Path;
 
     fn criteria() -> Criteria {
         Criteria {

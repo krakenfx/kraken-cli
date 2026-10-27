@@ -2,25 +2,23 @@
 //! (the v2 successor of the v1 `openOrders` + `ownTrades` channels).
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/executions>. The fields an
-//! entry carries depend on its `exec_type` (`pending_new`, `new`, `trade`, `filled`,
-//! `canceled`, …), so only the identity trio — `order_id`, `exec_type`, `timestamp` —
-//! is required and everything conditional is an `Option`.
+//! entry carries depend on its `exec_type` (`pending_new`, `new`, `trade`,
+//! `filled`, `canceled`, …), so only the identity trio — `order_id`,
+//! `exec_type`, `timestamp` — is required and everything conditional is an
+//! `Option`.
 
+use crate::{OrderSide, OrderType, PriceType, TimeInForce, TriggerReference};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use strum::Display;
 
-use crate::{OrderSide, OrderType, PriceType, TimeInForce, TriggerReference};
-
 /// This channel emits `time_in_force` UPPERCASE (`"GTC"`), unlike the lowercase
-/// request-side tokens. Decode case-insensitively into the shared enum and re-emit the
-/// channel's own casing, so a round-trip is byte-stable.
+/// request-side tokens. Decode case-insensitively into the shared enum and
+/// re-emit the channel's own casing, so a round-trip is byte-stable.
 mod tif_channel_case {
-    use serde::de::Error as _;
-    use serde::{Deserialize, Deserializer, Serializer};
-
     use crate::TimeInForce;
+    use serde::{Deserialize, Deserializer, Serializer, de::Error as _};
 
     pub(super) fn serialize<S: Serializer>(
         value: &Option<TimeInForce>,
@@ -44,8 +42,9 @@ mod tif_channel_case {
 
 /// One execution report (see the module schema).
 ///
-/// No `deny_unknown_fields`: an extensible inbound payload — a field Kraken adds later is
-/// ignored rather than failing the decode, which would drop every frame on the channel.
+/// No `deny_unknown_fields`: an extensible inbound payload — a field Kraken
+/// adds later is ignored rather than failing the decode, which would drop every
+/// frame on the channel.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionData {
@@ -104,15 +103,17 @@ pub struct ExecutionData {
     pub triggered_price: Option<Decimal>,
     /// Deprecated on the wire (use `reason`); still sent, so still decoded.
     pub cancel_reason: Option<String>,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
 
 impl ExecutionData {
-    /// Whether any channel-local enum field decoded through its `Unknown` fallback.
-    /// Shared request-side vocabularies (`side`, `order_type`, `time_in_force`, …)
-    /// stay strict and are deliberately not walked here.
+    /// Whether any channel-local enum field decoded through its `Unknown`
+    /// fallback. Shared request-side vocabularies (`side`, `order_type`,
+    /// `time_in_force`, …) stay strict and are deliberately not walked
+    /// here.
     pub(crate) fn has_unknown_vocabulary(&self) -> bool {
         self.exec_type == ExecType::Unknown
             || self.order_status == Some(OrderStatus::Unknown)
@@ -131,13 +132,15 @@ impl ExecutionData {
 pub struct Fee {
     pub asset: String,
     pub qty: Decimal,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
 
-/// Fee currency preference as this channel spells it — the REST-era flags (`fcib` =
-/// fee in base, `fciq` = fee in quote), not the request side's `base`/`quote`.
+/// Fee currency preference as this channel spells it — the REST-era flags
+/// (`fcib` = fee in base, `fciq` = fee in quote), not the request side's
+/// `base`/`quote`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display)]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase")]
@@ -145,7 +148,8 @@ pub struct Fee {
 pub enum FeeCurrencyPreference {
     Fcib,
     Fciq,
-    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the original token.
+    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the
+    /// original token.
     #[serde(other)]
     Unknown,
 }
@@ -154,14 +158,15 @@ pub enum FeeCurrencyPreference {
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContingentOrder {
-    /// The docs list only the trigger-capable subset of [`OrderType`] here; decoding
-    /// with the full enum keeps one order-type vocabulary.
+    /// The docs list only the trigger-capable subset of [`OrderType`] here;
+    /// decoding with the full enum keeps one order-type vocabulary.
     pub order_type: Option<OrderType>,
     pub trigger_price: Option<Decimal>,
     pub trigger_price_type: Option<PriceType>,
     pub limit_price: Option<Decimal>,
     pub limit_price_type: Option<PriceType>,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
@@ -178,7 +183,8 @@ pub struct TriggerStatus {
     pub last_price: Option<Decimal>,
     pub status: Option<TriggerState>,
     pub timestamp: Option<String>,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
@@ -200,7 +206,8 @@ pub enum ExecType {
     Amended,
     Restated,
     Status,
-    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the original token.
+    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the
+    /// original token.
     #[serde(other)]
     Unknown,
 }
@@ -217,7 +224,8 @@ pub enum OrderStatus {
     Filled,
     Canceled,
     Expired,
-    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the original token.
+    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the
+    /// original token.
     #[serde(other)]
     Unknown,
 }
@@ -230,7 +238,8 @@ pub enum LiquidityIndicator {
     Maker,
     #[serde(rename = "t")]
     Taker,
-    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the original token.
+    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the
+    /// original token.
     #[serde(other, rename = "unknown")]
     Unknown,
 }
@@ -243,7 +252,8 @@ pub enum PositionStatus {
     Opened,
     Closing,
     Closed,
-    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the original token.
+    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the
+    /// original token.
     #[serde(other)]
     Unknown,
 }
@@ -255,7 +265,8 @@ pub enum PositionStatus {
 pub enum TriggerState {
     Triggered,
     Untriggered,
-    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the original token.
+    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the
+    /// original token.
     #[serde(other)]
     Unknown,
 }

@@ -1,0 +1,50 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "last": "1792499885",
+    "pair": "XBTUSD",
+    "spreads": [
+      {
+        "time": 1792499885,
+        "bid": 81399.9,
+        "ask": 81416.0
+      },
+      {
+        "time": 1792499885,
+        "bid": 81399.9,
+        "ask": 81401.4
+      },
+      {
+        "time": 1792499885,
+        "bid": 81401.3,
+        "ask": 81401.4
+      }
+    ]
+  },
+  "headers": [
+    "Time",
+    "Bid",
+    "Ask"
+  ],
+  "rows": [
+    [
+      "1792499885",
+      "81401.3",
+      "81401.4"
+    ],
+    [
+      "1792499885",
+      "81399.9",
+      "81401.4"
+    ],
+    [
+      "1792499885",
+      "81399.9",
+      "81416.0"
+    ]
+  ],
+  "footer": []
+}

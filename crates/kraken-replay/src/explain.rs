@@ -4,34 +4,38 @@
 //! preserve the emitted total; the remainder also exposes valuation gaps and
 //! disclosed data loss.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
-
-use chrono::{DateTime, Utc};
-use kraken_core::{ChannelData, OrderSide};
-use kraken_paper::account::Origin;
-use kraken_paper::{AccountEvent, PaperOrder, PaperOrderType, PaperState, PaperTrade};
-use kraken_paper::{canonical_key, valid_quote};
-use kraken_recording::{CaptureState, RecordingManifest};
-use kraken_session::manifest::SessionManifest;
-use kraken_session::timeline::SessionTimeline;
-use kraken_session::timeline::event::{EventPayload, TimelineEvent, final_epoch_start};
-use rust_decimal::{Decimal, RoundingStrategy};
-use rust_decimal_macros::dec;
-
 use self::report::{
     Anchor, ComponentKind, ComponentLine, Coverage, EndMarkSource, MissedFill, MissedFillSection,
     MissedOutcome, OriginSlice, PnlReport, SymbolWindow, TradeLine, WindowSummary,
 };
 use crate::{ReplayError, Result};
+use chrono::{DateTime, Utc};
+use kraken_core::{ChannelData, OrderSide};
+use kraken_paper::{
+    AccountEvent, PaperOrder, PaperOrderType, PaperState, PaperTrade, account::Origin,
+    canonical_key, valid_quote,
+};
+use kraken_recording::{CaptureState, RecordingManifest};
+use kraken_session::{
+    manifest::SessionManifest,
+    timeline::{
+        SessionTimeline,
+        event::{EventPayload, TimelineEvent, final_epoch_start},
+    },
+};
+use rust_decimal::{Decimal, RoundingStrategy};
+use rust_decimal_macros::dec;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub(crate) mod report;
 
 /// The honesty preamble on every missed-fill section: how fills actually
 /// happen, and why this scan is a proxy.
-const MISSED_FILL_ASSUMPTIONS: &str = "the paper engine reconciles resting orders only when a command runs, against live REST \
-     quotes; this scan replays the recorded stream instead — a proxy that can disagree with \
-     what actually happened in either direction — and a cancelled order may have been \
-     cancelled before any cross";
+const MISSED_FILL_ASSUMPTIONS: &str = "the paper engine reconciles resting orders only when a \
+                                       command runs, against live REST quotes; this scan replays \
+                                       the recorded stream instead — a proxy that can disagree \
+                                       with what actually happened in either direction — and a \
+                                       cancelled order may have been cancelled before any cross";
 
 /// Keeps typical component values within lossless f64 JSON precision.
 const COMPONENT_SCALE: u32 = 8;
@@ -359,17 +363,17 @@ struct Decomposition {
 /// `m` of the recorded reference quote, `q` = end-mark rate of the quote
 /// asset, `B` = end-mark rate of the base asset):
 ///
-/// - price movement: `s·(B − m·q)` — the frictionless twin, executed at mid
-///   and marked at the recorded end
+/// - price movement: `s·(B − m·q)` — the frictionless twin, executed at mid and
+///   marked at the recorded end
 /// - fees: `−fee·q`
-/// - spread: market fills pay the half-spread (`ask−m` buy / `m−bid` sell,
-///   × volume); limit fills carry `−s·(p−m)` — with detection-time quotes
-///   this is a *cost* (the market has already moved through the resting
-///   price when the fill is detected), never "price improvement"
+/// - spread: market fills pay the half-spread (`ask−m` buy / `m−bid` sell, ×
+///   volume); limit fills carry `−s·(p−m)` — with detection-time quotes this is
+///   a *cost* (the market has already moved through the resting price when the
+///   fill is detected), never "price improvement"
 /// - slippage: market buy `−(p−ask)·v`, market sell `−(bid−p)·v`, limit `0`
 ///
-/// The split reconstructs `s·(p−m)` exactly in every case, so the recorded-
-/// mark identity is exact; whatever cannot be attributed (no reference
+/// The split reconstructs `s·(p−m)` exactly in every case, so the
+/// recorded-mark identity is exact; whatever cannot be attributed (no reference
 /// quote → `m := p`; no end mark → contribution dropped) degrades into
 /// price movement or the residual, each with a caveat.
 fn components(
@@ -385,7 +389,8 @@ fn components(
         .iter()
         .map(|fill| fill_line(fill, epoch, index, sc, &mut totals))
         .collect();
-    caveats.extend(degradation_caveats(&totals));
+    let evidence = FrictionEvidence::of(&totals);
+    caveats.extend(degradation_caveats(&totals, evidence));
 
     // Unknown, never a fake zero: with fills on the record but not one
     // derivable movement (unmarked base or unconverted quote on every fill),
@@ -393,15 +398,15 @@ fn components(
     let underivable = !epoch.fills.is_empty() && totals.movement_derived == 0;
     if underivable {
         caveats.push(
-            "not one fill's price movement was derivable from the recorded market; \
-             the residual carries it"
+            "not one fill's price movement was derivable from the recorded market; the residual \
+             carries it"
                 .to_string(),
         );
     }
     let price_movement = (!underivable).then_some(totals.movement);
 
     Decomposition {
-        components: component_lines(epoch, &totals, price_movement, total_pnl),
+        components: component_lines(epoch, &totals, evidence, price_movement, total_pnl),
         trades,
     }
 }
@@ -422,6 +427,9 @@ struct FillTotals {
     /// Fills whose quote asset converts to the anchor currency — the set the
     /// fee/spread/slippage sums actually describe.
     converted_fills: usize,
+    /// Fills the friction sums actually describe: a recorded reference quote to
+    /// measure against AND a quote asset that converts.
+    friction_derived: usize,
     fills_without_quote: usize,
     unconverted_quotes: BTreeSet<String>,
     unmarked_bases: BTreeSet<String>,
@@ -470,6 +478,9 @@ fn fill_line(
         return line;
     };
     totals.converted_fills += 1;
+    if mid.is_some() {
+        totals.friction_derived += 1;
+    }
     line.notional = Some(trade.cost * q);
 
     // `m := p` when no reference quote survived: friction is forced to
@@ -520,14 +531,55 @@ fn fill_line(
     line
 }
 
-fn degradation_caveats(totals: &FillTotals) -> Vec<String> {
+/// Why a friction line carries no figure: measuring it needs a recorded quote
+/// beside the fill, which a venue execution does not come with.
+const UNMEASURABLE_FRICTION: &str =
+    "not measurable against these fills — no recorded quote to compare the execution price to";
+
+/// What the recorded reference quotes let the friction lines claim.
+///
+/// A ledger of venue fills lands on `Absent`: a real execution carries no local
+/// top-of-book observation, so its spread and slippage are unknown rather than
+/// zero, and the account's simulated rates describe none of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FrictionEvidence {
+    /// Every fill carried a quote — vacuously so with no fills at all.
+    Complete,
+    /// Some fills carried none; the sums cover only the rest.
+    Partial,
+    Absent,
+}
+
+impl FrictionEvidence {
+    fn of(totals: &FillTotals) -> Self {
+        if totals.fills_without_quote == 0 {
+            return Self::Complete;
+        }
+        // A missing quote implies a fill, so `Absent` never means "no trades".
+        if totals.friction_derived == 0 {
+            return Self::Absent;
+        }
+        Self::Partial
+    }
+}
+
+fn degradation_caveats(totals: &FillTotals, evidence: FrictionEvidence) -> Vec<String> {
     let mut caveats = Vec::new();
-    if totals.fills_without_quote > 0 {
-        caveats.push(format!(
-            "{} fill(s) carried no valid recorded reference quote; their friction is folded \
-             into price movement",
+    match evidence {
+        FrictionEvidence::Complete => {}
+        // The norm for a live workspace, not an anomaly worth counting: every
+        // venue fill arrives without a local quote, so say what that costs the
+        // report rather than reporting it fill by fill.
+        FrictionEvidence::Absent => caveats.push(
+            "no fill carried a recorded reference quote — these are venue executions, so spread \
+             and slippage cannot be measured here and their cost sits inside price movement"
+                .to_string(),
+        ),
+        FrictionEvidence::Partial => caveats.push(format!(
+            "{} fill(s) carried no valid recorded reference quote; their friction is folded into \
+             price movement",
             totals.fills_without_quote
-        ));
+        )),
     }
     for quote in &totals.unconverted_quotes {
         caveats.push(format!(
@@ -546,6 +598,7 @@ fn degradation_caveats(totals: &FillTotals) -> Vec<String> {
 fn component_lines(
     epoch: &FinalEpoch,
     totals: &FillTotals,
+    evidence: FrictionEvidence,
     price_movement: Option<Decimal>,
     total_pnl: Decimal,
 ) -> Vec<ComponentLine> {
@@ -557,9 +610,17 @@ fn component_lines(
     };
     let price_movement = price_movement.map(quantize);
     let fees = quantize(totals.fees);
-    let spread = quantize(totals.market_spread + totals.limit_spread);
-    let slippage = quantize(totals.slippage);
-    let residual = total_pnl - (price_movement.unwrap_or(Decimal::ZERO) + fees + spread + slippage);
+    // Withheld rather than shown as zero when nothing measured them. Both sums
+    // are already exactly zero in that case, so the additive identity below —
+    // and the wire tests pinning it — are unaffected.
+    let measured = evidence != FrictionEvidence::Absent;
+    let spread = measured.then(|| quantize(totals.market_spread + totals.limit_spread));
+    let slippage = measured.then(|| quantize(totals.slippage));
+    let residual = total_pnl
+        - (price_movement.unwrap_or(Decimal::ZERO)
+            + fees
+            + spread.unwrap_or(Decimal::ZERO)
+            + slippage.unwrap_or(Decimal::ZERO));
     let fee_rate_pct = epoch.state.fee_rate * dec!(100);
     let slippage_rate_pct = epoch.state.slippage_rate * dec!(100);
     vec![
@@ -571,34 +632,51 @@ fn component_lines(
                  frictionless value is unknown; the residual carries it"
                     .to_string()
             } else {
-                "your position changes valued at mid-market when filled and marked at the \
-                 recorded end, before any costs"
+                "your position changes valued at mid-market when filled and marked at the recorded \
+                 end, before any costs"
                     .to_string()
             },
         },
         ComponentLine {
             kind: ComponentKind::Fees,
             amount: Some(fees),
-            explanation: format!(
-                "paid across {} fill(s) at the account's {fee_rate_pct:.2}% fee rate",
-                totals.converted_fills
-            ),
+            explanation: match evidence {
+                FrictionEvidence::Complete => format!(
+                    "paid across {} fill(s) at the account's {fee_rate_pct:.2}% fee rate",
+                    totals.converted_fills
+                ),
+                // Naming the contract's rate here would read as a promise about
+                // what the venue charged; these are the fees the fills carry.
+                _ => format!(
+                    "paid across {} fill(s), as charged on each fill",
+                    totals.converted_fills
+                ),
+            },
         },
         ComponentLine {
             kind: ComponentKind::Spread,
-            amount: Some(spread),
-            explanation: format!(
-                "{} market fill(s) paid the half-spread ({:.2}); {} limit fill(s) executed at \
-                 their resting price vs mid ({:.2}) — a cost of late fill detection",
-                totals.market_fills, totals.market_spread, totals.limit_fills, totals.limit_spread
-            ),
+            amount: spread,
+            explanation: if spread.is_some() {
+                format!(
+                    "{} market fill(s) paid the half-spread ({:.2}); {} limit fill(s) executed at \
+                     their resting price vs mid ({:.2}) — a cost of late fill detection",
+                    totals.market_fills,
+                    totals.market_spread,
+                    totals.limit_fills,
+                    totals.limit_spread
+                )
+            } else {
+                UNMEASURABLE_FRICTION.to_string()
+            },
         },
         ComponentLine {
             kind: ComponentKind::Slippage,
-            amount: Some(slippage),
-            explanation: format!(
-                "simulated slippage on market fills (rate {slippage_rate_pct:.2}%)"
-            ),
+            amount: slippage,
+            explanation: if slippage.is_some() {
+                format!("simulated slippage on market fills (rate {slippage_rate_pct:.2}%)")
+            } else {
+                UNMEASURABLE_FRICTION.to_string()
+            },
         },
         ComponentLine {
             kind: ComponentKind::Residual,
@@ -864,12 +942,13 @@ fn window_summary(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use kraken_paper::PaperConfig;
     use kraken_recording::RecordingIntegrity;
-    use kraken_session::manifest::SessionOutcome;
-    use kraken_session::timeline::fixtures::{self, SessionBuilder, T0};
-
-    use super::*;
+    use kraken_session::{
+        manifest::SessionOutcome,
+        timeline::fixtures::{self, SessionBuilder, T0},
+    };
 
     fn stopped_manifest(final_value: Decimal, starting_balance: Decimal) -> SessionManifest {
         let mut manifest = fixtures::manifest(vec![]);
@@ -1764,10 +1843,9 @@ mod tests {
     }
 
     mod properties {
+        use super::*;
         use proptest::prelude::*;
         use rust_decimal::prelude::FromPrimitive;
-
-        use super::*;
 
         #[derive(Debug, Clone)]
         struct Op {
@@ -1895,7 +1973,7 @@ mod tests {
                 );
             }
 
-            /// The ticket's bounded-residual acceptance: when the anchor's
+            /// The bounded-residual acceptance: when the anchor's
             /// final value is computed from the same recorded end marks the
             /// decomposition uses, the residual collapses to at most
             /// 28-digit rounding dust — any large real-world residual is the

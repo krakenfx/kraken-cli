@@ -1,0 +1,60 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "accountUid": "f7d5571c-6d10-4cf1-944a-048d25682ed0",
+    "len": 1,
+    "serverTime": "2026-10-20T12:00:00.000Z",
+    "elements": [
+      {
+        "uid": "8a8c7b6e-0000-4000-8000-000000000011",
+        "timestamp": 1792500000000,
+        "event": {
+          "OrderPlaced": {
+            "order": {
+              "uid": "8a8c7b6e-0000-4000-8000-000000000012",
+              "accountUid": "f7d5571c-6d10-4cf1-944a-048d25682ed0",
+              "tradeable": "PF_XBTUSD",
+              "direction": "Sell",
+              "quantity": "1",
+              "filled": "0",
+              "timestamp": 1792500000000,
+              "limitPrice": "90000",
+              "orderType": "Limit",
+              "clientId": "",
+              "reduceOnly": false,
+              "lastUpdateTimestamp": 1792500000000
+            },
+            "reason": "new_placed_order_by_user",
+            "reducedQuantity": ""
+          }
+        }
+      }
+    ]
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "accountUid",
+      "f7d5571c-6d10-4cf1-944a-048d25682ed0"
+    ],
+    [
+      "len",
+      "1"
+    ],
+    [
+      "serverTime",
+      "2026-10-20T12:00:00.000Z"
+    ],
+    [
+      "elements",
+      "[{\"uid\":\"8a8c7b6e-0000-4000-8000-000000000011\",\"timestamp\":1792500000000,\"event\":{\"OrderPlaced\":{\"order\":{\"uid\":\"8a8c7b6e-0000-4000-8000-000000000012\",\"accountUid\":\"f7d5571c-6d10-4cf1-944a-048d25682ed0\",\"tradeable\":\"PF_XBTUSD\",\"direction\":\"Sell\",\"quantity\":\"1\",\"filled\":\"0\",\"timestamp\":1792500000000,\"limitPrice\":\"90000\",\"orderType\":\"Limit\",\"clientId\":\"\",\"reduceOnly\":false,\"lastUpdateTimestamp\":1792500000000},\"reason\":\"new_placed_order_by_user\",\"reducedQuantity\":\"\"}}}]"
+    ]
+  ],
+  "footer": []
+}

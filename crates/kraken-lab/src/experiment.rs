@@ -3,14 +3,12 @@
 //! [`seal`] hashes canonical JSON before a run; [`verify`] treats later edits
 //! as damage. Storage and clocks remain in [`store`](crate::store).
 
+use crate::{LabError, Result, Scorecard, hash::sha256_hex};
 use chrono::{DateTime, Utc};
 use kraken_session::SessionName;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-
-use crate::hash::sha256_hex;
-use crate::{LabError, Result, Scorecard};
 
 /// A frozen experiment: the spec plus the hash that seals it.
 #[skip_serializing_none]
@@ -242,8 +240,8 @@ pub(crate) fn verify(experiment: &Experiment, requested_name: &str) -> Result<()
     }
     if experiment.name != requested_name {
         return Err(LabError::Damaged(format!(
-            "experiment '{requested_name}' resolves to a spec sealed under the name '{}'; a frozen \
-             spec's filename must match its sealed name (names are case-sensitive)",
+            "experiment '{requested_name}' resolves to a spec sealed under the name '{}'; a \
+             frozen spec's filename must match its sealed name (names are case-sensitive)",
             experiment.name
         )));
     }
@@ -252,9 +250,8 @@ pub(crate) fn verify(experiment: &Experiment, requested_name: &str) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use super::*;
+    use rust_decimal_macros::dec;
 
     fn criteria() -> Criteria {
         Criteria {

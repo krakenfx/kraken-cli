@@ -1,0 +1,36 @@
+{
+  "result": "success",
+  "history": [
+    {
+      "time": "2026-10-20T14:40:17.379252025Z",
+      "trade_id": 100,
+      "price": 83040,
+      "size": 0.024,
+      "side": "sell",
+      "type": "fill",
+      "uid": "0d423eb6-67bf-498e-bcd9-1c8f9d613341",
+      "sequence_id": "104582801"
+    },
+    {
+      "time": "2026-10-20T14:40:17.379252025Z",
+      "trade_id": 99,
+      "price": 83040,
+      "size": 0.0002,
+      "side": "sell",
+      "type": "fill",
+      "uid": "4ecf096f-6b52-474e-8624-4550a3d6f1cd",
+      "sequence_id": "104582800"
+    },
+    {
+      "time": "2026-10-20T14:40:17.379252025Z",
+      "trade_id": 98,
+      "price": 83041,
+      "size": 0.006,
+      "side": "sell",
+      "type": "fill",
+      "uid": "249c9f95-8c51-4081-a138-45cb795cec7d",
+      "sequence_id": "104582799"
+    }
+  ],
+  "serverTime": "2026-10-20T14:40:43.161Z"
+}

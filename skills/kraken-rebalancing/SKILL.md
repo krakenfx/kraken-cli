@@ -70,6 +70,10 @@ kraken workspace status -o json 2>/dev/null
 
 ## Live Rebalance Execution
 
+Live orders run outside the paper workspace, so run `unset KRAKEN_WORKSPACE`
+first. Inside it, the orders fill on paper and `kraken balance` reads the
+paper ledger.
+
 1. Calculate all required trades.
 2. Present the rebalance plan to the user:
    - Current allocation vs target

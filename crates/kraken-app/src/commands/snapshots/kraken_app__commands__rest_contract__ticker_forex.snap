@@ -1,0 +1,50 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "ZEURZUSD": {
+      "ask_price": 1.1219,
+      "ask_whole_lot_volume": 497.0,
+      "ask_lot_volume": 497.0,
+      "bid_price": 1.12188,
+      "bid_whole_lot_volume": 8914.0,
+      "bid_lot_volume": 8914.0,
+      "last_price": 1.12189,
+      "last_volume": 541.4,
+      "volume_today": 16790719.78055505,
+      "volume_24h": 37659070.76095534,
+      "vwap_today": 1.12193,
+      "vwap_24h": 1.12164,
+      "trades_today": 32733,
+      "trades_24h": 71363,
+      "low_today": 1.12051,
+      "low_24h": 1.12024,
+      "high_today": 1.12336,
+      "high_24h": 1.12336,
+      "open": 1.12123
+    }
+  },
+  "headers": [
+    "Pair",
+    "Ask",
+    "Bid",
+    "Last",
+    "Volume (24h)",
+    "High (24h)",
+    "Low (24h)"
+  ],
+  "rows": [
+    [
+      "ZEURZUSD",
+      "1.1219",
+      "1.12188",
+      "1.12189",
+      "37659070.76095534",
+      "1.12336",
+      "1.12024"
+    ]
+  ],
+  "footer": []
+}

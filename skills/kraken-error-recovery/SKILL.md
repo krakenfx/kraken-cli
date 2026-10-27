@@ -26,13 +26,13 @@ Parse the `.error` field from the JSON response:
 |----------|---------|----------|
 | `auth` | Credentials invalid or expired | Re-authenticate, do not retry |
 | `rate_limit` | Too many requests | Read `suggestion` and `docs_url` fields, adapt strategy |
-| `network` | Connection failed | Retry with exponential backoff |
+| `network` | Connection failed, or the response was lost after sending (`verify_first: true`) | Retry with backoff; with `verify_first`, see Duplicate Order Prevention |
 | `validation` | Invalid request parameters | Fix inputs, do not retry unchanged |
 | `api` | Exchange-side rejection | Inspect error message, adjust request |
 
 ## Duplicate Order Prevention
 
-After a network error during order submission, the order may or may not have reached the exchange. Check before resubmitting:
+After a network error during order submission (`"verify_first": true`), the order may or may not have reached the exchange. Check before resubmitting:
 
 ```bash
 kraken open-orders -o json 2>/dev/null
@@ -106,7 +106,7 @@ Limit orders may partially fill. Check order status:
 kraken query-orders <TXID> -o json 2>/dev/null
 ```
 
-Fields: `vol` (requested volume), `vol_exec` (filled volume), `status` (open, closed, canceled) — `query-orders` returns Kraken's raw wire fields, unlike `open-orders`/`closed-orders` which use the CLI schema (`volume`, `volume_executed`).
+The result is keyed by txid. Fields: `volume` (requested volume), `volume_executed` (filled volume), `status` (`open`, `closed`, `canceled`, `expired`, ...). `query-orders`, `open-orders` and `closed-orders` publish the same order shape.
 
 If partially filled and the remaining volume is needed, amend or place a new order for the remaining amount.
 
@@ -130,6 +130,7 @@ An order stuck in `open` state that should have filled or been canceled:
 ## Hard Rules
 
 - Never blind-retry an order after a network error; always check state first.
+- Resubmitting, amending or cancelling a live order needs the same explicit user approval as the original order, unless the agent runs at autonomy level 4+.
 - Use `--cl-ord-id` for all orders in automated loops.
 - On auth errors, stop all activity and re-authenticate.
 - Log every error and recovery action for post-session audit.

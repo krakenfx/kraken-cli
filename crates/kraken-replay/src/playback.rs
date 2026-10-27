@@ -2,13 +2,11 @@
 //!
 //! Playback reproduces recorded gaps; analytics remain outside this module.
 
-use std::io::Write;
-
+use crate::Result;
 use chrono::{DateTime, Utc};
 use kraken_session::timeline::event::TimelineEvent;
+use std::io::Write;
 use tokio::time::Instant;
-
-use crate::Result;
 
 /// Supported playback range: 100× slow motion through near-I/O-speed replay.
 pub const MIN_SPEED: f64 = 0.01;
@@ -102,13 +100,11 @@ pub async fn replay_events(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
-    use kraken_recording::parse_instant;
-    use kraken_session::decision::{Decision, DecisionKind};
-
     use super::*;
     use crate::ReplayError;
+    use kraken_recording::parse_instant;
+    use kraken_session::decision::{Decision, DecisionKind};
+    use std::time::Duration;
 
     fn json_render(event: &TimelineEvent) -> std::result::Result<String, serde_json::Error> {
         serde_json::to_string(event)

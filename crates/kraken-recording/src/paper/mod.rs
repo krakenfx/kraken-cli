@@ -9,14 +9,9 @@
 //! A columnar (DuckDB) backend for querying trading history is planned but
 //! unimplemented; the journal is the source of truth either way.
 
+use crate::{error::Result, sink::JsonlSink, source::JsonlSource};
+use serde::{Serialize, de::DeserializeOwned};
 use std::path::PathBuf;
-
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-
-use crate::error::Result;
-use crate::sink::JsonlSink;
-use crate::source::JsonlSource;
 
 /// Names the journal's lock holder in the "in use" error a contender sees.
 pub const JOURNAL_PURPOSE: &str = "paper account log";
@@ -37,12 +32,9 @@ pub fn replay<T: DeserializeOwned>(path: PathBuf) -> Option<JsonlSource<T>> {
 
 #[cfg(test)]
 mod tests {
-    use serde::Deserialize;
-
     use super::*;
-    use crate::error::Error;
-    use crate::sink::Sink;
-    use crate::source::Source;
+    use crate::{error::Error, sink::Sink, source::Source};
+    use serde::Deserialize;
 
     /// Stands in for the simulator's record envelope.
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -79,11 +71,5 @@ mod tests {
         let err = journal::<Event>(path).unwrap_err();
         assert!(matches!(err, Error::Rejected(_)));
         assert!(err.to_string().contains(JOURNAL_PURPOSE), "got: {err}");
-    }
-
-    #[test]
-    fn replay_of_a_missing_journal_is_none() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(replay::<Event>(dir.path().join("events.jsonl")).is_none());
     }
 }

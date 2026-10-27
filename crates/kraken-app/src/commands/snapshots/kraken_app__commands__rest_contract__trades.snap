@@ -1,0 +1,70 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "last": "1792499896035273824",
+    "pair": "XBTUSD",
+    "trades": [
+      {
+        "price": 81401.3,
+        "volume": 0.0001,
+        "time": "1792499896.0352738",
+        "side": "sell",
+        "order_type": "m",
+        "misc": "",
+        "trade_id": 112199545
+      },
+      {
+        "price": 81401.3,
+        "volume": 0.0001,
+        "time": "1792499896.0352738",
+        "side": "sell",
+        "order_type": "m",
+        "misc": "",
+        "trade_id": 112199546
+      },
+      {
+        "price": 81401.3,
+        "volume": 0.01041932,
+        "time": "1792499896.0352738",
+        "side": "sell",
+        "order_type": "m",
+        "misc": "",
+        "trade_id": 112199547
+      }
+    ]
+  },
+  "headers": [
+    "Price",
+    "Volume",
+    "Time",
+    "Side",
+    "Type"
+  ],
+  "rows": [
+    [
+      "81401.3",
+      "0.01041932",
+      "1792499896.0352738",
+      "sell",
+      "market"
+    ],
+    [
+      "81401.3",
+      "0.0001",
+      "1792499896.0352738",
+      "sell",
+      "market"
+    ],
+    [
+      "81401.3",
+      "0.0001",
+      "1792499896.0352738",
+      "sell",
+      "market"
+    ]
+  ],
+  "footer": []
+}

@@ -1,0 +1,64 @@
+---
+source: crates/kraken-recipe/tests/snapshots.rs
+expression: "draft_skill(&recipe, &digest(&[]))"
+---
+---
+name: bare
+version: 0.1.0
+description: "Generated from session btc-dip using my-skill."
+metadata:
+  openclaw:
+    category: "recipe"
+  requires:
+    bins: ["kraken"]
+    skills: ["my-skill"]
+---
+
+# Recipe: bare
+
+> **DRAFT — UNRESOLVED RULES.** This file records what a finished session ran;
+> it is not authored strategy logic. The trading rules live in the `my-skill`
+> skill — review this draft deliberately before trusting it.
+
+## Provenance
+
+- Source session: `btc-dip`
+- Lab evidence: unscored — no experiment stamped on the source session
+- Window: 2026-01-01T00:00:00+00:00 → 2026-01-01T00:30:00+00:00
+- Market data: live stream (no replay source)
+
+## Frozen defaults
+
+The source session recorded no strategy params; the `my-skill` skill's defaults apply.
+
+## Observed decisions
+
+- total: 0
+- fewer than two decisions — no cadence observed
+
+## Start the next session
+
+Inside a paper workspace funded with 10000.0 USD:
+
+```bash
+kraken session start \
+  --symbols BTC/USD \
+  --channels trade \
+  --to jsonl \
+  --strategy my-skill \
+  --label bare
+```
+
+## Review the run
+
+```bash
+kraken session show --session latest -o json
+kraken session decisions --session latest -o json
+kraken explain pnl --session latest -o json
+kraken lab score --session latest -o json
+```
+
+## Safety boundary
+
+Paper only. This draft never places live orders; the paper→live gate stays
+`kraken workspace promote`, backed by lab evidence on this scope.

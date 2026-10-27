@@ -1,0 +1,48 @@
+{
+  "accountUid": "f7d5571c-6d10-4cf1-944a-048d25682ed0",
+  "len": 1,
+  "elements": [
+    {
+      "uid": "8a8c7b6e-0000-4000-8000-000000000001",
+      "timestamp": 1792500000000,
+      "event": {
+        "execution": {
+          "execution": {
+            "uid": "8a8c7b6e-0000-4000-8000-000000000002",
+            "order": {
+              "uid": "8a8c7b6e-0000-4000-8000-000000000003",
+              "accountUid": "f7d5571c-6d10-4cf1-944a-048d25682ed0",
+              "tradeable": "PF_XBTUSD",
+              "direction": "Buy",
+              "quantity": "1",
+              "filled": "1",
+              "timestamp": 1792500000000,
+              "limitPrice": "50000",
+              "orderType": "Limit",
+              "clientId": "",
+              "reduceOnly": false,
+              "lastUpdateTimestamp": 1792500000000
+            },
+            "timestamp": 1792500000000,
+            "quantity": "1",
+            "price": "50000",
+            "markPrice": "50001",
+            "executionType": "taker",
+            "limitFilled": true,
+            "usdValue": "50000",
+            "orderData": {
+              "positionSize": "1",
+              "fee": "2.5",
+              "feeCalculationInfo": {
+                "percentageFee": "0.05",
+                "userFeeDiscountApplied": null,
+                "marketShareRebateCredited": null
+              }
+            }
+          },
+          "takerReducedQuantity": ""
+        }
+      }
+    }
+  ]
+}

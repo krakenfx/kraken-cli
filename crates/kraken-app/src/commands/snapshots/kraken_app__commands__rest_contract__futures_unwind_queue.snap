@@ -1,0 +1,43 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "queue": [
+      {
+        "symbol": "PF_GMTUSD",
+        "percentile": 100
+      },
+      {
+        "symbol": "FI_ETHUSD_220624",
+        "percentile": 20
+      },
+      {
+        "symbol": "PF_UNIUSD",
+        "percentile": 80
+      }
+    ],
+    "serverTime": "2022-06-13T18:01:18.695Z"
+  },
+  "headers": [
+    "symbol",
+    "percentile"
+  ],
+  "rows": [
+    [
+      "PF_GMTUSD",
+      "100"
+    ],
+    [
+      "FI_ETHUSD_220624",
+      "20"
+    ],
+    [
+      "PF_UNIUSD",
+      "80"
+    ]
+  ],
+  "footer": []
+}

@@ -58,7 +58,7 @@ Paginate results:
 kraken earn strategies --limit 10 --cursor <CURSOR> --ascending -o json 2>/dev/null
 ```
 
-Key fields in each strategy: `id`, `asset`, `apr_estimate`, `lock_type`, `min_amount`, `can_allocate`, `can_deallocate`, `yield_source`.
+Key fields in each strategy (under `.items[]`): `id`, `asset`, `apr_estimate`, `lock_type.type`, `user_min_allocation`, `user_cap`, `can_allocate`, `can_deallocate`, `yield_source`.
 
 ## Allocation Workflow
 
@@ -108,7 +108,7 @@ kraken earn allocations --converted-asset USD --hide-zero-allocations -o json 2>
 When helping a user choose a strategy:
 
 1. List strategies for the asset.
-2. Compare `apr_estimate`, `lock_type`, and `min_amount`.
+2. Compare `apr_estimate`, `lock_type.type`, and `user_min_allocation`.
 3. Present a summary: flexible strategies offer instant access; bonded strategies lock funds for higher yield.
 4. Confirm the user's choice before allocating.
 

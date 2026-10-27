@@ -1,11 +1,9 @@
 //! Mechanical paper-to-live promotion checks.
 //!
-//! Scoped credentials remain a hard blocker; refusals return the full evidence
-//! checklist.
-
-use serde::Serialize;
+//! Refusals return the full evidence checklist.
 
 use crate::{WorkspaceManifest, WorkspaceMode};
+use serde::Serialize;
 
 /// One experiment's evidence, as `lab compare` graded it.
 #[derive(Debug, Clone, Serialize)]
@@ -42,6 +40,8 @@ pub struct PromotionInputs {
     pub experiments: Vec<ExperimentEvidence>,
     /// Fills inside stopped windows without a decision-log entry.
     pub manual_trades_in_windows: usize,
+    pub active_session: bool,
+    pub open_paper_orders: usize,
 }
 
 /// The full evidence picture a promotion decision reads.
@@ -63,6 +63,8 @@ pub fn evaluate(manifest: &WorkspaceManifest, inputs: PromotionInputs) -> Promot
     let PromotionInputs {
         experiments,
         manual_trades_in_windows,
+        active_session,
+        open_paper_orders,
     } = inputs;
 
     let sealed = !experiments.is_empty();
@@ -89,17 +91,19 @@ pub fn evaluate(manifest: &WorkspaceManifest, inputs: PromotionInputs) -> Promot
             detail: format!("best experiment has {best_passes} passing session(s)"),
         },
         ChecklistItem {
-            criterion: "its passes include a live session".to_string(),
+            // "live" here means live market data (vs. a replay tape) — the
+            // session itself risked nothing. Spelled out because this list
+            // decides whether real money is next.
+            criterion: "its passes include a session on live market data".to_string(),
             satisfied: qualifying.is_some(),
             detail: match qualifying {
                 Some(evidence) => format!(
-                    "'{}': {} passes, {} live",
+                    "'{}': {} passes, {} on live data",
                     evidence.experiment, evidence.passing_sessions, evidence.passing_live_sessions
                 ),
-                None => {
-                    "no experiment pairs 2 passes with a live pass — replay alone never promotes"
-                        .to_string()
-                }
+                None => "no experiment pairs 2 passes with a live-data pass — replay alone never \
+                         promotes"
+                    .to_string(),
             },
         },
         ChecklistItem {
@@ -108,19 +112,17 @@ pub fn evaluate(manifest: &WorkspaceManifest, inputs: PromotionInputs) -> Promot
             satisfied: true,
             detail: format!("{manual_trades_in_windows} manual trade(s) in stopped windows"),
         },
-        ChecklistItem {
-            criterion: "live credentials scoped to this workspace".to_string(),
-            satisfied: false,
-            detail: "workspace-scoped credentials are not configured".to_string(),
-        },
     ];
 
-    let blockers = vec![
-        "live execution needs scoped credentials; until then promotion is \
-         evaluated but never performed"
-            .to_string(),
-    ];
-
+    let mut blockers = Vec::new();
+    if active_session {
+        blockers.push("an active session must be stopped before promotion".to_string());
+    }
+    if open_paper_orders > 0 {
+        blockers.push(format!(
+            "{open_paper_orders} paper order(s) must be cancelled before promotion"
+        ));
+    }
     PromotionChecklist {
         workspace: manifest.name.clone(),
         mode: manifest.mode,
@@ -134,9 +136,8 @@ pub fn evaluate(manifest: &WorkspaceManifest, inputs: PromotionInputs) -> Promot
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use super::*;
+    use rust_decimal_macros::dec;
 
     fn manifest() -> WorkspaceManifest {
         WorkspaceManifest {
@@ -169,14 +170,12 @@ mod tests {
             PromotionInputs {
                 experiments: vec![evidence(3, 1)],
                 manual_trades_in_windows: 0,
+                ..PromotionInputs::default()
             },
         );
         let live_item = &checklist.criteria[2];
         assert!(live_item.satisfied, "{live_item:?}");
-        assert!(
-            !checklist.promotable,
-            "the credentials blocker holds regardless of evidence"
-        );
+        assert!(checklist.promotable);
     }
 
     #[test]
@@ -186,6 +185,7 @@ mod tests {
             PromotionInputs {
                 experiments: vec![evidence(2, 0)],
                 manual_trades_in_windows: 0,
+                ..PromotionInputs::default()
             },
         );
         assert!(checklist.criteria[1].satisfied, "two passes exist");
@@ -203,6 +203,7 @@ mod tests {
             PromotionInputs {
                 experiments: vec![evidence(2, 1)],
                 manual_trades_in_windows: 3,
+                ..PromotionInputs::default()
             },
         );
         assert_eq!(checklist.manual_trades_in_windows, 3);
@@ -217,5 +218,20 @@ mod tests {
         assert!(!checklist.criteria[0].satisfied);
         assert!(checklist.criteria[0].detail.contains("kraken lab new"));
         assert!(!checklist.promotable);
+    }
+
+    #[test]
+    fn an_active_session_or_open_order_blocks_promotion() {
+        let checklist = evaluate(
+            &manifest(),
+            PromotionInputs {
+                experiments: vec![evidence(2, 1)],
+                active_session: true,
+                open_paper_orders: 1,
+                ..PromotionInputs::default()
+            },
+        );
+        assert!(!checklist.promotable);
+        assert_eq!(checklist.blockers.len(), 2);
     }
 }

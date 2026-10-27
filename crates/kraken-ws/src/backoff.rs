@@ -1,30 +1,35 @@
-//! Reconnect pacing: exponential backoff with jitter (no lockstep thundering herd),
-//! plus a stable-session reset so only a genuinely flapping socket escalates.
-//! Deliberately no attempt cap — streaming retries until the operator interrupts.
-//! Pure of I/O: it computes *how long*; the actor owns the interruptible sleep.
+//! Reconnect pacing: exponential backoff with jitter (no lockstep thundering
+//! herd), plus a stable-session reset so only a genuinely flapping socket
+//! escalates. Deliberately no attempt cap — streaming retries until the
+//! operator interrupts. Pure of I/O: it computes *how long*; the actor owns the
+//! interruptible sleep.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Multiplier applied to the delay after each consecutive failed attempt.
 const BACKOFF_FACTOR: u32 = 2;
 
-/// Tunable reconnect schedule. `Copy` so the [`StreamClient`](crate::StreamClient) can stamp one into
-/// every connection it spawns.
+/// Tunable reconnect schedule. `Copy` so the
+/// [`StreamClient`](crate::StreamClient) can stamp one into every connection it
+/// spawns.
 #[derive(Debug, Clone, Copy)]
 pub struct ReconnectPolicy {
-    /// Delay before the first reconnect, and the base the schedule escalates from.
+    /// Delay before the first reconnect, and the base the schedule escalates
+    /// from.
     pub initial: Duration,
     /// Upper bound on a single backoff delay (before jitter is added).
     pub max: Duration,
     /// Upper bound on the random jitter added to each delay.
     pub jitter_max: Duration,
-    /// A session that stayed connected at least this long resets the schedule to `initial`.
+    /// A session that stayed connected at least this long resets the schedule
+    /// to `initial`.
     pub stable_after: Duration,
 }
 
 impl ReconnectPolicy {
-    /// Whether a session of this length counts as healthy — the one stability notion
-    /// shared by the backoff reset and the connection's rejection-incident tracking.
+    /// Whether a session of this length counts as healthy — the one stability
+    /// notion shared by the backoff reset and the connection's
+    /// rejection-incident tracking.
     pub(crate) fn is_stable(&self, session: Duration) -> bool {
         session >= self.stable_after
     }
@@ -41,21 +46,24 @@ impl Default for ReconnectPolicy {
     }
 }
 
-/// Mutable reconnect state for one connection. Not `Clone` — each actor owns exactly one.
+/// Mutable reconnect state for one connection. Not `Clone` — each actor owns
+/// exactly one.
 pub(crate) struct Backoff {
     policy: ReconnectPolicy,
-    /// The next delay's escalating base (before jitter): reset to `initial` after a stable
-    /// session, multiplied by [`BACKOFF_FACTOR`] after each attempt.
+    /// The next delay's escalating base (before jitter): reset to `initial`
+    /// after a stable session, multiplied by [`BACKOFF_FACTOR`] after each
+    /// attempt.
     current: Duration,
 }
 
 impl Backoff {
     /// A fresh controller primed at `policy.initial`.
     ///
-    /// A base above the cap means the caller wants that pacing: the effective `max` is
-    /// raised to `initial` here — `ReconnectPolicy`'s pub fields make a validating
-    /// constructor bypassable, so the invariant lives at the one funnel every policy
-    /// passes through — rather than `next_delay` silently clamping `initial` back down.
+    /// A base above the cap means the caller wants that pacing: the effective
+    /// `max` is raised to `initial` here — `ReconnectPolicy`'s pub fields
+    /// make a validating constructor bypassable, so the invariant lives at
+    /// the one funnel every policy passes through — rather than
+    /// `next_delay` silently clamping `initial` back down.
     pub(crate) fn new(policy: ReconnectPolicy) -> Self {
         let policy = ReconnectPolicy {
             max: policy.max.max(policy.initial),
@@ -68,17 +76,19 @@ impl Backoff {
     }
 
     /// Record the just-ended session's duration. A session that lasted at least
-    /// `stable_after` is healthy, so the schedule restarts from `initial`; a short one
-    /// keeps the escalated delay, so a flapping socket backs off progressively.
+    /// `stable_after` is healthy, so the schedule restarts from `initial`; a
+    /// short one keeps the escalated delay, so a flapping socket backs off
+    /// progressively.
     pub(crate) fn note_session(&mut self, session: Duration) {
         if self.policy.is_stable(session) {
             self.current = self.policy.initial;
         }
     }
 
-    /// The delay before the next reconnect attempt, advancing the controller: escalates the
-    /// base for the following attempt. `wait = min(base, max) + jitter`, computed with
-    /// saturating arithmetic throughout so it can never overflow.
+    /// The delay before the next reconnect attempt, advancing the controller:
+    /// escalates the base for the following attempt. The wait is `min(base,
+    /// max) + jitter`, computed with saturating arithmetic throughout so it
+    /// can never overflow.
     pub(crate) fn next_delay(&mut self) -> Duration {
         let backoff = self
             .current
@@ -95,9 +105,10 @@ impl Backoff {
     }
 }
 
-/// A pseudo-random jitter in `[0, max]`, derived dependency-free from the clock's
-/// sub-second nanos (the same approach the futures WS engine uses). De-correlates
-/// reconnects across many clients without pulling in an RNG crate.
+/// A pseudo-random jitter in `[0, max]`, derived dependency-free from the
+/// clock's sub-second nanos (the same approach the futures WS engine uses).
+/// De-correlates reconnects across many clients without pulling in an RNG
+/// crate.
 fn jitter(max: Duration) -> Duration {
     if max.is_zero() {
         return Duration::ZERO;
@@ -116,8 +127,8 @@ fn jitter(max: Duration) -> Duration {
 mod tests {
     use super::*;
 
-    /// A policy with no jitter, so a test sees the bare escalation/reset behaviour
-    /// deterministically.
+    /// A policy with no jitter, so a test sees the bare escalation/reset
+    /// behaviour deterministically.
     fn deterministic(initial: Duration, max: Duration) -> ReconnectPolicy {
         ReconnectPolicy {
             initial,

@@ -1,19 +1,17 @@
 //! `amend_order` — modify a resting order in place.
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/amend_order>. The order is
-//! addressed by `order_id` *or* `cl_ord_id` (hence both optional); the remaining params
-//! are the fields being changed — `order_qty`, `display_qty`, `limit_price`
-//! (`limit_price_type`), `post_only`, `trigger_price` (`trigger_price_type`) — plus
-//! `deadline` and `symbol` (required for non-crypto pairs). The reply's `amend_id` is
-//! the only always-present field.
+//! addressed by `order_id` *or* `cl_ord_id` (hence both optional); the
+//! remaining params are the fields being changed — `order_qty`, `display_qty`,
+//! `limit_price` (`limit_price_type`), `post_only`, `trigger_price`
+//! (`trigger_price_type`) — plus `deadline` and `symbol` (required for
+//! non-crypto pairs). The reply's `amend_id` is the only always-present field.
 
+use super::{decimal_wire, value::PriceType};
+use crate::{MethodReply, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-
-use super::decimal_wire;
-use super::value::PriceType;
-use crate::{MethodReply, Request};
 
 /// `amend_order` request params (see the module schema).
 #[skip_serializing_none]
@@ -60,7 +58,8 @@ mod tests {
     use crate::{Inbound, Wire};
 
     /// Pins the full outgoing frame: unset options stay off the wire and money
-    /// serializes digit-exact past f64 precision — this is an order-mutating frame.
+    /// serializes digit-exact past f64 precision — this is an order-mutating
+    /// frame.
     #[test]
     fn amend_order_frame_pins_the_wire_shape_with_exact_decimals() {
         let params = AmendOrderParams {

@@ -1,0 +1,60 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "equivalent_balance": 1101.3425,
+    "trade_balance": 392.2264,
+    "margin_amount": 7.0354,
+    "unrealized_pnl": -10.0232,
+    "cost_basis": 21.1063,
+    "floating_valuation": 31.1297,
+    "equity": 382.2032,
+    "free_margin": 375.1678,
+    "margin_level_pct": 5432.57
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "equivalent_balance",
+      "1101.3425"
+    ],
+    [
+      "trade_balance",
+      "392.2264"
+    ],
+    [
+      "margin_amount",
+      "7.0354"
+    ],
+    [
+      "unrealized_pnl",
+      "-10.0232"
+    ],
+    [
+      "cost_basis",
+      "21.1063"
+    ],
+    [
+      "floating_valuation",
+      "31.1297"
+    ],
+    [
+      "equity",
+      "382.2032"
+    ],
+    [
+      "free_margin",
+      "375.1678"
+    ],
+    [
+      "margin_level_pct",
+      "5432.57"
+    ]
+  ],
+  "footer": []
+}

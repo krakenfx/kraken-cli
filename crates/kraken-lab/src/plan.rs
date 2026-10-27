@@ -6,10 +6,11 @@
 //! [`experiment`](crate::experiment); progress is always re-derived here from
 //! the session directories, so there is no state file to drift.
 
+use crate::{
+    LabError, Result,
+    experiment::{Experiment, PlannedSession},
+};
 use serde::Serialize;
-
-use crate::experiment::{Experiment, PlannedSession};
-use crate::{LabError, Result};
 
 /// One discovered session's observed lifecycle, derived by the caller from its
 /// `session.json` and the recorder lock — never persisted.
@@ -21,10 +22,11 @@ pub struct SessionObservation {
     pub status: SessionStatus,
     /// The replay source ref the session's manifest records; `None` = live.
     pub source: Option<String>,
-    /// The sha256 of the tape the session actually replayed; `None` for a live session
-    /// or a manifest written before hashes were recorded. Together with
-    /// `source` this binds a session to a *sealed* replay entry — a re-recorded
-    /// tape has a different hash and so cannot satisfy the frozen leg.
+    /// The sha256 of the tape the session actually replayed; `None` for a live
+    /// session or a manifest written before hashes were recorded. Together
+    /// with `source` this binds a session to a *sealed* replay entry — a
+    /// re-recorded tape has a different hash and so cannot satisfy the
+    /// frozen leg.
     pub content_hash: Option<String>,
 }
 
@@ -43,7 +45,8 @@ pub enum SessionStatus {
 #[derive(Debug, Serialize)]
 pub struct NextAction {
     pub state: NextState,
-    /// The label of the session to start, or the id (`s<n>`) of the one running.
+    /// The label of the session to start, or the id (`s<n>`) of the one
+    /// running.
     pub session: Option<String>,
     /// The `--from` value for a replay entry; `None` for live runs.
     pub source: Option<String>,
@@ -214,10 +217,9 @@ fn entry_matches(entry: &PlannedSession, run: &SessionObservation) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
-
     use super::*;
     use crate::experiment::{Criteria, SessionPlan};
+    use chrono::Utc;
 
     fn experiment(plan: Option<SessionPlan>) -> Experiment {
         Experiment {
@@ -243,8 +245,8 @@ mod tests {
         ])
     }
 
-    /// The replay content_hash `plan()` seals — a session must carry it to consume
-    /// the replay leg.
+    /// The replay content_hash `plan()` seals — a session must carry it to
+    /// consume the replay leg.
     const SEALED_HASH: &str = "sha256:abc";
 
     fn observed(ordinal: u32, status: SessionStatus) -> SessionObservation {
@@ -290,8 +292,8 @@ mod tests {
         assert_eq!(
             action.command.as_deref(),
             Some(
-                "kraken session start --label m1-s1 --experiment m1 --strategy recipe-dca \
-                 --from tape:jun-crash --speed 10"
+                "kraken session start --label m1-s1 --experiment m1 --strategy recipe-dca --from \
+                 tape:jun-crash --speed 10"
             )
         );
     }

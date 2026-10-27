@@ -1,0 +1,18 @@
+{
+  "error": [],
+  "result": [
+    {
+      "method": "Bitcoin",
+      "limit": false,
+      "fee": "0.0000000000",
+      "gen-address": true,
+      "minimum": "0.00010000"
+    },
+    {
+      "method": "Bitcoin Lightning",
+      "limit": false,
+      "fee": "0.00000000",
+      "minimum": "0.00010000"
+    }
+  ]
+}

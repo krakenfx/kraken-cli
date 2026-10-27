@@ -1,0 +1,10 @@
+target/
+dist/
+node_modules/
+tools/npm/
+agents/tool-catalog.json
+agents/error-catalog.json
+skills/
+# Plain text saved as .md: no headings, so prose wrapping would fold its
+# pseudo-headings into one paragraph. Needs real headings first.
+docs/road*/

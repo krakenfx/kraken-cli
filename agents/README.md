@@ -6,9 +6,12 @@ Machine-readable contracts for building AI agents on top of `kraken-cli`.
 
 `tool-catalog.json` is the canonical command contract.
 
-- Coverage: **174 commands** with parameters, types, defaults, and examples
-- Every command includes: group, description, auth requirement, `dangerous` flag, and parameter schemas
-- 41 commands are marked `dangerous: true` (orders, withdrawals, transfers, cancel-all, staking, account and margin settings)
+- Coverage: **188 commands**, each callable one carrying a JSON Schema generated
+  from its own Rust type
+- Every command includes: group, description, auth requirement, `dangerous`
+  flag, and parameter schemas
+- 43 commands are marked `dangerous: true` (orders, withdrawals, transfers,
+  cancel-all, staking, account and margin settings)
 
 `error-catalog.json` is the error routing contract.
 
@@ -16,11 +19,11 @@ Machine-readable contracts for building AI agents on top of `kraken-cli`.
 
 ## Contents
 
-| File | Purpose |
-|------|---------|
-| `tool-catalog.json` | Canonical command catalog (174 commands) |
-| `error-catalog.json` | Error categories with retry guidance |
-| `examples/` | Runnable shell examples |
+| File                 | Purpose                                             |
+| -------------------- | --------------------------------------------------- |
+| `tool-catalog.json`  | Canonical command catalog (188 commands), generated |
+| `error-catalog.json` | Error categories with retry guidance                |
+| `examples/`          | Runnable shell examples                             |
 
 ## Using the Catalog
 
@@ -40,28 +43,51 @@ for cmd in catalog["commands"]:
 
 ### Build tool definitions for any platform
 
-The catalog contains everything needed to generate tool schemas for OpenAI, Anthropic, MCP, LangChain, or any other framework. Each command entry includes:
+The catalog contains everything needed to generate tool schemas for OpenAI,
+Anthropic, MCP, LangChain, or any other framework. Each command entry includes:
 
 ```json
 {
   "name": "order-buy",
   "group": "trade",
-  "command": "kraken order buy <PAIR> <VOLUME>",
-  "description": "Place a buy order.",
-  "auth_required": true,
+  "command": "kraken order buy",
+  "usage": "kraken order buy <PAIR> <VOLUME>",
+  "tool": "kraken_order_buy",
+  "reach": "tool",
+  "description": "Place a buy order.\n\nRouted by workspace mode: …",
+  "credentials": "spot",
   "dangerous": true,
-  "parameters": [
-    { "name": "PAIR", "type": "string", "required": true, "positional": true },
-    { "name": "--type", "type": "string", "required": false }
-  ],
+  "paper_safe": true,
+  "effect": "paper_safe",
+  "input_schema": {
+    "type": "object",
+    "properties": { "pair": { "type": "string" } }
+  },
   "example": "kraken order buy BTCUSD 0.001 --type limit --price 50000 --validate"
 }
+```
+
+`input_schema` is a JSON Schema generated from the command's own Rust type, so
+it cannot drift from what the command accepts. `constraints` appears on the
+commands whose arguments constrain each other (`ticker` takes `pairs` or
+`--all`, never both) — no schema keyword states that portably, and the MCP seam
+enforces it.
+
+```python
+# Safety filter: `credentials` replaced the old `auth_required` boolean in
+# schema_version 2.0.0 and says *which* key is needed.
+public = [c for c in catalog["commands"] if c["credentials"] == "none"]
 ```
 
 ### Filter by safety
 
 ```python
-safe_commands = [c for c in catalog["commands"] if not c.get("dangerous")]
+# `local_or_live` commands reach the real account when one argument is set, so
+# check their arguments on every call instead.
+safe_commands = [
+    c for c in catalog["commands"]
+    if not c.get("dangerous") and c["effect"] != "local_or_live"
+]
 dangerous_commands = [c for c in catalog["commands"] if c.get("dangerous")]
 ```
 

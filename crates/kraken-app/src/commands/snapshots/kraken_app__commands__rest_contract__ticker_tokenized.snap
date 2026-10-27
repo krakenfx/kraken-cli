@@ -1,0 +1,50 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "AAPLxUSD": {
+      "ask_price": 337.75,
+      "ask_whole_lot_volume": 3.0,
+      "ask_lot_volume": 3.0,
+      "bid_price": 337.74,
+      "bid_whole_lot_volume": 3.0,
+      "bid_lot_volume": 3.0,
+      "last_price": 337.65,
+      "last_volume": 2.961592,
+      "volume_today": 112.597758,
+      "volume_24h": 344.89339,
+      "vwap_today": 340.07,
+      "vwap_24h": 341.13,
+      "trades_today": 113,
+      "trades_24h": 242,
+      "low_today": 337.46,
+      "low_24h": 337.46,
+      "high_today": 343.6,
+      "high_24h": 345.42,
+      "open": 342.95
+    }
+  },
+  "headers": [
+    "Pair",
+    "Ask",
+    "Bid",
+    "Last",
+    "Volume (24h)",
+    "High (24h)",
+    "Low (24h)"
+  ],
+  "rows": [
+    [
+      "AAPLxUSD",
+      "337.75",
+      "337.74",
+      "337.65",
+      "344.89339",
+      "345.42",
+      "337.46"
+    ]
+  ],
+  "footer": []
+}

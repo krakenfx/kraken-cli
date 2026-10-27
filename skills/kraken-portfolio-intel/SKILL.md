@@ -193,7 +193,7 @@ kraken futures positions -o json 2>/dev/null
 
 ## Context Efficiency
 
-- Use `--offset` and `--limit` for paginated queries.
+- Use `--offset` to page through `trades-history`, `closed-orders` and `ledgers`; `deposit status`, `withdrawal status` and `earn strategies` page with `--cursor` and `--limit`.
 - Use `--without-count` on large history queries to skip count computation.
 - Filter by asset and time range to reduce response size.
 - Use exports for bulk data instead of paginating through REST.

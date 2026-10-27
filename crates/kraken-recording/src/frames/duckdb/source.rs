@@ -3,20 +3,24 @@
 //! frames ordered by the writer's own `seq`, each channel table
 //! read back through its [`Recordable::frames`] inverse.
 
-use std::path::Path;
-
-use kraken_core::subscribe::message::{BookData, OhlcData, TickerData, TradeData};
-
-use crate::error::{Error, Result};
-use crate::frames::capture::{RecordingDeclaration, RecordingIntegrity, RecordingManifest};
-use crate::frames::duckdb::Db;
-use crate::frames::duckdb::table::{DriftPolicy, Recordable};
-use crate::frames::{
-    CaptureSource, MarketEvent, clamp_non_decreasing, event_instant, shared_capture_lock,
+use crate::{
+    error::{Error, Result},
+    frames::{
+        CaptureSource, MarketEvent,
+        capture::{RecordingDeclaration, RecordingIntegrity, RecordingManifest},
+        clamp_non_decreasing,
+        duckdb::{
+            Db,
+            table::{DriftPolicy, Recordable},
+        },
+        event_instant, shared_capture_lock,
+    },
+    lock::FileLock,
+    schema,
+    source::Source,
 };
-use crate::lock::FileLock;
-use crate::schema;
-use crate::source::Source;
+use kraken_core::subscribe::message::{BookData, OhlcData, TickerData, TradeData};
+use std::path::Path;
 
 pub struct DuckdbSource {
     db: Db,
@@ -170,13 +174,16 @@ impl CaptureSource for DuckdbSource {
 
 #[cfg(test)]
 mod tests {
-    use kraken_core::{ChannelData, ChannelMessage};
-
     use super::*;
-    use crate::frames::CaptureSink;
-    use crate::frames::duckdb::DuckdbSink;
-    use crate::frames::jsonl::{TapeSink, TapeSource};
-    use crate::sink::Sink;
+    use crate::{
+        frames::{
+            CaptureSink,
+            duckdb::DuckdbSink,
+            jsonl::{TapeSink, TapeSource},
+        },
+        sink::Sink,
+    };
+    use kraken_core::{ChannelData, ChannelMessage};
 
     fn meta() -> RecordingDeclaration {
         RecordingDeclaration {
@@ -690,8 +697,8 @@ mod tests {
         {
             let db = Db::open(&path).unwrap();
             db.execute_batch(
-                "UPDATE trades SET side = 'hedge' WHERE trade_id = 1; \
-                 UPDATE book SET side = 'mid' WHERE price = 100.0",
+                "UPDATE trades SET side = 'hedge' WHERE trade_id = 1; UPDATE book SET side = \
+                 'mid' WHERE price = 100.0",
             )
             .unwrap();
             db.meta_set("schema_version", "1.7").unwrap();
@@ -750,8 +757,8 @@ mod tests {
         {
             let db = Db::open(&path).unwrap();
             db.execute_batch(
-                "ALTER TABLE trades ALTER COLUMN price SET DATA TYPE VARCHAR; \
-                 UPDATE trades SET price = 'oops'",
+                "ALTER TABLE trades ALTER COLUMN price SET DATA TYPE VARCHAR; UPDATE trades SET \
+                 price = 'oops'",
             )
             .unwrap();
         }

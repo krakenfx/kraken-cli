@@ -4,15 +4,14 @@
 //! cannot yield top-of-book without reconstruction, so book-only assets remain
 //! unmarked. Mid avoids charging spread again after fills already paid it.
 
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
-
 use kraken_core::{ChannelData, ChannelMessage};
 use kraken_paper::{canonical_key, valid_quote};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 
-/// The smallest odd window that prevents one observation from becoming a majority.
+/// The smallest odd window that prevents one observation from becoming a
+/// majority.
 const MEDIAN_WINDOW: usize = 3;
 
 /// Rolling median marks per canonical `(base, quote)`.
@@ -65,7 +64,8 @@ impl Table {
         changed
     }
 
-    /// Adapts marks to [`kraken_paper::PaperState::valuation`] without cross rates.
+    /// Adapts marks to [`kraken_paper::PaperState::valuation`] without cross
+    /// rates.
     pub fn to_prices(&self, currency: &str) -> HashMap<String, (Decimal, Decimal)> {
         self.marks
             .iter()
@@ -128,7 +128,8 @@ impl SymbolMark {
         Self { channel, window }
     }
 
-    /// Preserves the window across channel upgrades to avoid restarting warm-up.
+    /// Preserves the window across channel upgrades to avoid restarting
+    /// warm-up.
     fn observe(&mut self, channel: Channel, observation: Decimal) -> bool {
         if channel < self.channel {
             return false;

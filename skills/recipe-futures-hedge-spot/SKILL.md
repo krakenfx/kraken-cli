@@ -30,6 +30,6 @@ Protect a spot BTC holding from downside by shorting an equivalent futures posit
 7. Verify the position: `kraken futures positions -o json 2>/dev/null`
 8. Enable dead man's switch: `kraken futures cancel-after 3600 -o json 2>/dev/null`
 9. Monitor margin: `kraken futures accounts -o json 2>/dev/null`
-10. To remove hedge, close futures: `kraken futures order buy PF_XBTUSD $BTC_BAL --reduce-only -o json 2>/dev/null`
+10. To remove hedge, close futures (requires human approval): `kraken futures order buy PF_XBTUSD $BTC_BAL --type market --reduce-only -o json 2>/dev/null`
 
 If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

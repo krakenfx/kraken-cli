@@ -3,12 +3,15 @@
 //! the can't-disagree contract proven from outside the crate.
 
 use kraken_lab::score;
-use kraken_paper::OrderSide;
-use kraken_paper::account::Origin;
+use kraken_paper::{OrderSide, account::Origin};
 use kraken_replay::explain_pnl;
-use kraken_session::manifest::SessionOutcome;
-use kraken_session::timeline::SessionTimeline;
-use kraken_session::timeline::fixtures::{self, SessionBuilder};
+use kraken_session::{
+    manifest::SessionOutcome,
+    timeline::{
+        SessionTimeline,
+        fixtures::{self, SessionBuilder},
+    },
+};
 use rust_decimal_macros::dec;
 
 // Fixture misuse is a test bug; the parse target is a literal.

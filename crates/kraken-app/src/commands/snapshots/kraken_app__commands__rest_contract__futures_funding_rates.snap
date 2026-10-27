@@ -1,0 +1,46 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "rates": [
+      {
+        "timestamp": "2022-06-28T00:00:00.000Z",
+        "fundingRate": -0.000000000815861558,
+        "relativeFundingRate": -0.000016898883333333
+      },
+      {
+        "timestamp": "2022-06-28T04:00:00.000Z",
+        "fundingRate": -0.000000000026115278,
+        "relativeFundingRate": -0.000000540935416667
+      },
+      {
+        "timestamp": "2022-06-28T08:00:00.000Z",
+        "fundingRate": -0.000000000408356853,
+        "relativeFundingRate": -0.000008521190625
+      }
+    ],
+    "serverTime": "2022-06-28T09:29:04.243Z"
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "result",
+      "success"
+    ],
+    [
+      "rates",
+      "[{\"timestamp\":\"2022-06-28T00:00:00.000Z\",\"fundingRate\":-8.15861558e-10,\"relativeFundingRate\":-0.000016898883333333},{\"timestamp\":\"2022-06-28T04:00:00.000Z\",\"fundingRate\":-2.6115278e-11,\"relativeFundingRate\":-5.40935416667e-7},{\"timestamp\":\"2022-06-28T08:00:00.000Z\",\"fundingRate\":-4.08356853e-10,\"relativeFundingRate\":-8.521190625e-6}]"
+    ],
+    [
+      "serverTime",
+      "2022-06-28T09:29:04.243Z"
+    ]
+  ],
+  "footer": []
+}

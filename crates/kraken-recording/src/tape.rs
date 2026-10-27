@@ -1,21 +1,19 @@
 //! Tape identity and the read-only catalog behind `kraken tape list`.
 //!
 //! A printed [`TapeRef`] is a public contract: the replay `--source` flag
-//! and sealed lab session plans consume the exact `Display` form, so the grammar
-//! is explicit-prefix only (`tape:<name>` for the global library,
+//! and sealed lab session plans consume the exact `Display` form, so the
+//! grammar is explicit-prefix only (`tape:<name>` for the global library,
 //! `run:<ref>` for a session's own tape) and parse/display round-trip by law.
 //! Growth (content hashes, time slices) must be additive to the string form.
 
-use std::fmt;
-use std::path::Path;
-use std::str::FromStr;
-
+use crate::{
+    error::{Error, Result},
+    frames::capture::{RecordingIntegrity, load_sidecar, tapes_root},
+    lock::is_lock_held,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-
-use crate::error::{Error, Result};
-use crate::frames::capture::{RecordingIntegrity, load_sidecar, tapes_root};
-use crate::lock::is_lock_held;
+use std::{fmt, path::Path, str::FromStr};
 
 /// A namespaced pointer to recorded market data: a standalone `kraken record`
 /// tape, or the tape a playground session captured for itself.
@@ -46,8 +44,8 @@ impl FromStr for TapeRef {
         })?;
         if !kraken_core::name::is_safe_name_segment(name) {
             return Err(Error::Rejected(format!(
-                "invalid tape name {name:?}: use only letters, digits, '.', '-', or '_' \
-                 (no '/', spaces, or '.'/'..')."
+                "invalid tape name {name:?}: use only letters, digits, '.', '-', or '_' (no '/', \
+                 spaces, or '.'/'..')."
             )));
         }
         let name = name.to_owned();
@@ -285,10 +283,9 @@ pub fn list_recordings(base: &Path) -> Result<Vec<TapeEntry>> {
 
 #[cfg(test)]
 mod tests {
-    use proptest::prelude::*;
-
     use super::*;
     use crate::frames::capture::resolve;
+    use proptest::prelude::*;
 
     #[test]
     fn frame_count_reads_jsonl_lines_and_is_unknown_for_foreign_files() {

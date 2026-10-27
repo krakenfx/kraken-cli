@@ -1,0 +1,36 @@
+[package]
+description            = "Authentication for kraken-cli: stored keys, the active key, and browser sign-in"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-auth"
+publish                = false
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+# A leaf: no kraken-* dependency, so the protocol stays reviewable on its own.
+[dependencies]
+base64     = { workspace = true }
+chrono     = { workspace = true }
+getrandom  = { workspace = true }
+reqwest    = { workspace = true, features = ["form", "json"] }
+secrecy    = { workspace = true, features = ["serde"] }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+sha2       = { workspace = true }
+strum      = { workspace = true }
+thiserror  = { workspace = true }
+tokio      = { workspace = true, features = ["io-util", "macros", "net", "rt", "time"] }
+toml       = { workspace = true }
+tracing    = { workspace = true }
+url        = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }
+tokio    = { workspace = true, features = ["io-util", "macros", "net", "rt", "test-util", "time"] }
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

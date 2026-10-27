@@ -39,6 +39,7 @@ Order execution, position management, and spot paper testing.
 | [kraken-paper-strategy](./kraken-paper-strategy/SKILL.md) | Test spot strategies on paper trading before live deployment. |
 | [kraken-paper-to-live](./kraken-paper-to-live/SKILL.md) | Promote validated paper strategies (spot and futures) to live trading. |
 | [kraken-playground](./kraken-playground/SKILL.md) | Drive recorded paper-trading sessions (and the one-command playground demo) to test a hypothesis on live prices. |
+| [kraken-lab-experiment](./kraken-lab-experiment/SKILL.md) | Run the Autoresearch Lab lifecycle under /loop: freeze a hash-sealed hypothesis, drive recorded sessions, score them, read the mechanical verdict. |
 | [kraken-risk-operations](./kraken-risk-operations/SKILL.md) | Operational risk controls for live agent trading sessions. |
 
 ## Futures
@@ -97,7 +98,6 @@ Multi-step workflows combining multiple skills.
 | [recipe-playground-price-alert](./recipe-playground-price-alert/SKILL.md) | Example driver: drive a price-level-alert hypothesis into a recorded session. |
 | [recipe-playground-webhook](./recipe-playground-webhook/SKILL.md) | Example driver: turn incoming webhook signals into validated paper trades inside a recorded session. |
 | [recipe-session-post-mortem](./recipe-session-post-mortem/SKILL.md) | Narrate a stopped session's post-mortem: replay the window and explain the P&L in plain, presentation-ready terms. |
-| [kraken-lab-experiment](./kraken-lab-experiment/SKILL.md) | Run the Autoresearch Lab lifecycle under /loop: freeze a hash-sealed hypothesis, drive recorded sessions, score them, read the mechanical verdict. |
 
 ### Strategy Recipes
 

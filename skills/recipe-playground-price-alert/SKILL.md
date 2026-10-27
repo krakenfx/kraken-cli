@@ -52,12 +52,10 @@ $60,000. Check every 5 minutes. At the end, show which levels were hit and when.
 
 ## Start the Session
 
-Work inside a paper workspace (create one once: `kraken workspace create alerts --capital 10000 --mode paper`), then:
+Work inside a paper workspace (create one once: `kraken workspace create alerts --capital 10000 --mode paper`). Every session command below names it with `--workspace alerts`, because an exported `KRAKEN_WORKSPACE` does not reach a later shell, such as a `/loop` fire.
 
 ```bash
-export KRAKEN_WORKSPACE=alerts
-
-kraken session start \
+kraken --workspace alerts session start \
   --symbols BTC/USD --channels ticker,trade --to duckdb,jsonl \
   --label alert-btc-$(date +%Y%m%d-%H%M%S) \
   --strategy recipe-playground-price-alert \
@@ -102,13 +100,14 @@ PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[] | .last_price')
 THINK — alert on the *crossing*, not on the *level*. A sustained excursion is one event, not one per round. Classify the price into a **zone** — `above` / `within` / `below` — and alert only when the zone *changes* into a breakout. `kind` alone can't carry this (an `alert` doesn't say which side, and the per-round skip note would erase the last alert), so the zone lives in the session's typed state cell; reasons stay narrative:
 
 ```bash
-PREV_ZONE=$(kraken session state get --session s<n> -o json 2>/dev/null \
-  | jq -r '.cursor.zone // "within"')
+# A failed read must end the firing: a default "within" would swallow a breakout.
+STATE=$(kraken --workspace alerts session state get --session s<n> -o json 2>/dev/null) || exit 1
+PREV_ZONE=$(echo "$STATE" | jq -r '.cursor.zone // "within"')
 
 # Fail loud: an empty price must not classify a zone (a fabricated "within"
 # would silently swallow a real breakout).
 if [ -z "$PRICE" ]; then
-  kraken session note --kind alert --symbol BTC/USD \
+  kraken --workspace alerts session note --kind alert --symbol BTC/USD \
     --reason "round skipped: READ failed (price empty)" -o json 2>/dev/null
   exit 0
 fi
@@ -118,7 +117,7 @@ else ZONE=within; fi
 
 # Persist the zone for the next firing (typed: a typo refuses instead of
 # silently resetting the crossing detector).
-kraken session state set --zone "$ZONE" -o json 2>/dev/null
+kraken --workspace alerts session state set --zone "$ZONE" -o json 2>/dev/null
 ```
 
 - Zone entered `above` from a different zone → the upper level was just crossed — **alert**.
@@ -126,39 +125,39 @@ kraken session state set --zone "$ZONE" -o json 2>/dev/null
 - Zone unchanged (still `above`, still `below`, or still `within`) → same state, no new crossing — **skip**.
 - `within` re-arms both boundaries: the next move to `above` or `below` alerts again.
 
-Because the marker is on every line, `above → below` reads as a genuine change and alerts, and a sustained `above → above` reads as unchanged and does not.
+Because the state cell holds the previous zone, `above → below` reads as a genuine change and alerts, and a sustained `above → above` reads as unchanged and does not.
 
-ACT — alert on a fresh breakout, always ending the reason with the new `zone=` marker:
+ACT — alert on a fresh breakout, ending the reason with the new `zone=` marker for the reader:
 
 ```bash
 # upper break (ZONE=above, PREV_ZONE != above)
-kraken session note --kind alert --symbol BTC/USD \
+kraken --workspace alerts session note --kind alert --symbol BTC/USD \
   --reason "alert round N: BTC/USD broke above <upper> at <price>; zone=above" \
   -o json 2>/dev/null
 
 # lower break (ZONE=below, PREV_ZONE != below)
-kraken session note --kind alert --symbol BTC/USD \
+kraken --workspace alerts session note --kind alert --symbol BTC/USD \
   --reason "alert round N: BTC/USD broke below <lower> at <price>; zone=below" \
   -o json 2>/dev/null
 ```
 
-ACT (skip) — no zone change; record the round and carry the current zone forward so the next round sees it:
+ACT (skip) — no zone change; record the round:
 
 ```bash
-kraken session note --kind skip --symbol BTC/USD \
+kraken --workspace alerts session note --kind skip --symbol BTC/USD \
   --reason "skip round N: BTC/USD at <price>, no new crossing (<lower>/<upper>); zone=$ZONE" \
   -o json 2>/dev/null
 ```
 
-Always pass the numeric reason, and always end it with the `zone=` marker — it is the state the next round reads to tell a fresh crossing from a sustained move.
+Always pass the numeric reason. The `zone=` marker is narrative for the post-mortem; the next round reads the zone from `kraken session state get`, never from a reason.
 
 ## Stop and Review
 
 ```bash
-kraken session stop -o json 2>/dev/null
-kraken session show -o json 2>/dev/null | jq '.summary'
+kraken --workspace alerts session stop -o json 2>/dev/null
+kraken --workspace alerts session show -o json 2>/dev/null | jq '.summary'
 
-kraken session decisions --session s<n> -o json 2>/dev/null \
+kraken --workspace alerts session decisions --session s<n> -o json 2>/dev/null \
   | jq -c '.decisions[] | select(.kind=="alert") | {timestamp, reason}'
 ```
 
@@ -172,7 +171,7 @@ Report:
 - This recipe records a session. It never places a live order — alerts are informational only.
 - `/loop` drives the pace and the agent runs each round. The CLI has no scheduler and runs no strategy.
 - Do not add a pacing gate inside the round; `/loop` enforces spacing.
-- A scheduled `/loop` fire only runs what the agent may invoke unprompted. Keep `kraken ticker`, `kraken session note`, and `kraken session show` permitted non-interactively, or a fire stalls waiting on an approval you never see.
+- A scheduled `/loop` fire only runs what the agent may invoke unprompted. Keep `kraken ticker` and the `kraken --workspace alerts` forms of `session state`, `session note`, and `session show` permitted non-interactively, or a fire stalls waiting on an approval you never see.
 - Keep every level in `--strategy-params` and the comparison in `jq`/`bc`, so a rerun on the same tape reproduces the decisions.
 - A session whose params omit `interval_s` may not claim any cadence in its report.
 - The session directory (`session.json`, `decisions.jsonl`, and the tape sinks) is owned by the CLI recorder. The agent only **reads** it, and only for the stop-time summary. Never write, edit, `mkdir`, or append inside it — every decision goes through `kraken session note`, so the recorder stays the single writer.

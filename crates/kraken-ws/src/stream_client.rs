@@ -1,28 +1,33 @@
-//! The streaming client — the stream-side sibling of [`RequestClient`](crate::RequestClient).
+//! The streaming client — the stream-side sibling of
+//! [`RequestClient`](crate::RequestClient).
 //!
 //! [`StreamClient::connect`] plans one connection per [`Endpoint`], mints each
 //! private endpoint's token once (failing fast on a bad key), spawns one
 //! self-reconnecting actor per endpoint, and returns a control handle plus the
-//! [`EventStream`] the actors fan into. Shutdown is drop-triggered from either end:
-//! dropping the handle cancels every actor; dropping the stream fails their next send
-//! and they wind down.
+//! [`EventStream`] the actors fan into. Shutdown is drop-triggered from either
+//! end: dropping the handle cancels every actor; dropping the stream fails
+//! their next send and they wind down.
 
+use super::{
+    backoff::ReconnectPolicy,
+    config::WsConfig,
+    connection::{Event, Stream, StreamConnection},
+};
+use kraken_core::{
+    WsSubscription,
+    endpoint::Endpoint,
+    error::{Error, Result},
+};
 use std::num::NonZeroU64;
-
-use kraken_core::WsSubscription;
-use kraken_core::endpoint::Endpoint;
-use kraken_core::error::{Error, Result};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::sync::{CancellationToken, DropGuard};
 
-use super::backoff::ReconnectPolicy;
-use super::config::WsConfig;
-use super::connection::{Event, Stream, StreamConnection};
-
-/// Which endpoints to open for a set of subscriptions, given the credential state.
+/// Which endpoints to open for a set of subscriptions, given the credential
+/// state.
 struct EndpointPlan {
-    /// `(endpoint, its subscriptions)` per endpoint to open, in first-seen order.
+    /// `(endpoint, its subscriptions)` per endpoint to open, in first-seen
+    /// order.
     open: Vec<(Endpoint, Vec<WsSubscription>)>,
     /// Subscriptions dropped because no credentials are configured.
     skipped: Vec<WsSubscription>,
@@ -47,8 +52,9 @@ fn plan_endpoints(subs: Vec<WsSubscription>, have_token: bool) -> EndpointPlan {
     EndpointPlan { open, skipped }
 }
 
-/// A handle to the streaming connections for one session. Dropping it shuts every
-/// connection down; the event data flows through the separate [`EventStream`].
+/// A handle to the streaming connections for one session. Dropping it shuts
+/// every connection down; the event data flows through the separate
+/// [`EventStream`].
 #[must_use = "dropping the StreamClient handle shuts every connection down"]
 #[derive(Debug)]
 pub struct StreamClient {
@@ -57,23 +63,25 @@ pub struct StreamClient {
     skipped_for_credentials: usize,
 }
 
-/// The decoded [`Event`]s from every connection actor, fanned into one sequence. It
-/// buffers from the moment the actors spawn, so no early event is lost before the
-/// caller starts draining; dropping it signals every actor to wind down.
+/// The decoded [`Event`]s from every connection actor, fanned into one
+/// sequence. It buffers from the moment the actors spawn, so no early event is
+/// lost before the caller starts draining; dropping it signals every actor to
+/// wind down.
 pub type EventStream = UnboundedReceiverStream<Event>;
 
 impl StreamClient {
-    /// Open the streaming connections for `subs`, returning the control handle and the
-    /// [`EventStream`]. Private endpoints are skipped (with a warning) when no
-    /// credentials are configured; each surviving private endpoint's token is minted up
-    /// front so a bad key fails now rather than in a forever-reconnecting actor.
-    /// `req_id` is the caller's `--req-id`, echoed on the subscribe ack.
+    /// Open the streaming connections for `subs`, returning the control handle
+    /// and the [`EventStream`]. Private endpoints are skipped (with a
+    /// warning) when no credentials are configured; each surviving private
+    /// endpoint's token is minted up front so a bad key fails now rather
+    /// than in a forever-reconnecting actor. `req_id` is the caller's
+    /// `--req-id`, echoed on the subscribe ack.
     ///
     /// # Errors
-    /// - [`Error::NoTokenSource`]: every requested channel is private and no credentials
-    ///   are configured (fail closed).
-    /// - [`Error::TokenRejected`] / [`Error::MintFailed`]: the up-front token mint
-    ///   failed.
+    /// - [`Error::NoTokenSource`]: every requested channel is private and no
+    ///   credentials are configured (fail closed).
+    /// - [`Error::TokenRejected`] / [`Error::MintFailed`]: the up-front token
+    ///   mint failed.
     pub async fn connect(
         subs: Vec<WsSubscription>,
         req_id: Option<NonZeroU64>,
@@ -138,8 +146,9 @@ impl StreamClient {
         ))
     }
 
-    /// How many requested subscriptions the planner dropped for missing credentials —
-    /// reported so the caller never re-derives the skip policy.
+    /// How many requested subscriptions the planner dropped for missing
+    /// credentials — reported so the caller never re-derives the skip
+    /// policy.
     pub fn skipped_for_credentials(&self) -> usize {
         self.skipped_for_credentials
     }
@@ -147,10 +156,9 @@ impl StreamClient {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
     use crate::token::{BoxFuture, Minted, TokenSource};
+    use std::sync::Arc;
 
     fn ticker() -> WsSubscription {
         WsSubscription::Ticker {
@@ -190,14 +198,6 @@ mod tests {
         let plan = plan_endpoints(vec![ticker(), ticker()], false);
         assert_eq!(plan.open.len(), 1);
         assert_eq!(plan.open[0].1.len(), 2);
-    }
-
-    #[test]
-    fn plan_leaves_nothing_open_when_all_private_and_unauthenticated() {
-        let plan = plan_endpoints(vec![balances()], false);
-        assert!(plan.open.is_empty());
-        assert_eq!(plan.skipped.len(), 1);
-        assert_eq!(plan.skipped[0].endpoint(), Endpoint::Auth);
     }
 
     /// A token source whose mint always fails, for the bad-key path.

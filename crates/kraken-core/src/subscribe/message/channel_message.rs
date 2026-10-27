@@ -1,26 +1,27 @@
-//! The typed channel-data frame: one shared envelope around a channel-tagged payload,
-//! mirroring the reply side's `MethodResult`.
+//! The typed channel-data frame: one shared envelope around a channel-tagged
+//! payload, mirroring the reply side's `MethodResult`.
 
+use super::{
+    super::channel::{Channel, SubscribableChannel},
+    balances::BalanceData,
+    book::BookData,
+    envelope::MessageType,
+    executions::ExecutionData,
+    instrument::InstrumentData,
+    level3::Level3Data,
+    ohlc::OhlcData,
+    status::StatusData,
+    ticker::TickerData,
+    trade::TradeData,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
-use super::super::channel::{Channel, SubscribableChannel};
-use super::balances::BalanceData;
-use super::book::BookData;
-use super::envelope::MessageType;
-use super::executions::ExecutionData;
-use super::instrument::InstrumentData;
-use super::level3::Level3Data;
-use super::ohlc::OhlcData;
-use super::status::StatusData;
-use super::ticker::TickerData;
-use super::trade::TradeData;
-
-/// A strictly-typed, parsed channel-data frame: the shared `{channel, type, data,
-/// sequence?}` envelope, with the channel-tagged payload flattened in so a frame
-/// serializes back to its natural wire shape. Account channels carry a `sequence`;
-/// market channels do not. Unknown top-level fields are ignored so the payload stays
-/// the single source of truth.
+/// A strictly-typed, parsed channel-data frame: the shared `{channel, type,
+/// data, sequence?}` envelope, with the channel-tagged payload flattened in so
+/// a frame serializes back to its natural wire shape. Account channels carry a
+/// `sequence`; market channels do not. Unknown top-level fields are ignored so
+/// the payload stays the single source of truth.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelMessage {
@@ -31,10 +32,10 @@ pub struct ChannelMessage {
     pub sequence: Option<u64>,
 }
 
-/// The wire `channel` name paired with its `data` payload — serde dispatches on the
-/// frame's own `channel` field, so the channel names its payload schema and a payload
-/// that no longer deserializes is a hard error: protocol drift surfaces loud, per
-/// frame, instead of flowing on mistyped.
+/// The wire `channel` name paired with its `data` payload — serde dispatches on
+/// the frame's own `channel` field, so the channel names its payload schema and
+/// a payload that no longer deserializes is a hard error: protocol drift
+/// surfaces loud, per frame, instead of flowing on mistyped.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "channel", content = "data", rename_all = "lowercase")]
 pub enum ChannelData {
@@ -42,7 +43,8 @@ pub enum ChannelData {
     Trade(Vec<TradeData>),
     Book(Vec<BookData>),
     Ohlc(Vec<OhlcData>),
-    /// The one object-shaped payload: a single reference-data catalogue, not entries.
+    /// The one object-shaped payload: a single reference-data catalogue, not
+    /// entries.
     Instrument(InstrumentData),
     Executions(Vec<ExecutionData>),
     Balances(Vec<BalanceData>),
@@ -66,9 +68,10 @@ impl ChannelMessage {
         self.body.channel()
     }
 
-    /// Whether this is a `snapshot` frame — the initial backfill the server replays on
-    /// subscribe and on every reconnect — rather than a live `update`. Snapshot timestamps
-    /// describe historical data, so the live monitor excludes them from latency measurement.
+    /// Whether this is a `snapshot` frame — the initial backfill the server
+    /// replays on subscribe and on every reconnect — rather than a live
+    /// `update`. Snapshot timestamps describe historical data, so the live
+    /// monitor excludes them from latency measurement.
     pub fn is_snapshot(&self) -> bool {
         self.message_type == MessageType::Snapshot
     }
@@ -82,11 +85,12 @@ impl ChannelMessage {
 }
 
 impl ChannelData {
-    /// Whether any enum-typed field in this payload decoded through an `Unknown`
-    /// fallback — vocabulary Kraken added after this crate's catalogue was pinned.
-    /// The drift-observability hook: the connection actor warns on it, so tolerated
-    /// growth is still logged, never silent. Each payload walks its own vocabulary;
-    /// a new `Unknown` fallback must join its payload's walk.
+    /// Whether any enum-typed field in this payload decoded through an
+    /// `Unknown` fallback — vocabulary Kraken added after this crate's
+    /// catalogue was pinned. The drift-observability hook: the connection
+    /// actor warns on it, so tolerated growth is still logged, never
+    /// silent. Each payload walks its own vocabulary; a new `Unknown`
+    /// fallback must join its payload's walk.
     pub fn has_unknown_vocabulary(&self) -> bool {
         match self {
             Self::Ticker(_) | Self::Trade(_) | Self::Book(_) | Self::Ohlc(_) => false,
@@ -98,7 +102,8 @@ impl ChannelData {
         }
     }
 
-    /// The wire channel this payload belongs to — the one payload → channel mapping.
+    /// The wire channel this payload belongs to — the one payload → channel
+    /// mapping.
     pub fn channel(&self) -> Channel {
         use SubscribableChannel as Sub;
         match self {
@@ -119,7 +124,8 @@ impl ChannelData {
     /// fall back per [`OhlcData::event_ts`]). The choice of entry is this
     /// crate's convention, not a wire guarantee — defined once so every
     /// consumer that needs a single instant per frame agrees on it. Only the
-    /// four market channels stamp per-entry times; every other payload is `None`.
+    /// four market channels stamp per-entry times; every other payload is
+    /// `None`.
     pub fn event_ts(&self) -> Option<&str> {
         match self {
             Self::Ticker(entries) => entries.last().map(|t| t.timestamp.as_str()),
@@ -137,16 +143,19 @@ impl ChannelData {
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        super::{
+            executions::{ExecType, LiquidityIndicator, OrderStatus},
+            level3::Level3Event,
+            status::SystemStatus,
+        },
+        *,
+    };
+    use crate::PriceType;
     use serde_json::Value;
 
-    use super::super::executions::{ExecType, LiquidityIndicator, OrderStatus};
-    use super::super::level3::Level3Event;
-    use super::super::status::SystemStatus;
-    use super::*;
-    use crate::PriceType;
-
-    /// Decode `raw` and pin the round trip: the typed frame must re-serialize to
-    /// the captured wire value.
+    /// Decode `raw` and pin the round trip: the typed frame must re-serialize
+    /// to the captured wire value.
     fn round_trips(raw: &str) -> ChannelMessage {
         let msg = ChannelMessage::parse(raw).expect("frame decodes");
         assert_eq!(
@@ -411,9 +420,10 @@ mod tests {
         assert!(ChannelMessage::parse(r#"{"method":"subscribe","success":true}"#).is_none());
     }
 
-    /// [`Channel`] and [`ChannelData`]'s tag strings are two vocabularies synced only by
-    /// name: a channel without a payload counterpart would compile and first fail on a
-    /// live frame. Pin the pairing here instead.
+    /// [`Channel`] and [`ChannelData`]'s tag strings are two vocabularies
+    /// synced only by name: a channel without a payload counterpart would
+    /// compile and first fail on a live frame. Pin the pairing here
+    /// instead.
     #[test]
     fn every_channel_in_the_catalogue_dispatches_to_a_payload() {
         use strum::IntoEnumIterator;

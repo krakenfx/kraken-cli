@@ -1,0 +1,19 @@
+{
+  "error": [],
+  "result": {
+    "orders": [
+      {
+        "txid": "65LRD3-AHGRA-YAH8E5",
+        "descr": {
+          "order": "buy 1.02010000 XBTUSD @ limit 29000.0"
+        }
+      },
+      {
+        "txid": "OK8HFF-5J2PL-XLR17S",
+        "descr": {
+          "order": "sell 0.14000000 XBTUSD @ limit 40000.0"
+        }
+      }
+    ]
+  }
+}

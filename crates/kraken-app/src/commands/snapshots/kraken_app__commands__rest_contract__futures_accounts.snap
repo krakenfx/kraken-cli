@@ -1,0 +1,146 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "accounts": {
+      "cash": {
+        "type": "cashAccount",
+        "balances": {
+          "xbt": "141.31756797",
+          "xrp": "52465.1254"
+        }
+      },
+      "fi_xbtusd": {
+        "type": "marginAccount",
+        "auxiliary": {
+          "usd": 0,
+          "pv": 153.73891563,
+          "pnl": 12.42134766,
+          "af": 100.73891563,
+          "funding": 100.73891563
+        },
+        "balances": {
+          "FI_XBTUSD_171215": "50000",
+          "FI_XBTUSD_180615": "-15000",
+          "xbt": "141.31756797",
+          "xrp": "0"
+        },
+        "currency": "xbt",
+        "marginRequirements": {
+          "im": 52.8,
+          "mm": 23.76,
+          "lt": 39.6,
+          "tt": 15.84
+        },
+        "triggerEstimates": {
+          "im": 3110,
+          "mm": 3000,
+          "lt": 2890,
+          "tt": 2830
+        }
+      },
+      "flex": {
+        "type": "multiCollateralMarginAccount",
+        "currencies": {
+          "XBT": {
+            "quantity": 0.1185308247,
+            "value": 4998.721054420551,
+            "collateral": 4886.49976674881,
+            "available": 0.1185308247
+          },
+          "USD": {
+            "quantity": 5000,
+            "value": 5000,
+            "collateral": 5000,
+            "available": 5000
+          },
+          "EUR": {
+            "quantity": 4540.5837374453,
+            "value": 4999.137289089901,
+            "collateral": 4886.906656949836,
+            "available": 4540.5837374453
+          }
+        },
+        "balanceValue": 34995.52,
+        "portfolioValue": 34995.52,
+        "collateralValue": 34122.66,
+        "initialMargin": 0,
+        "initialMarginWithOrders": 0,
+        "maintenanceMargin": 0,
+        "pnl": 0,
+        "unrealizedFunding": 0,
+        "totalUnrealized": 0,
+        "totalUnrealizedAsMargin": 0,
+        "marginEquity": 34122.66,
+        "availableMargin": 34122.66
+      }
+    },
+    "serverTime": "2016-02-25T09:45:53.818Z"
+  },
+  "headers": [
+    "account_id",
+    "type",
+    "currency",
+    "balance"
+  ],
+  "rows": [
+    [
+      "cash",
+      "cashAccount",
+      "xbt",
+      "141.31756797"
+    ],
+    [
+      "cash",
+      "cashAccount",
+      "xrp",
+      "52465.1254"
+    ],
+    [
+      "fi_xbtusd",
+      "marginAccount",
+      "FI_XBTUSD_171215",
+      "50000"
+    ],
+    [
+      "fi_xbtusd",
+      "marginAccount",
+      "FI_XBTUSD_180615",
+      "-15000"
+    ],
+    [
+      "fi_xbtusd",
+      "marginAccount",
+      "xbt",
+      "141.31756797"
+    ],
+    [
+      "fi_xbtusd",
+      "marginAccount",
+      "xrp",
+      "0"
+    ],
+    [
+      "flex",
+      "multiCollateralMarginAccount",
+      "XBT",
+      "4998.721054420551"
+    ],
+    [
+      "flex",
+      "multiCollateralMarginAccount",
+      "USD",
+      "5000"
+    ],
+    [
+      "flex",
+      "multiCollateralMarginAccount",
+      "EUR",
+      "4999.137289089901"
+    ]
+  ],
+  "footer": []
+}

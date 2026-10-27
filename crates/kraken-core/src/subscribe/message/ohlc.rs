@@ -8,11 +8,12 @@ use serde_with::skip_serializing_none;
 
 /// One `ohlc` candle.
 ///
-/// `timestamp` is deprecated on the wire (superseded by `interval_begin`) and so
-/// optional; the recorder falls back to `interval_begin` when it is absent.
+/// `timestamp` is deprecated on the wire (superseded by `interval_begin`) and
+/// so optional; the recorder falls back to `interval_begin` when it is absent.
 ///
-/// No `deny_unknown_fields`: an extensible inbound payload (see the `ticker` rationale)
-/// — an exchange-added field is ignored, not a frame-dropping decode error.
+/// No `deny_unknown_fields`: an extensible inbound payload (see the `ticker`
+/// rationale) — an exchange-added field is ignored, not a frame-dropping decode
+/// error.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OhlcData {

@@ -49,16 +49,23 @@ kraken workspace status -o json 2>/dev/null
 
 ## Live TWAP Loop
 
-The agent runs this loop externally (the CLI does not have a built-in scheduler):
+The agent runs this loop externally (the CLI does not have a built-in scheduler).
+As written, the loop sends every slice without asking anyone, so run it only at
+autonomy level 4+. Below that, run one validated slice per approved call and wait
+the interval between calls.
+Live orders run outside the paper workspace, so clear it first:
 
 ```bash
+unset KRAKEN_WORKSPACE
 TOTAL_VOLUME=0.05
 SLICES=5
 SLICE_VOL=$(echo "scale=8; $TOTAL_VOLUME / $SLICES" | bc)
 INTERVAL=60
 
 for i in $(seq 1 $SLICES); do
-  kraken order buy BTCUSD $SLICE_VOL --type market -o json 2>/dev/null
+  kraken order buy BTCUSD $SLICE_VOL --type market --validate -o json 2>/dev/null || break
+  # A failure prints its envelope here; on "verify_first": true, check open-orders before any retry.
+  kraken order buy BTCUSD $SLICE_VOL --type market -o json 2>/dev/null || break
   [ $i -lt $SLICES ] && sleep $INTERVAL
 done
 ```

@@ -1,0 +1,30 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "L4UESK-KG3EQ-UFO4T5": {
+      "refid": "TJKLXF-PGMUI-4NTLXU",
+      "time": "1688464484.1787",
+      "ledger_type": "trade",
+      "subtype": "",
+      "aclass": "currency",
+      "asset": "GBP",
+      "amount": -24.5,
+      "fee": 0.049,
+      "balance": 459567.9171
+    }
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "L4UESK-KG3EQ-UFO4T5",
+      "{\"refid\":\"TJKLXF-PGMUI-4NTLXU\",\"time\":\"1688464484.1787\",\"ledger_type\":\"trade\",\"subtype\":\"\",\"aclass\":\"currency\",\"asset\":\"GBP\",\"amount\":-24.5,\"fee\":0.049,\"balance\":459567.9171}"
+    ]
+  ],
+  "footer": []
+}

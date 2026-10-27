@@ -1,0 +1,100 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "closed": {
+      "O37652-RJWRT-IMO74O": {
+        "descr": {
+          "pair": "XBTGBP",
+          "side": "buy",
+          "ordertype": "stop-loss-limit",
+          "price": 23667.0,
+          "price2": 0.0,
+          "leverage": "none",
+          "order": "buy 0.00100000 XBTGBP @ limit 23667.0",
+          "close": ""
+        },
+        "refid": "None",
+        "userref": 1,
+        "status": "canceled",
+        "opentm": "1688148493.7708",
+        "closetm": "1688148610.0482",
+        "starttm": "0",
+        "expiretm": "0",
+        "volume": 0.001,
+        "volume_executed": 0.0,
+        "cost": 0.0,
+        "fee": 0.0,
+        "price": 0.0,
+        "stopprice": 0.0,
+        "limitprice": 0.0,
+        "misc": "",
+        "oflags": "fciq",
+        "reason": "User requested",
+        "trigger": "index",
+        "time_in_force": "gtc"
+      },
+      "O6YDQ5-LOMWU-37YKEE": {
+        "descr": {
+          "pair": "XBTEUR",
+          "side": "buy",
+          "ordertype": "take-profit-limit",
+          "price": 27743.0,
+          "price2": 0.0,
+          "leverage": "none",
+          "order": "buy 0.00100000 XBTEUR @ limit 27743.0",
+          "close": ""
+        },
+        "refid": "None",
+        "userref": 36493663,
+        "status": "canceled",
+        "opentm": "1688148493.7708",
+        "closetm": "1688148610.0477",
+        "starttm": "0",
+        "expiretm": "0",
+        "volume": 0.001,
+        "volume_executed": 0.0,
+        "cost": 0.0,
+        "fee": 0.0,
+        "price": 0.0,
+        "stopprice": 0.0,
+        "limitprice": 0.0,
+        "misc": "",
+        "oflags": "fciq",
+        "reason": "User requested",
+        "trigger": "index",
+        "time_in_force": "gtc"
+      }
+    },
+    "count": 2
+  },
+  "headers": [
+    "TXID",
+    "Status",
+    "Side",
+    "Pair",
+    "Price",
+    "Volume"
+  ],
+  "rows": [
+    [
+      "O37652-RJWRT-IMO74O",
+      "canceled",
+      "buy",
+      "XBTGBP",
+      "23667.0",
+      "0.001"
+    ],
+    [
+      "O6YDQ5-LOMWU-37YKEE",
+      "canceled",
+      "buy",
+      "XBTEUR",
+      "27743.0",
+      "0.001"
+    ]
+  ],
+  "footer": []
+}

@@ -3,22 +3,21 @@
 //! Shared locks reject live writers, while paired account and decision reads
 //! share one cut so a trade cannot appear without its rationale.
 
-use std::path::Path;
-
-use kraken_paper::AccountEvent;
-use kraken_paper::account::{AccountRecord, RECORD_VERSION};
-use kraken_recording::FileLock;
-use kraken_recording::JsonlSource;
-use kraken_recording::RecordingManifest;
-use kraken_recording::TapeSource;
-use kraken_recording::{CaptureSource, line_seq};
-
 use self::event::TimelineEvent;
-use crate::decision::{Decision, DecisionKind};
-use crate::manifest::{RecordingBackend, RecordingRef, SessionManifest};
 use crate::{
-    Result, SessionError, SessionName, decisions_path, dir, ensure_provisioned, events_path,
+    Result, SessionError, SessionName,
+    decision::{Decision, DecisionKind},
+    decisions_path, dir, ensure_provisioned, events_path,
+    manifest::{RecordingBackend, RecordingRef, SessionManifest},
 };
+use kraken_paper::{
+    AccountEvent,
+    account::{AccountRecord, RECORD_VERSION},
+};
+use kraken_recording::{
+    CaptureSource, FileLock, JsonlSource, RecordingManifest, TapeSource, line_seq,
+};
+use std::path::Path;
 
 pub mod event;
 
@@ -70,7 +69,8 @@ pub fn read(base: &Path, name: &SessionName) -> Result<SessionTimeline> {
     })
 }
 
-/// Reads one durable backend, preferring DuckDB and refusing damaged primary data.
+/// Reads one durable backend, preferring DuckDB and refusing damaged primary
+/// data.
 pub(crate) fn read_market_track_in(
     recording_dir: &Path,
     manifest: &SessionManifest,
@@ -96,8 +96,8 @@ pub(crate) fn read_market_track_in(
     #[cfg(not(feature = "duckdb"))]
     if by_backend(RecordingBackend::Duckdb).is_some() {
         return Err(SessionError::Rejected(
-            "this session's market recording is DuckDB-only and this build has no DuckDB \
-             support; rebuild with `--features record-duckdb`"
+            "this session's market recording is DuckDB-only and this build has no DuckDB support; \
+             rebuild with `--features record-duckdb`"
                 .into(),
         ));
     }
@@ -112,8 +112,8 @@ fn ensure_readable_schema(recording: &RecordingRef) -> Result<()> {
         return Ok(());
     }
     Err(SessionError::Rejected(format!(
-        "session recording '{}' has schema version {}, which this build cannot read \
-         (reads v{}); re-record the session",
+        "session recording '{}' has schema version {}, which this build cannot read (reads v{}); \
+         re-record the session",
         recording.file,
         recording.schema_version,
         kraken_recording::schema::SCHEMA_VERSION
@@ -160,7 +160,8 @@ fn read_account_track(path: &Path, events: &mut Vec<TimelineEvent>) -> Result<us
     };
     let mut newer_skipped = 0usize;
     for (line, record) in source.read_numbered()? {
-        // Display readers may skip future records; money readers inspect the count and refuse.
+        // Display readers may skip future records; money readers inspect the count and
+        // refuse.
         if record.v > RECORD_VERSION {
             tracing::warn!(path = %path.display(), line, v = record.v, "skipping newer-version journal record");
             newer_skipped += 1;
@@ -196,29 +197,25 @@ pub(crate) fn read_guard(path: &Path, purpose: &str) -> Result<FileLock> {
 // be unfulfilled in cfg(test) compilations and trip `-D warnings`.)
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 pub mod fixtures {
-    use std::collections::HashMap;
-    use std::path::Path;
-
+    use super::{SessionTimeline, event::TimelineEvent};
+    use crate::{
+        SessionName,
+        decision::{Decision, DecisionKind},
+        decisions_path, dir, events_path,
+        manifest::{PaperRef, RecordingBackend, RecordingRef, SessionManifest, SessionState},
+    };
     use kraken_core::OrderSide;
-    use kraken_paper::account::{AccountRecord, Origin, RECORD_VERSION};
-    use kraken_paper::{AccountEvent, PaperConfig, PaperOrder, PaperState, PaperTrade};
-    use kraken_recording::JsonlSink;
-    use kraken_recording::RecordingDeclaration;
-    use kraken_recording::Sink;
-    use kraken_recording::TapeSink;
-    use kraken_recording::parse_instant;
-    use kraken_recording::schema;
-    use kraken_recording::{CaptureSink, MarketEvent, RecordingIntegrity, RecordingManifest};
+    use kraken_paper::{
+        AccountEvent, PaperConfig, PaperOrder, PaperState, PaperTrade,
+        account::{AccountRecord, Origin, RECORD_VERSION},
+    };
+    use kraken_recording::{
+        CaptureSink, JsonlSink, MarketEvent, RecordingDeclaration, RecordingIntegrity,
+        RecordingManifest, Sink, TapeSink, parse_instant, schema,
+    };
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
-
-    use super::SessionTimeline;
-    use super::event::TimelineEvent;
-    use crate::decision::{Decision, DecisionKind};
-    use crate::manifest::{
-        PaperRef, RecordingBackend, RecordingRef, SessionManifest, SessionState,
-    };
-    use crate::{SessionName, decisions_path, dir, events_path};
+    use std::{collections::HashMap, path::Path};
 
     pub const NAME: &str = "btc-dip";
 
@@ -547,14 +544,11 @@ pub mod fixtures {
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "duckdb")]
+    use super::event::EventPayload;
+    use super::{event::Track, fixtures::*, *};
+    #[cfg(feature = "duckdb")]
     use kraken_recording::{CaptureSink, RecordingDeclaration, RecordingIntegrity, Sink};
     use kraken_recording::{Source, schema};
-
-    #[cfg(feature = "duckdb")]
-    use super::event::EventPayload;
-    use super::event::Track;
-    use super::fixtures::*;
-    use super::*;
 
     #[test]
     fn merges_three_tracks_chronologically_with_track_tiebreak() {

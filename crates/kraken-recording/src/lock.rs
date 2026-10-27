@@ -27,10 +27,11 @@
 //! the fd-vs-path inode recheck that would close it (in git history if it
 //! ever bites).
 
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use crate::error::{Error, Result};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 /// Writer (exclusive) vs reader (shared) posture; only exclusive holders
 /// read as held to [`is_lock_held`].

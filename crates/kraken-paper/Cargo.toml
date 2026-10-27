@@ -1,28 +1,28 @@
 [package]
-name = "kraken-paper"
-version.workspace = true
-edition.workspace = true
+description            = "Event-sourced spot paper-trading engine for kraken-cli: exact-Decimal money, journal-backed account"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-paper"
+publish                = false
+repository.workspace   = true
 rust-version.workspace = true
-description = "Event-sourced spot paper-trading engine for kraken-cli: exact-Decimal money, journal-backed account"
-license.workspace = true
-repository.workspace = true
-publish = false
+version.workspace      = true
 
 [dependencies]
-chrono = { workspace = true }
-kraken-core = { workspace = true }
+chrono           = { workspace = true }
+kraken-core      = { workspace = true }
 kraken-recording = { workspace = true }
-rust_decimal = { workspace = true }
+rust_decimal     = { workspace = true }
 # dec! money constants (DEFAULT_FEE_RATE, MAX_MONEY) — a real dep, not dev.
 rust_decimal_macros = { workspace = true }
-serde = { workspace = true }
-serde_with = { workspace = true, features = ["std"] }
-thiserror = { workspace = true }
-tracing = { workspace = true }
+serde               = { workspace = true }
+serde_with          = { workspace = true, features = ["std"] }
+thiserror           = { workspace = true }
+tracing             = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
-tempfile = { workspace = true }
+tempfile   = { workspace = true }
 
 [lints]
 workspace = true

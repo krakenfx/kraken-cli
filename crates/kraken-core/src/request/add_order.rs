@@ -4,24 +4,27 @@
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/add_order>.
 //!
-//! Required: `order_type`, `side`, `symbol`; everything else optional and omitted when
-//! unset. Quantity is `order_qty` (base) *or* `cash_order_qty` (quote, market buys),
-//! hence both optional; `validate: true` dry-runs. Deprecated wire fields superseded by
-//! `triggers` are omitted. The result carries `order_id` (absent in `validate` mode),
-//! the echoed client ids, and optional `warnings`.
+//! Required: `order_type`, `side`, `symbol`; everything else optional and
+//! omitted when unset. Quantity is `order_qty` (base) *or* `cash_order_qty`
+//! (quote, market buys), hence both optional; `validate: true` dry-runs.
+//! Deprecated wire fields superseded by `triggers` are omitted. The result
+//! carries `order_id` (absent in `validate` mode), the echoed client ids, and
+//! optional `warnings`.
 
+use super::{
+    decimal_wire,
+    value::{FeePreference, PriceType, StpType, TimeInForce, TriggerReference},
+};
+use crate::{MethodReply, OrderSide, OrderType, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
-use super::decimal_wire;
-use super::value::{FeePreference, PriceType, StpType, TimeInForce, TriggerReference};
-use crate::{MethodReply, OrderSide, OrderType, Request};
-
-/// Trigger price parameters for triggered order types. `price` is required by the type
-/// — a priceless trigger is unrepresentable; `reference` defaults to `last` and
-/// `price_type` to `static` server-side. Deserialized from user-supplied `batch_add`
-/// JSON, where an unknown key is a typo that must fail loud.
+/// Trigger price parameters for triggered order types. `price` is required by
+/// the type — a priceless trigger is unrepresentable; `reference` defaults to
+/// `last` and `price_type` to `static` server-side. Deserialized from
+/// user-supplied `batch_add` JSON, where an unknown key is a typo that must
+/// fail loud.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,12 +35,13 @@ pub struct Triggers {
     pub price_type: Option<PriceType>,
 }
 
-/// The close-order template spawned once the primary order fills — the request-side
-/// twin of the executions channel's `ContingentOrder` echo. `order_type` is required:
-/// a template with no type is unrepresentable. The docs list only the trigger-capable
-/// subset of order types; decoding with the full [`OrderType`] keeps one order-type
-/// vocabulary. Deserialized from user-supplied `batch_add` JSON, where an unknown key
-/// is a typo that must fail loud.
+/// The close-order template spawned once the primary order fills — the
+/// request-side twin of the executions channel's `ContingentOrder` echo.
+/// `order_type` is required: a template with no type is unrepresentable. The
+/// docs list only the trigger-capable subset of order types; decoding with the
+/// full [`OrderType`] keeps one order-type vocabulary. Deserialized from
+/// user-supplied `batch_add` JSON, where an unknown key is a typo that must
+/// fail loud.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -85,8 +89,9 @@ pub struct AddOrderParams {
     pub expire_time: Option<String>,
     pub deadline: Option<String>,
     pub cl_ord_id: Option<String>,
-    /// `i32` across every path (requests, acks, executions ingest): the API defines a
-    /// userref as a signed int32, so negatives set by other clients stay addressable.
+    /// `i32` across every path (requests, acks, executions ingest): the API
+    /// defines a userref as a signed int32, so negatives set by other
+    /// clients stay addressable.
     pub order_userref: Option<i32>,
     #[serde(serialize_with = "decimal_wire::opt")]
     pub display_qty: Option<Decimal>,
@@ -111,7 +116,8 @@ pub struct AddOrderResult {
     pub order_id: Option<String>,
     pub cl_ord_id: Option<String>,
     pub order_userref: Option<i32>,
-    /// Present only on `validate`-mode responses, in place of a real `order_id`.
+    /// Present only on `validate`-mode responses, in place of a real
+    /// `order_id`.
     pub validation: Option<String>,
     pub warnings: Option<Vec<String>>,
 }
@@ -121,9 +127,9 @@ mod tests {
     use super::*;
     use crate::Wire;
 
-    /// Pins the full outgoing frame: unset options stay off the wire, the token flattens
-    /// in first, money serializes digit-exact past f64 precision, and a negative userref
-    /// (legal int32 per the API) survives.
+    /// Pins the full outgoing frame: unset options stay off the wire, the token
+    /// flattens in first, money serializes digit-exact past f64 precision,
+    /// and a negative userref (legal int32 per the API) survives.
     #[test]
     fn add_order_frame_pins_the_wire_shape_with_exact_decimals() {
         let params = AddOrderParams {

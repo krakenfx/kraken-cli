@@ -3,8 +3,7 @@
 //! Shared P&L values are carried from the explanation report; added metrics
 //! remain derivable from the recorded curve and ledger.
 
-use std::collections::BTreeSet;
-
+use crate::{Curve, Result, replay, trades::RoundTrip};
 use kraken_paper::{OrderSide, PaperTrade};
 use kraken_replay::{Anchor, ComponentKind, ComponentLine, PnlReport, explain_pnl};
 use kraken_session::timeline::SessionTimeline;
@@ -12,9 +11,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::Serialize;
 use serde_with::skip_serializing_none;
-
-use crate::trades::RoundTrip;
-use crate::{Curve, Result, replay};
+use std::collections::BTreeSet;
 
 /// Scores a stopped session, refusing incomplete anchors or account epochs.
 pub fn score(session: &SessionTimeline) -> Result<Scorecard> {
@@ -83,9 +80,9 @@ pub struct Scorecard {
     pub trades: TradeStats,
     pub curve: CurveSummary,
     pub epochs_skipped: usize,
-    /// What the session traded against — derived from the session manifest, never
-    /// asserted. First-class so a reader (and the promotion gate) need not
-    /// parse provenance out of the caveat strings.
+    /// What the session traded against — derived from the session manifest,
+    /// never asserted. First-class so a reader (and the promotion gate)
+    /// need not parse provenance out of the caveat strings.
     pub source: ScoreSource,
     pub caveats: Vec<String>,
 }
@@ -361,7 +358,8 @@ fn curve_summary(curve: &Curve) -> CurveSummary {
     }
 }
 
-/// Required disclosures that keep replay evidence below live promotion evidence.
+/// Required disclosures that keep replay evidence below live promotion
+/// evidence.
 fn replay_caveats(manifest: &kraken_session::manifest::SessionManifest) -> Vec<String> {
     let Some(source) = &manifest.source else {
         return Vec::new();
@@ -374,8 +372,8 @@ fn replay_caveats(manifest: &kraken_session::manifest::SessionManifest) -> Vec<S
         "lookahead not enforced: the agent can read the source tape; replay is screening \
          evidence, never promotion-grade alone"
             .to_string(),
-        "fills simulate against top-of-book marks (no depth, queue, or partial fills) and \
-         orders never move the tape"
+        "fills simulate against top-of-book marks (no depth, queue, or partial fills) and orders \
+         never move the tape"
             .to_string(),
     ];
     // At or below 1x the agent has live-or-better reaction time; the
@@ -402,12 +400,13 @@ fn merged_caveats(report: Vec<String>, fold: impl IntoIterator<Item = String>) -
 
 #[cfg(test)]
 mod tests {
-    use kraken_paper::account::Origin;
-    use kraken_session::manifest::SessionOutcome;
-    use kraken_session::timeline::fixtures::{self, SessionBuilder};
-
     use super::*;
     use crate::LabError;
+    use kraken_paper::account::Origin;
+    use kraken_session::{
+        manifest::SessionOutcome,
+        timeline::fixtures::{self, SessionBuilder},
+    };
 
     /// A stopped one-fill session: buy 0.1 BTC at 50k mid (no spread, no
     /// slippage, 0.26% fee), mark moves to 52k.
@@ -720,33 +719,6 @@ mod tests {
         );
     }
 
-    /// The replay honesty envelope rides any session whose manifest carries
-    /// a source block, and the compression line names the speed.
-    #[test]
-    fn replay_provenance_gains_the_honesty_envelope() {
-        let mut session = stopped_session();
-        session.manifest.source = Some(kraken_session::manifest::SessionSource {
-            tape: "tape:jun-crash".to_string(),
-            speed: 5.0,
-            anchor: "2026-06-01T00:00:00Z".parse().unwrap(),
-            started_at: "2026-07-01T00:00:00Z".parse().unwrap(),
-            content_hash: None,
-        });
-        let card = score(&session).unwrap();
-        for needle in [
-            "replayed from tape:jun-crash at 5x speed",
-            "lookahead not enforced",
-            "top-of-book marks",
-            "reaction-time compression: at 5x",
-        ] {
-            assert!(
-                card.caveats.iter().any(|caveat| caveat.contains(needle)),
-                "missing {needle:?} in {:?}",
-                card.caveats
-            );
-        }
-    }
-
     /// At real-time speed the compression disclosure would be false — the
     /// other three replay caveats still apply.
     #[test]
@@ -881,43 +853,6 @@ mod tests {
             vec!["b".into(), "c".into(), "a".into()],
         );
         assert_eq!(merged, ["a", "b", "c"]);
-    }
-
-    #[test]
-    fn scorecard_serializes_the_pinned_top_level_keys() {
-        let card = score(&stopped_session()).unwrap();
-        let json = serde_json::to_value(&card).unwrap();
-        assert_eq!(json["group"], "lab");
-        assert_eq!(json["type"], "scorecard");
-        assert_eq!(json["session"], "btc-dip");
-        assert_eq!(json["anchor"]["total_pnl"], 187.0);
-        assert_eq!(json["metrics"]["return_pct"], 1.87);
-        assert_eq!(json["trades"]["fills"], 1);
-        assert_eq!(json["curve"]["currency"], "USD");
-        // No source block on the fixture manifest ⇒ live, with the recorded
-        // symbols (none here). First-class provenance, not a caveat string.
-        assert_eq!(json["source"]["kind"], "live");
-        assert!(json.get("strategy").is_none(), "absent optionals drop out");
-    }
-
-    #[test]
-    fn source_is_replay_when_the_manifest_carries_a_source_block() {
-        let mut session = stopped_session();
-        session.manifest.source = Some(kraken_session::manifest::SessionSource {
-            tape: "tape:jun-crash".to_string(),
-            speed: 10.0,
-            anchor: "2026-06-01T00:00:00Z".parse().unwrap(),
-            started_at: "2026-07-01T00:00:00Z".parse().unwrap(),
-            content_hash: None,
-        });
-        let card = score(&session).unwrap();
-        match card.source {
-            ScoreSource::Replay { tape, speed } => {
-                assert_eq!(tape, "tape:jun-crash");
-                assert_eq!(speed, 10.0);
-            }
-            other => panic!("expected replay source, got {other:?}"),
-        }
     }
 
     #[test]

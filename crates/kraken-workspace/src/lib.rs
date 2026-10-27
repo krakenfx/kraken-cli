@@ -4,6 +4,7 @@
 //! data remains global.
 
 mod app;
+pub mod backing;
 mod manifest;
 mod naming;
 pub mod policy;
@@ -12,8 +13,6 @@ pub mod receipt;
 pub mod report;
 pub mod session;
 mod store;
-
-use std::path::{Path, PathBuf};
 
 pub use app::{
     AssetBalance, CreateSpec, ListedWorkspace, ResetOverrides, Target, WorkspaceBalances,
@@ -24,6 +23,7 @@ pub use manifest::{
     WorkspaceMode, is_compatible,
 };
 pub use naming::{DEFAULT_WORKSPACE, WorkspaceName};
+use std::path::{Path, PathBuf};
 pub use store::{journal_path, manifest_path};
 
 pub type Result<T, E = WorkspaceError> = std::result::Result<T, E>;
@@ -33,25 +33,22 @@ pub enum WorkspaceError {
     /// The name has no home under `workspaces/` — scoping into it would
     /// silently create a parallel empty tree. → envelope `validation`.
     #[error(
-        "Workspace '{0}' not found. Create it with 'kraken workspace create {0} --capital <amount> --mode paper'."
+        "Workspace '{0}' not found. Create it with 'kraken workspace create {0} --capital \
+         <amount> --mode paper'."
     )]
     NotFound(String),
-    /// A create under a name that already holds an account. → envelope `validation`.
+    /// A create under a name that already holds an account. → envelope
+    /// `validation`.
     #[error("Workspace '{0}' already exists.")]
     Exists(String),
     /// Bad name or spec input. → envelope `validation`.
     #[error("{0}")]
     Spec(String),
     /// A balance-setting operation on an account whose capital is not locally
-    /// managed (the real account, or a non-paper mode). → envelope `validation`.
+    /// managed (the real account, or a non-paper mode). → envelope
+    /// `validation`.
     #[error("{0}")]
     CapitalManaged(String),
-    /// Refuses named live workspaces until credentials can be scoped safely.
-    #[error(
-        "Workspace '{name}' cannot go live yet: live execution needs workspace-scoped \
-         credentials. Create it with --mode paper and promote it later."
-    )]
-    LiveUnavailable { name: String },
     /// Refuses pairs outside the workspace allow-list.
     #[error("pair {pair} is not permitted in workspace '{workspace}' (allowed: {allowed})")]
     PairNotAllowed {
@@ -75,13 +72,37 @@ pub enum WorkspaceError {
     /// → envelope `validation`.
     #[error("futures paper is not workspace-scoped yet; run it without a workspace")]
     FuturesUnscoped { workspace: String },
+    /// The simulator would forge fills into a ledger that records real ones.
+    /// → envelope `validation`.
+    // `live_verb` is sometimes a read (`open-orders`), so the closing clause
+    // cannot say "to trade".
+    #[error(
+        "'{what}' simulates fills and workspace '{workspace}' is live: its ledger records only \
+         real venue activity. Use '{live_verb}' instead, or a paper workspace to simulate."
+    )]
+    SimulationOnLiveLedger {
+        what: String,
+        workspace: String,
+        live_verb: String,
+    },
+    /// Replaying a tape, or sealing a plan that commits to replaying one:
+    /// both settle fills from recorded prices, which a journal of real
+    /// executions cannot reproduce. Scoring is not refused — it reads fills
+    /// from the journal. → envelope `validation`.
+    #[error(
+        "'{what}' settles fills from recorded prices and workspace '{workspace}' is live: a \
+         journal of real venue executions cannot be reproduced from a tape. Run it in a paper \
+         workspace, then promote."
+    )]
+    NotReproducibleOnLiveLedger { what: String, workspace: String },
     /// A second `run start` (or a `workspace reset`) while a session is still
     /// recording. → envelope `validation`.
     #[error(
         "session {session} is still recording in this scope; stop it first: kraken session stop"
     )]
     SessionActive { session: String },
-    /// A run-addressed command with nothing to address. → envelope `validation`.
+    /// A run-addressed command with nothing to address. → envelope
+    /// `validation`.
     #[error("no active session in this scope; start one with 'kraken session start'")]
     NoActiveSession,
     /// A session ref that resolves to nothing; names what exists. → envelope
@@ -126,17 +147,19 @@ pub enum WorkspaceError {
 }
 
 impl WorkspaceError {
-    /// Stable category mirrored by the CLI bridge and pinned by cross-layer tests.
+    /// Stable category mirrored by the CLI bridge and pinned by cross-layer
+    /// tests.
     pub fn category(&self) -> &'static str {
         match self {
             Self::NotFound(_)
             | Self::Exists(_)
             | Self::Spec(_)
             | Self::CapitalManaged(_)
-            | Self::LiveUnavailable { .. }
             | Self::PairNotAllowed { .. }
             | Self::Unsupported { .. }
             | Self::FuturesUnscoped { .. }
+            | Self::SimulationOnLiveLedger { .. }
+            | Self::NotReproducibleOnLiveLedger { .. }
             | Self::SessionActive { .. }
             | Self::NoActiveSession
             | Self::SessionNotFound { .. }
@@ -193,7 +216,8 @@ pub fn workspace_dir(base: &Path, name: &WorkspaceName) -> PathBuf {
     workspaces_root(base).join(name.as_ref())
 }
 
-/// Resolves scope paths without I/O; absent and `default` preserve the flat layout.
+/// Resolves scope paths without I/O; absent and `default` preserve the flat
+/// layout.
 pub fn scoped_base(base: &Path, workspace: Option<&WorkspaceName>) -> PathBuf {
     match workspace {
         None => base.to_path_buf(),
@@ -234,10 +258,6 @@ mod tests {
         assert_eq!(WorkspaceError::Spec("x".into()).category(), "validation");
         assert_eq!(
             WorkspaceError::CapitalManaged("x".into()).category(),
-            "validation"
-        );
-        assert_eq!(
-            WorkspaceError::LiveUnavailable { name: "x".into() }.category(),
             "validation"
         );
         assert_eq!(

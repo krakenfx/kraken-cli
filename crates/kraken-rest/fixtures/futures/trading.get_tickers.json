@@ -1,0 +1,58 @@
+{
+  "result": "success",
+  "tickers": [
+    {
+      "tag": "perpetual",
+      "pair": "XBT:USD",
+      "symbol": "PI_XBTUSD",
+      "markPrice": 30209.9,
+      "bid": 8634,
+      "bidSize": 1000,
+      "ask": 49289,
+      "askSize": 139984,
+      "vol24h": 15304,
+      "volumeQuote": 7305.2,
+      "openInterest": 149655,
+      "open24h": 49289,
+      "indexPrice": 21087.8,
+      "last": 49289,
+      "lastTime": "2022-06-17T10:46:35.705Z",
+      "lastSize": 100,
+      "suspended": false,
+      "fundingRate": 1.18588737106E-7,
+      "fundingRatePrediction": 1.1852486794E-7,
+      "postOnly": false,
+      "change24h": 1.9974017538161748
+    },
+    {
+      "tag": "month",
+      "pair": "XBT:USD",
+      "symbol": "FI_XBTUSD_211231",
+      "markPrice": 20478.5,
+      "bid": 28002,
+      "bidSize": 900,
+      "vol24h": 100,
+      "volumeQuote": 843.9,
+      "openInterest": 10087,
+      "open24h": 28002,
+      "indexPrice": 21087.8,
+      "last": 28002,
+      "lastTime": "2022-06-17T10:45:57.177Z",
+      "lastSize": 100,
+      "suspended": false,
+      "postOnly": false,
+      "change24h": 1.9974017538161748
+    },
+    {
+      "symbol": "in_xbtusd",
+      "last": 21088,
+      "lastTime": "2022-06-17T11:00:30.000Z"
+    },
+    {
+      "symbol": "rr_xbtusd",
+      "last": 20938,
+      "lastTime": "2022-06-16T15:00:00.000Z"
+    }
+  ],
+  "serverTime": "2022-06-17T11:00:31.335Z"
+}

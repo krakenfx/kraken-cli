@@ -1,17 +1,26 @@
 [workspace]
+# All three front-ends ship: `kraken` is the primary, and the other two let a
+# shell or an MCP client invoke a front-end directly. dist installs one package's
+# binaries per installer, so all three are bins of `kraken-cli`.
 members = ["cargo:."]
 
+# A release opts back in to DuckDB (`features`), which the workspace leaves out,
+# so shipped binaries keep `record --to duckdb`. dist adds README, CHANGELOG and
+# LICENSE to each archive; `include` adds DISCLAIMER.md and SECURITY.md, which
+# README, DISCLAIMER and CHANGELOG link.
 [dist]
+allow-dirty = ["ci"]
 cargo-dist-version = "0.31.0"
 ci = "github"
+features = ["record-duckdb"]
+github-attestations = true
+include = ["DISCLAIMER.md", "SECURITY.md"]
 installers = ["shell"]
+pr-run-mode = "plan"
 targets = [
   "aarch64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
   "x86_64-apple-darwin",
   "x86_64-unknown-linux-gnu",
-  "aarch64-unknown-linux-gnu",
 ]
-pr-run-mode = "plan"
 unix-archive = ".tar.gz"
-github-attestations = true
-allow-dirty = ["ci"]

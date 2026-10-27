@@ -1,6 +1,6 @@
 ---
 name: kraken-paper-to-live
-version: 1.1.0
+version: 1.2.0
 description: "Promote a validated paper strategy to live trading, gated on lab experiment evidence plus safety checks."
 metadata:
   openclaw:
@@ -35,20 +35,54 @@ When presenting promotion analysis to the user, note the remaining gaps (partial
 rule: **at least 2 passing sessions of one frozen experiment, of which a live
 paper session is mandatory.** Replay sessions enter the evidence only with their
 lookahead caveat attached — replay cannot enforce lookahead (the agent can
-read the source dataset), so replay screens and live confirms; two replay
+read the source tape), so replay screens and live confirms; two replay
 passes must never promote on their own.
 
 **Start with the CLI's own checklist** — `kraken workspace promote` grades
-the whole gate mechanically and returns it in the refusal envelope (exit 1
-until scoped credentials land; the evaluation is the point):
+the whole gate mechanically. Missing evidence returns the checklist in the
+refusal envelope; a passing checklist requires explicit confirmation before
+the workspace changes mode:
 
 ```bash
-kraken workspace promote <workspace> --yes -o json 2>/dev/null | jq '.checklist'
+kraken workspace promote <workspace> -o json 2>/dev/null | jq '.checklist'
 # .criteria[]: one row per gate criterion, satisfied true/false + detail
 # .experiments[]: per-experiment passing_sessions / passing_live_sessions
 # .manual_trades_in_windows: disclosed manual interference
-# .blockers[]: what no evidence can satisfy yet (scoped credentials)
+# .blockers[]: active sessions or paper orders that must be resolved first
 ```
+
+After promotion, orders use the normal configured Kraken credentials and the
+venue's own fills are reconciled back into the workspace ledger by txid, so its
+P&L is real. The workspace is an allocation of the account, not a Kraken
+subaccount: the CLI enforces the allocation, Kraken does not, and anything
+using the same API key can spend allocated funds. Expect two pre-venue
+refusals, both `validation` envelopes:
+
+- **Allocation budget** — an order spending beyond what the workspace's own
+  ledger holds free of resting orders is refused. Route on the envelope's
+  typed fields, never the message: `refusal: "allocation_budget"` with
+  `available` and `required` (decimal strings), `funding` (the asset code the
+  order spends — a pair leg, not necessarily the allocation currency), and
+  `reconciled` (false means `available` may be stale). Reduce the size or
+  cancel resting orders; this is the workspace's ledger, not the account
+  balance.
+- **Backing** — refused with `refusal: "over_allocated"` or `"unverified"`
+  plus the full `backing` object. An over-allocated workspace stops spending
+  the allocated asset until funds return to the account; an unverified one
+  (balance unreadable) stops spending until credentials and connectivity are
+  restored.
+
+Size orders before placing them: reconciling live workspace commands (orders,
+`balance`, `open-orders`, `trades-history`, `workspace status`) stamp
+`.backing.spendable` — the allocation-asset ledger balance free of resting
+orders. For orders that spend the allocation asset this is the figure the
+budget gate checks `required` against; an order on a pair carrying the
+allocation on neither leg is gated in its own funding leg instead (read that
+asset from `balance`).
+
+The order that pays the allocated asset back in — closing a position — passes
+both refusals, so never tell a user they must abandon the workspace to exit a
+trade.
 
 Present that checklist verbatim. Then, for the per-session detail behind it,
 build the evidence block from `kraken lab compare` — reproduced cold from
@@ -82,7 +116,7 @@ passing live session is mandatory; run the plan's live entry" even when
 with its own `parse`/`validation` envelope — report it, never reconstruct.
 
 **Reset rule:** a sealed spec cannot change. A new hypothesis, new criteria,
-or a re-recorded dataset is a **new experiment**, and its evidence count
+or a re-recorded tape is a **new experiment**, and its evidence count
 starts at zero.
 
 A strategy is ready for live promotion when:
@@ -119,9 +153,12 @@ Before the first live spot trade:
    kraken order buy BTCUSD 0.001 --type limit --price 50000 --validate -o json 2>/dev/null
    ```
 
-5. **Enable dead man's switch**:
+5. **Enable dead man's switch** — account-wide, so it cannot run inside a
+   workspace: the timeout cancels every order on the API key, including other
+   workspaces' and the account's own. Run it with no workspace active, and tell
+   the user it covers their whole account, not just this strategy:
    ```bash
-   kraken order cancel-after 600 -o json 2>/dev/null
+   KRAKEN_WORKSPACE= kraken order cancel-after 600 -o json 2>/dev/null
    ```
 
 ### Futures
@@ -155,14 +192,17 @@ Before the first live futures trade:
 
 ## Command Migration
 
-Paper and live commands differ only in the prefix.
+Most paper and live commands differ only in the prefix. The order type default
+does not carry over: `kraken paper buy` and `sell` default to `--type market`, while
+`kraken order` and `kraken futures order` default to `--type limit`, so pass
+`--type market` on live market orders.
 
 ### Spot
 
 | Paper | Live |
 |-------|------|
-| `kraken paper buy BTCUSD 0.01` | `kraken order buy BTCUSD 0.01` |
-| `kraken paper sell BTCUSD 0.01` | `kraken order sell BTCUSD 0.01` |
+| `kraken paper buy BTCUSD 0.01` | `kraken order buy BTCUSD 0.01 --type market` |
+| `kraken paper sell BTCUSD 0.01` | `kraken order sell BTCUSD 0.01 --type market` |
 | `kraken paper status` | `kraken balance` + `kraken open-orders` |
 | `kraken paper orders` | `kraken open-orders` |
 | `kraken paper history` | `kraken trades-history` |
@@ -205,17 +245,17 @@ After going live, maintain these controls:
 If live behavior diverges from paper:
 
 ### Spot
-1. Cancel all open spot orders:
+1. Cancel all open spot orders once the user approves (`--yes` skips the CLI prompt):
    ```bash
-   kraken order cancel-all -o json 2>/dev/null
+   kraken order cancel-all --yes -o json 2>/dev/null
    ```
 2. Assess balances.
 3. Return to `kraken paper` to debug.
 
 ### Futures
-1. Cancel all open futures orders:
+1. Cancel all open futures orders once the user approves (`--yes` skips the CLI prompt):
    ```bash
-   kraken futures cancel-all -o json 2>/dev/null
+   kraken futures cancel-all --yes -o json 2>/dev/null
    ```
 2. Close open positions with `--reduce-only`.
 3. Return to `kraken futures paper` to debug.
@@ -227,7 +267,7 @@ If live behavior diverges from paper:
   seal-verified experiment, a passing **live** run among them, caveats
   attached. Refusals name exactly which sessions or verdicts are missing.
 - Start at reduced size.
-- Always validate live orders before executing.
+- Always validate live spot orders with `--validate` before executing. Futures orders have no dry run, so each one needs explicit user approval.
 - Maintain dead man's switch throughout the live session.
 - First live session should run at autonomy level 3 (supervised) regardless of prior paper autonomy.
 - If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

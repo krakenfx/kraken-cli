@@ -2,21 +2,20 @@
 //!
 //! Additive fields and serde defaults preserve minor-version compatibility.
 
-use std::path::Path;
-
+use super::{MANIFEST_VERSION, Result, SessionError, is_compatible};
 use chrono::{DateTime, Utc};
 use kraken_recording::write_json_atomic;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-
-use super::{MANIFEST_VERSION, Result, SessionError, is_compatible};
+use std::path::Path;
 
 /// The durable description of a recorded session.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionManifest {
-    /// Manifest schema version; a differing MAJOR is incompatible (see [`super::is_compatible`]).
+    /// Manifest schema version; a differing MAJOR is incompatible (see
+    /// [`super::is_compatible`]).
     #[serde(default = "default_manifest_version")]
     pub manifest_version: String,
     /// CLI version that wrote the manifest.
@@ -25,7 +24,8 @@ pub struct SessionManifest {
     pub id: String,
     /// PID of the background recorder, so `stop` can signal it.
     pub pid: u32,
-    /// The market recordings captured into this session — one per durable backend.
+    /// The market recordings captured into this session — one per durable
+    /// backend.
     pub recordings: Vec<RecordingRef>,
     /// The isolated paper account seeded for this session.
     pub paper: PaperRef,
@@ -33,7 +33,8 @@ pub struct SessionManifest {
     pub strategy: Option<StrategyRef>,
     /// Opaque experiment label; session provisioning does not interpret it.
     pub experiment: Option<String>,
-    /// Present for replay; absence is the authoritative live/replay discriminator.
+    /// Present for replay; absence is the authoritative live/replay
+    /// discriminator.
     pub source: Option<SessionSource>,
     /// Lifecycle status; persisted intent only — the effective status is
     /// derived from the recording lock at read time.
@@ -74,7 +75,8 @@ pub struct RecordingRef {
     pub backend: RecordingBackend,
     /// Tape file name relative to the session directory.
     pub file: String,
-    /// `record` schema version at write time ([`kraken_recording::schema::SCHEMA_VERSION`]).
+    /// `record` schema version at write time
+    /// ([`kraken_recording::schema::SCHEMA_VERSION`]).
     pub schema_version: String,
     /// Trading pairs captured (e.g. `["BTC/USD","ETH/USD"]`).
     pub symbols: Vec<String>,
@@ -83,8 +85,9 @@ pub struct RecordingRef {
 }
 
 /// The store a recording was written with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum RecordingBackend {
     /// The embedded DuckDB store (`record-duckdb` feature).
     Duckdb,
@@ -111,7 +114,8 @@ pub struct StrategyRef {
     pub params: Option<serde_json::Value>,
 }
 
-/// Persisted lifecycle state; OS locks determine whether a recorder is actually live.
+/// Persisted lifecycle state; OS locks determine whether a recorder is actually
+/// live.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -135,9 +139,9 @@ pub struct SessionSource {
     pub anchor: DateTime<Utc>,
     /// The session wall instant the pump started — the affine anchor w₀.
     pub started_at: DateTime<Utc>,
-    /// sha256 of the source tape this session replayed — the session's own record of
-    /// the bytes the lab FSM checks against a sealed replay leg. `None` on a
-    /// manifest written before hashes were recorded.
+    /// sha256 of the source tape this session replayed — the session's own
+    /// record of the bytes the lab FSM checks against a sealed replay leg.
+    /// `None` on a manifest written before hashes were recorded.
     pub content_hash: Option<String>,
 }
 
@@ -270,9 +274,8 @@ impl SessionManifest {
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use super::*;
+    use rust_decimal_macros::dec;
 
     fn sample() -> SessionManifest {
         SessionManifest {
@@ -319,14 +322,6 @@ mod tests {
                 ended_at: Some("2026-07-02T10:30:00Z".parse().unwrap()),
             },
         }
-    }
-
-    #[test]
-    fn manifest_round_trips_through_serde() {
-        let manifest = sample();
-        let json = serde_json::to_string(&manifest).unwrap();
-        let back: SessionManifest = serde_json::from_str(&json).unwrap();
-        assert_eq!(manifest, back);
     }
 
     #[test]

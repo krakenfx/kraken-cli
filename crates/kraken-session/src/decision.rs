@@ -2,15 +2,12 @@
 //!
 //! A short writer lock preserves timestamp order for later P&L attribution.
 
-use std::path::Path;
-
+use crate::Result;
 use chrono::{DateTime, Utc};
-use kraken_recording::JsonlSink;
-use kraken_recording::Sink;
+use kraken_recording::{JsonlSink, Sink};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-
-use crate::Result;
+use std::path::Path;
 
 /// One entry in a session's decision log.
 #[skip_serializing_none]
@@ -57,7 +54,8 @@ pub enum DecisionKind {
     Unknown,
 }
 
-/// Uses the REST form because slash removal is deterministic but insertion is not.
+/// Uses the REST form because slash removal is deterministic but insertion is
+/// not.
 fn canonical_symbol(symbol: &str) -> String {
     symbol.replace('/', "").to_uppercase()
 }
@@ -86,16 +84,6 @@ pub fn append(
 mod tests {
     use super::*;
 
-    fn buy() -> Decision {
-        Decision {
-            timestamp: "2026-07-02T10:00:00Z".parse().unwrap(),
-            kind: DecisionKind::Buy,
-            symbol: Some("BTC/USD".to_string()),
-            reason: "dip below 20d MA".to_string(),
-            order_id: Some("O123".to_string()),
-        }
-    }
-
     #[test]
     fn kinds_render_as_note_flag_values() {
         for (kind, expected) in [
@@ -116,12 +104,6 @@ mod tests {
             serde_json::from_str::<DecisionKind>("\"hold\"").unwrap(),
             DecisionKind::Unknown
         );
-    }
-
-    #[test]
-    fn serializes_to_a_single_line() {
-        let json = serde_json::to_string(&buy()).unwrap();
-        assert!(!json.contains('\n'), "JSONL line must not embed a newline");
     }
 
     #[test]

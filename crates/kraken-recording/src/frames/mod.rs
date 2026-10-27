@@ -9,17 +9,17 @@
 //! feature) — and must yield identical event sequences for one capture
 //! (pinned by the backend-equivalence tests).
 
-use std::path::Path;
-
+use crate::{
+    error::{Error, Result},
+    frames::capture::{RecordingIntegrity, RecordingManifest},
+    lock::FileLock,
+    sink::Sink,
+    source::Source,
+    time::parse_instant,
+};
 use chrono::{DateTime, Utc};
-use kraken_core::ChannelMessage;
-
-use crate::error::{Error, Result};
-use crate::frames::capture::{RecordingIntegrity, RecordingManifest};
-use crate::lock::FileLock;
-use crate::sink::Sink;
-use crate::source::Source;
-use crate::time::parse_instant;
+use kraken_core::{ChannelMessage, endpoint::Endpoint};
+use std::path::Path;
 
 pub mod capture;
 pub mod jsonl;
@@ -35,6 +35,14 @@ pub use jsonl::{TapeSink, TapeSource};
 /// the capture summary. Consumed by value — drivers are generic over the
 /// concrete sink, never `Box<dyn CaptureSink>`.
 pub trait CaptureSink: Sink<Item = ChannelMessage> {
+    /// The stream reconnected on `endpoint` mid-capture; the venue re-sends
+    /// full snapshots next. Default no-op: durable backends hold frames only
+    /// (the reconnect count lands in the finalize summary), while a live echo
+    /// overrides this to tell its consumer that accumulated state is stale.
+    fn record_reconnect(&mut self, _endpoint: Endpoint) -> Result<()> {
+        Ok(())
+    }
+
     /// End the stream: stamp `summary` into the destination's metadata and
     /// release the destination. The default is for destinations with no
     /// metadata to stamp (a live echo): the summary is dropped and only the
@@ -100,9 +108,7 @@ pub(crate) fn clamp_non_decreasing(events: &mut [MarketEvent]) {
 pub(crate) fn shared_capture_lock(path: &Path) -> Result<FileLock> {
     FileLock::acquire_shared(path, "tape").map_err(|e| match e {
         Error::Rejected(_) => Error::Rejected(
-            "the tape is in use — the recorder is still running; \
-             stop the session first"
-                .into(),
+            "the tape is in use — the recorder is still running; stop the session first".into(),
         ),
         other => other,
     })
@@ -110,11 +116,9 @@ pub(crate) fn shared_capture_lock(path: &Path) -> Result<FileLock> {
 
 #[cfg(test)]
 mod tests {
-    use kraken_core::ChannelData;
-    use kraken_core::subscribe::message::MessageType;
-    use proptest::prelude::*;
-
     use super::*;
+    use kraken_core::{ChannelData, subscribe::message::MessageType};
+    use proptest::prelude::*;
 
     fn event_at(at: DateTime<Utc>, seq: i64) -> MarketEvent {
         MarketEvent {

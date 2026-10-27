@@ -1,0 +1,27 @@
+{
+  "result": "success",
+  "ticker": {
+    "tag": "perpetual",
+    "pair": "XBT:USD",
+    "symbol": "pi_xbtusd",
+    "markPrice": 30209.9,
+    "bid": 8634,
+    "bidSize": 1000,
+    "ask": 49289,
+    "askSize": 139984,
+    "vol24h": 15304,
+    "volumeQuote": 40351.34,
+    "change24h": 1.9974017538161748,
+    "openInterest": 149655,
+    "open24h": 49289,
+    "indexPrice": 21087.8,
+    "last": 49289,
+    "lastTime": "2022-06-17T10:46:35.705Z",
+    "lastSize": 100,
+    "suspended": false,
+    "fundingRate": 1.18588737106E-7,
+    "fundingRatePrediction": 1.1852486794E-7,
+    "postOnly": false
+  },
+  "serverTime": "2022-06-17T11:00:31.335Z"
+}

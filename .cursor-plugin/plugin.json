@@ -1,7 +1,7 @@
 {
   "name": "kraken-cli",
-  "version": "0.4.1",
-  "description": "Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken. Paper trading by default; live trading opt-in via API keys.",
+  "version": "0.5.0",
+  "description": "Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken. Paper trading by default; live trading is an explicit opt-in via expanded MCP service flags.",
   "author": {
     "name": "Kraken",
     "email": "support@kraken.com",
@@ -24,8 +24,8 @@
   "skills": "./skills/",
   "mcpServers": {
     "kraken": {
-      "command": "kraken",
-      "args": ["mcp", "-s", "market,paper,feedback"]
+      "command": "kraken-mcp",
+      "args": ["-s", "market,paper,feedback"]
     }
   }
 }

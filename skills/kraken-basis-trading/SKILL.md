@@ -35,6 +35,10 @@ A positive basis means futures are more expensive than spot (contango). A negati
 
 ## Entry (Long Spot + Short Futures)
 
+Both legs are live orders on the real account, so run `unset KRAKEN_WORKSPACE`
+first. Inside a paper workspace the spot leg fills on paper and the workspace
+guard refuses the futures leg, which leaves the hedge half done.
+
 1. Check spot price and futures price.
 2. Ensure the basis is attractive (e.g., > 0.5% annualized).
 3. Calculate matched position sizes.
@@ -67,6 +71,10 @@ kraken futures positions -o json 2>/dev/null
 
 ## Exit
 
+Both legs are live orders on the real account, so run `unset KRAKEN_WORKSPACE`
+first. Inside a paper workspace the spot leg fills on paper and the workspace
+guard refuses the futures leg, which leaves the hedge half done.
+
 Close both legs when basis narrows to target:
 
 ```bash
@@ -74,7 +82,7 @@ Close both legs when basis narrows to target:
 kraken order sell BTCUSD 0.01 --type market -o json 2>/dev/null
 
 # Close futures short
-kraken futures order buy PF_XBTUSD 1 --reduce-only -o json 2>/dev/null
+kraken futures order buy PF_XBTUSD 1 --type market --reduce-only -o json 2>/dev/null
 ```
 
 ## Risk Considerations

@@ -1,0 +1,26 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": [
+    {
+      "address": "bc1qxdsh4sdd29h6ldehz0se5c61asq8cgwyjf2y3z",
+      "asset": "XBT",
+      "method": "Bitcoin",
+      "key": "btc-wallet-1",
+      "verified": true
+    }
+  ],
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "[0]",
+      "{\"address\":\"bc1qxdsh4sdd29h6ldehz0se5c61asq8cgwyjf2y3z\",\"asset\":\"XBT\",\"method\":\"Bitcoin\",\"key\":\"btc-wallet-1\",\"verified\":true}"
+    ]
+  ],
+  "footer": []
+}

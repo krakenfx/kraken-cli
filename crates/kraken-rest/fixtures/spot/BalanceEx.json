@@ -1,0 +1,13 @@
+{
+  "error": [],
+  "result": {
+    "ZUSD": {
+      "balance": 25435.21,
+      "hold_trade": 8249.76
+    },
+    "XXBT": {
+      "balance": 1.2435,
+      "hold_trade": 0.8423
+    }
+  }
+}

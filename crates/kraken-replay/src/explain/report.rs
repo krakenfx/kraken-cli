@@ -5,8 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use kraken_core::OrderSide;
-use kraken_paper::PaperOrderType;
-use kraken_paper::account::Origin;
+use kraken_paper::{PaperOrderType, account::Origin};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use serde_with::skip_serializing_none;
@@ -45,11 +44,13 @@ pub struct Anchor {
     pub currency: String,
 }
 
-/// One term in `price_movement + fees + spread + slippage + residual = total_pnl`.
+/// One term in `price_movement + fees + spread + slippage + residual =
+/// total_pnl`.
 #[derive(Debug, Serialize)]
 pub struct ComponentLine {
     pub kind: ComponentKind,
-    /// Missing when unavailable; the residual absorbs it and a caveat explains why.
+    /// Missing when unavailable; the residual absorbs it and a caveat explains
+    /// why.
     pub amount: Option<Decimal>,
     /// One sentence of what this number means for *this* session.
     pub explanation: String,
@@ -200,9 +201,8 @@ pub enum EndMarkSource {
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use super::*;
+    use rust_decimal_macros::dec;
 
     #[test]
     fn vocabulary_serializes_snake_case() {

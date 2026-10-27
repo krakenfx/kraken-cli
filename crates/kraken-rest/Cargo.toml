@@ -1,0 +1,42 @@
+[package]
+description            = "Kraken REST: every Spot and Futures endpoint as a type, over one signed transport"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-rest"
+publish                = false
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+# Layer 1, beside kraken-ws: owns the calls (transport, signing, envelope) and
+# the venue vocabulary. Never the CLI's presentation, and never the env.
+[dependencies]
+base64       = { workspace = true }
+hmac         = "0.13"
+kraken-core  = { workspace = true }
+reqwest      = { workspace = true, features = ["json", "query"] }
+rust_decimal = { workspace = true }
+secrecy      = { workspace = true, features = ["serde"] }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+# Strict decode errors name the failing field (`result.XXBTZUSD.a[0]`).
+serde_path_to_error = { workspace = true }
+# `skip_serializing_none`: an absent wire field stays absent in the published
+# output, without an attribute on every optional field.
+serde_with = { workspace = true }
+sha2       = { workspace = true }
+thiserror  = { workspace = true }
+tokio      = { workspace = true, features = ["time"] }
+tracing    = { workspace = true }
+url        = { workspace = true }
+
+[dev-dependencies]
+proptest            = { workspace = true }
+rust_decimal_macros = { workspace = true }
+# Pins what reaches a trace log: private bodies never do.
+tokio              = { workspace = true, features = ["macros", "net", "rt-multi-thread", "test-util"] }
+tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
+wiremock           = { workspace = true }
+
+[lints]
+workspace = true

@@ -61,11 +61,11 @@ The `session_started` JSON line on stdout carries the session id (`"session":"s<
 
 ## Paper Trades
 
-Buy or sell against recorded prices — the order verbs are mode-routed, so inside a paper workspace they fill on the paper account. Always pass a reason; it lands in the active session's decision log:
+Buy or sell against recorded prices — the order verbs are mode-routed, so inside a paper workspace they fill on the paper account. Name the workspace on every order: an exported `KRAKEN_WORKSPACE` does not reach a later shell, such as a `/loop` fire, and without a workspace `kraken order buy` trades the real account. Always pass a reason; it lands in the active session's decision log:
 
 ```bash
-kraken order buy BTC/USD <volume> --type market --reason "<why>" -o json 2>/dev/null
-kraken order sell BTC/USD <volume> --type market --reason "<why>" -o json 2>/dev/null
+kraken --workspace <name> order buy BTC/USD <volume> --type market --reason "<why>" -o json 2>/dev/null
+kraken --workspace <name> order sell BTC/USD <volume> --type market --reason "<why>" -o json 2>/dev/null
 ```
 
 Log a non-trade decision (a skip, a gate, an alert) so the log records rounds where nothing traded:
@@ -133,7 +133,7 @@ kraken lab score --session latest -o json 2>/dev/null
 
 ## Hard Rules
 
-- A session inside a paper workspace never places a live order. It records and fills paper only.
+- A session inside a paper workspace never places a live order. It records and fills paper only. That holds only while each order names the workspace with `--workspace <name>` and `kraken workspace show <name> -o json` reports `"mode": "paper"`.
 - Paper results may overstate live performance: fees and slippage are simulated and there are no partial fills (see `kraken-paper-strategy`).
 - No daemon, no shared memory between rounds. State lives on disk under the workspace and its sessions.
 - Pace from outside the CLI: `/loop` for time-gated, a stream's event rate for event-gated. Never add a redundant pacing gate inside a round. The scheduler floor is 60s — no sub-minute cadence.

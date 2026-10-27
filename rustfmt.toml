@@ -1,7 +1,16 @@
-# group_imports is nightly-only: CI formats with `cargo +nightly fmt --check`,
-# and stable rustfmt silently skips the option (warning only).
-style_edition = "2024"
-unstable_features = true
-group_imports = "StdExternalCrate"
-newline_style = "Unix"
-use_field_init_shorthand = true
+# Everything here except style_edition, newline_style and
+# use_field_init_shorthand is nightly-only, so every fmt recipe runs
+# `cargo +nightly fmt` against the NIGHTLY_VERSION pinned in the justfile.
+# Stable rustfmt skips these options with a warning rather than an error.
+format_code_in_doc_comments = true
+format_macro_bodies         = true
+format_macro_matchers       = true
+format_strings              = true
+group_imports               = "One"
+imports_granularity         = "Crate"
+newline_style               = "Unix"
+normalize_comments          = true
+style_edition               = "2024"
+unstable_features           = true
+use_field_init_shorthand    = true
+wrap_comments               = true

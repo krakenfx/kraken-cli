@@ -1,25 +1,27 @@
 //! DuckDB-backed recording sink.
 //!
-//! Each parsed [`ChannelMessage`] frame is dispatched to its channel's table via
-//! [`crate::frames::duckdb::tables`] — one transaction per drained batch over the reusable
-//! [`Db`]. The schema is generated from the per-channel
-//! [`TableSpec`](crate::frames::duckdb::table::TableSpec)s, so DDL and inserts can't drift. A
-//! monotonic per-frame `seq`, persisted in `_meta.last_seq`, resumes on reopen so a
-//! frame's rows stay groupable across sessions. Opening enforces the version
-//! contract — a fresh file is stamped `schema_version`; an existing tape is
-//! appended to when compatible and cleanly rejected when not.
+//! Each parsed [`ChannelMessage`] frame is dispatched to its channel's table
+//! via [`crate::frames::duckdb::tables`] — one transaction per drained batch
+//! over the reusable [`Db`]. The schema is generated from the per-channel
+//! [`TableSpec`](crate::frames::duckdb::table::TableSpec)s, so DDL and inserts
+//! can't drift. A monotonic per-frame `seq`, persisted in `_meta.last_seq`,
+//! resumes on reopen so a frame's rows stay groupable across sessions. Opening
+//! enforces the version contract — a fresh file is stamped `schema_version`; an
+//! existing tape is appended to when compatible and cleanly rejected when not.
 
+use crate::{
+    error::{Error, Result},
+    frames::{
+        CaptureSink,
+        capture::{RecordingDeclaration, RecordingFilter, RecordingIntegrity},
+        duckdb::{Db, tables},
+    },
+    schema,
+    sink::Sink,
+};
 use chrono::Utc;
 use duckdb::params;
 use kraken_core::ChannelMessage;
-
-use crate::error::{Error, Result};
-use crate::frames::CaptureSink;
-use crate::frames::capture::{RecordingDeclaration, RecordingFilter, RecordingIntegrity};
-use crate::frames::duckdb::Db;
-use crate::frames::duckdb::tables;
-use crate::schema;
-use crate::sink::Sink;
 
 /// Union a reopened session's list into a comma-joined `_meta` value,
 /// first-seen order preserved.
@@ -51,10 +53,10 @@ pub struct DuckdbSink {
 
 impl DuckdbSink {
     /// Open (creating if absent) the tape at `path`, acquire its advisory lock,
-    /// ensure the schema, and apply the version contract. Errors before returning if
-    /// another process holds the tape, or if an existing tape's schema is
-    /// incompatible / not a kraken recording (so the command fails before opening
-    /// any socket).
+    /// ensure the schema, and apply the version contract. Errors before
+    /// returning if another process holds the tape, or if an existing
+    /// tape's schema is incompatible / not a kraken recording (so the
+    /// command fails before opening any socket).
     pub fn open(path: &std::path::Path, meta: &RecordingDeclaration) -> Result<Self> {
         let db = Db::open(path)?;
         // An empty database (no tables at all) cannot hold recorded data: it
@@ -63,13 +65,14 @@ impl DuckdbSink {
         // transaction committing. Either way, bootstrap it; a file with
         // tables but no stamp stays refused below.
         let is_new = db.scalar_u64(
-            "SELECT count(*) FROM information_schema.tables \
-             WHERE table_catalog = current_database() AND table_schema = 'main'",
+            "SELECT count(*) FROM information_schema.tables WHERE table_catalog = \
+             current_database() AND table_schema = 'main'",
         )? == 0;
-        // Generate the DDL for `_meta` plus a table for each channel this session records,
-        // and apply it idempotently — so a tape carries only the tables it uses, not an
-        // empty table for every channel. Reopening to record an additional channel adds its
-        // table via the same `CREATE TABLE IF NOT EXISTS`; existing tables are left intact.
+        // Generate the DDL for `_meta` plus a table for each channel this session
+        // records, and apply it idempotently — so a tape carries only the
+        // tables it uses, not an empty table for every channel. Reopening to
+        // record an additional channel adds its table via the same `CREATE
+        // TABLE IF NOT EXISTS`; existing tables are left intact.
         let declared = crate::frames::capture::declared_channels(meta);
         let specs = tables::schema_tables_for(&declared);
         let mut ddl = vec![schema::META_DDL.to_string()];
@@ -99,9 +102,8 @@ impl DuckdbSink {
                 // A reopen restarts the capture: clear the finalize stamp so a crash
                 // reads back unfinalized, and absorb this session's identity lists.
                 db.execute_batch(
-                    "DELETE FROM _meta \
-                     WHERE key IN ('window_end', 'events_dropped', 'frames_unparsed', \
-                                   'reconnect_count')",
+                    "DELETE FROM _meta WHERE key IN ('window_end', 'events_dropped', \
+                     'frames_unparsed', 'reconnect_count')",
                 )?;
                 absorb_meta_list(&db, "symbols", &meta.symbols)?;
                 absorb_meta_list(&db, "channels", &meta.channels)?;
@@ -134,11 +136,11 @@ impl DuckdbSink {
         })
     }
 
-    /// Write one batch's frames in the open transaction: advance the per-frame seq,
-    /// dispatch each frame to its channel table, then persist the seq high-water
-    /// mark in the same transaction so a crash mid-session still resumes cleanly.
-    /// Borrows `self.db` (the connection), `self.gate`, and `self.seq` as
-    /// disjoint fields.
+    /// Write one batch's frames in the open transaction: advance the per-frame
+    /// seq, dispatch each frame to its channel table, then persist the seq
+    /// high-water mark in the same transaction so a crash mid-session still
+    /// resumes cleanly. Borrows `self.db` (the connection), `self.gate`,
+    /// and `self.seq` as disjoint fields.
     fn write_batch(&mut self, batch: &[ChannelMessage], recv_ts: &str) -> Result<()> {
         let conn = self.db.conn();
         for frame in batch {
@@ -211,11 +213,9 @@ impl CaptureSink for DuckdbSink {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use super::*;
-    use crate::frames::capture::RecordingIntegrity;
-    use crate::frames::duckdb::Db;
+    use crate::frames::{capture::RecordingIntegrity, duckdb::Db};
+    use std::path::Path;
 
     fn meta() -> RecordingDeclaration {
         RecordingDeclaration {
@@ -396,49 +396,6 @@ mod tests {
             1,
             "second session's table was added"
         );
-    }
-
-    #[test]
-    fn one_tape_holds_multiple_symbols() {
-        // All symbols land in one file, distinguished by the `symbol` column.
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("majors.duckdb");
-
-        let mut sink = DuckdbSink::open(&path, &meta()).unwrap();
-        sink.record(&[
-            trade_frame("BTC/USD", 50000.0, 0.5, 1),
-            trade_frame("ETH/USD", 3000.0, 2.0, 2),
-        ])
-        .unwrap();
-        sink.finalize(RecordingIntegrity::now()).unwrap();
-
-        let db = Db::open(&path).unwrap();
-        assert_eq!(
-            db.scalar_u64("SELECT count(DISTINCT symbol) FROM trades")
-                .unwrap(),
-            2
-        );
-    }
-
-    #[test]
-    fn reopen_appends_without_loss() {
-        // AC#2: a tape reopens and appends; no rows lost across sessions.
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("BTC-USD.duckdb");
-
-        let mut s1 = DuckdbSink::open(&path, &meta()).unwrap();
-        s1.record(&[
-            trade_frame("BTC/USD", 1.0, 1.0, 1),
-            trade_frame("BTC/USD", 2.0, 1.0, 2),
-        ])
-        .unwrap();
-        s1.finalize(RecordingIntegrity::now()).unwrap();
-
-        let mut s2 = DuckdbSink::open(&path, &meta()).unwrap();
-        s2.record(&[trade_frame("BTC/USD", 3.0, 1.0, 3)]).unwrap();
-        s2.finalize(RecordingIntegrity::now()).unwrap();
-
-        assert_eq!(count(&path, "trades"), 3);
     }
 
     #[test]

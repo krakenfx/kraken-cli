@@ -1,27 +1,43 @@
 //! The channel catalogue and its validated wire parameters
 //! (<https://docs.kraken.com/api/docs/websocket-v2>).
 //!
-//! [`SubscribableChannel`] is what a client can `subscribe` to (the CLI surface);
-//! [`Channel`] is the full incoming-frame discriminant — subscribables plus the
-//! server-pushed system feeds. The [`BookDepth`] / [`OhlcInterval`] / [`Level3Depth`]
-//! newtypes are validated at construction, so a held value is always wire-valid.
+//! [`SubscribableChannel`] is what a client can `subscribe` to (the CLI
+//! surface); [`Channel`] is the full incoming-frame discriminant —
+//! subscribables plus the server-pushed system feeds. The [`BookDepth`] /
+//! [`OhlcInterval`] / [`Level3Depth`] newtypes are validated at construction,
+//! so a held value is always wire-valid.
 
-use std::str::FromStr;
-
+use crate::{
+    endpoint::Endpoint,
+    error::{Error, Result},
+};
 use serde::Serialize;
 use serde_with::{DeserializeFromStr, SerializeDisplay};
+use std::str::FromStr;
 use strum::{Display, EnumIter, EnumString};
 
-use crate::endpoint::Endpoint;
-use crate::error::{Error, Result};
-
-/// These are **only the subscribable channels** — the ones a client can `subscribe` to,
-/// and the `--channels` value type for `kraken streamd` / `kraken record`. The
-/// server-pushed system feeds (`status`, `heartbeat`) are deliberately absent, so the
-/// CLI cannot accept them; the full wire set lives in [`Channel`]. `Display`/`FromStr`
-/// yield/accept the v2 wire name, plus common aliases (`trades`, `l3`, …).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumIter, EnumString)]
+/// A channel a client can subscribe to, by its v2 wire name or a common alias
+/// (`trades`, `l3`). The server-pushed feeds (`status`, `heartbeat`) cannot be
+/// subscribed to, so they are not accepted.
+// `Channel` is the full wire set; `Display`/`FromStr` use the wire names.
+// serde's lowercase names coincide with the strum wire names above, so the
+// serialized form is the v2 channel name (`trade`, `level3`), not the variant.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Display,
+    EnumIter,
+    EnumString,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum SubscribableChannel {
     Ticker,
@@ -57,51 +73,57 @@ impl SubscribableChannel {
     }
 }
 
-/// Widen a [`SubscribableChannel`] to the full [`Channel`] catalogue. Total and trivial:
-/// every subscribable channel *is* a channel, carried directly in [`Channel::Subscribable`].
-/// The reverse is partial — the system feeds have no subscribable form.
+/// Widen a [`SubscribableChannel`] to the full [`Channel`] catalogue. Total and
+/// trivial: every subscribable channel *is* a channel, carried directly in
+/// [`Channel::Subscribable`]. The reverse is partial — the system feeds have no
+/// subscribable form.
 impl From<SubscribableChannel> for Channel {
     fn from(channel: SubscribableChannel) -> Self {
         Self::Subscribable(channel)
     }
 }
 
-/// The **full** set of Kraken v2 `channel` values, the discriminant for *incoming*
-/// frames: every [`SubscribableChannel`] (carried by [`Channel::Subscribable`]) plus the
-/// server-pushed system feeds [`Channel::Status`] and [`Channel::Heartbeat`]. Subscribe
-/// planning uses [`SubscribableChannel`] directly. Deliberately strict: a name outside
-/// this catalogue fails the frame, so a new server channel surfaces as a logged error to
-/// fix, never as silently reinterpreted data.
+/// The **full** set of Kraken v2 `channel` values, the discriminant for
+/// *incoming* frames: every [`SubscribableChannel`] (carried by
+/// [`Channel::Subscribable`]) plus the server-pushed system feeds
+/// [`Channel::Status`] and [`Channel::Heartbeat`]. Subscribe planning uses
+/// [`SubscribableChannel`] directly. Deliberately strict: a name outside
+/// this catalogue fails the frame, so a new server channel surfaces as a logged
+/// error to fix, never as silently reinterpreted data.
 ///
-/// `Channel` *embeds* [`SubscribableChannel`] rather than re-listing its variants, so
-/// "every subscribable channel is a channel" is a type-level fact and the two can never
-/// drift. The flat v2 wire-name round-trip is all derived: `Display` (`#[strum(transparent)]`
-/// forwards the subscribable variant to [`SubscribableChannel`]; the system feeds use their
-/// lowercased names), and serde via [`SerializeDisplay`]/[`DeserializeFromStr`] over that
-/// `Display` and the [`FromStr`] below. Only [`FromStr`] is hand-written — it routes the
-/// system feeds, which no derive expresses.
+/// `Channel` *embeds* [`SubscribableChannel`] rather than re-listing its
+/// variants, so "every subscribable channel is a channel" is a type-level fact
+/// and the two can never drift. The flat v2 wire-name round-trip is all
+/// derived: `Display` (`#[strum(transparent)]` forwards the subscribable
+/// variant to [`SubscribableChannel`]; the system feeds use their lowercased
+/// names), and serde via [`SerializeDisplay`]/[`DeserializeFromStr`] over that
+/// `Display` and the [`FromStr`] below. Only [`FromStr`] is hand-written — it
+/// routes the system feeds, which no derive expresses.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Display, SerializeDisplay, DeserializeFromStr,
 )]
 #[strum(serialize_all = "lowercase")]
 pub enum Channel {
-    /// A channel a client can subscribe to — the bare channel identity, whose wire name
-    /// (and so its serde form) comes straight from [`SubscribableChannel`].
+    /// A channel a client can subscribe to — the bare channel identity, whose
+    /// wire name (and so its serde form) comes straight from
+    /// [`SubscribableChannel`].
     #[strum(transparent)]
     Subscribable(SubscribableChannel),
-    /// Server-pushed trading-engine status, generated automatically on a successful
-    /// connection. Carries data but is **not subscribable**.
+    /// Server-pushed trading-engine status, generated automatically on a
+    /// successful connection. Carries data but is **not subscribable**.
     Status,
-    /// Server-pushed connection heartbeat. **Not subscribable** and payload-less.
+    /// Server-pushed connection heartbeat. **Not subscribable** and
+    /// payload-less.
     Heartbeat,
 }
 
 impl FromStr for Channel {
     type Err = strum::ParseError;
 
-    /// Parse a v2 wire `channel` name. The system feeds are matched first (case-
-    /// insensitively, mirroring [`SubscribableChannel`]); every other name delegates to
-    /// [`SubscribableChannel`], keeping a single source of truth for the subscribable names.
+    /// Parse a v2 wire `channel` name. The system feeds are matched first
+    /// (case-insensitively, mirroring [`SubscribableChannel`]); every other
+    /// name delegates to [`SubscribableChannel`], keeping a single source
+    /// of truth for the subscribable names.
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         if s.eq_ignore_ascii_case("status") {
             Ok(Self::Status)
@@ -119,7 +141,8 @@ const VALID_BOOK_DEPTHS: &[u32] = &[10, 25, 100, 500, 1000];
 const VALID_OHLC_INTERVALS: &[u32] = &[1, 5, 15, 30, 60, 240, 1440, 10080, 21600];
 const VALID_L3_DEPTHS: &[u32] = &[10, 100, 1000];
 
-/// The "not one of the allowed values" error shared by the depth/interval newtypes.
+/// The "not one of the allowed values" error shared by the depth/interval
+/// newtypes.
 fn invalid_one_of(value: impl std::fmt::Display, valid: &[u32], label: &str) -> Error {
     Error::Validation(format!(
         "invalid {label} '{value}' (valid: {})",
@@ -131,16 +154,17 @@ fn invalid_one_of(value: impl std::fmt::Display, valid: &[u32], label: &str) -> 
     ))
 }
 
-/// Parse `s` as a `u32`, mapping a non-numeric input onto the shared allow-list error.
+/// Parse `s` as a `u32`, mapping a non-numeric input onto the shared allow-list
+/// error.
 fn parse_u32(s: &str, valid: &[u32], label: &str) -> Result<u32> {
     s.parse().map_err(|_| invalid_one_of(s, valid, label))
 }
 
-/// Order-book depth for the `book` channel: one of {10, 25, 100, 500, 1000}. Its
-/// validating [`TryFrom<u32>`] is the canonical constructor ([`FromStr`] delegates),
-/// and it serializes transparently as the wire integer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
+/// Order-book depth for the `book` channel: one of {10, 25, 100, 500, 1000}.
+/// Its validating [`TryFrom<u32>`] is the canonical constructor ([`FromStr`]
+/// delegates), and it serializes transparently as the wire integer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(try_from = "u32", into = "u32")]
 pub struct BookDepth(u32);
 
 /// Book depth when the caller gives none.
@@ -182,10 +206,11 @@ impl std::fmt::Display for BookDepth {
     }
 }
 
-/// Candle interval in minutes for the `ohlc` channel: one of the fixed Kraken set.
-/// Its validating [`TryFrom<u32>`] is the canonical constructor ([`FromStr`] delegates).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
+/// Candle interval in minutes for the `ohlc` channel: one of the fixed Kraken
+/// set. Its validating [`TryFrom<u32>`] is the canonical constructor
+/// ([`FromStr`] delegates).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(try_from = "u32", into = "u32")]
 pub struct OhlcInterval(u32);
 
 /// Candle interval (minutes) when the caller gives none.
@@ -227,12 +252,12 @@ impl std::fmt::Display for OhlcInterval {
     }
 }
 
-/// Price levels per side for the `level3` channel: one of {10, 100, 1000}. Optional
-/// on the wire (absent means the server default), so unlike [`BookDepth`] it has no
-/// `Default`. Its validating [`TryFrom<u32>`] is the canonical constructor
-/// ([`FromStr`] delegates).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(transparent)]
+/// Price levels per side for the `level3` channel: one of {10, 100, 1000}.
+/// Optional on the wire (absent means the server default), so unlike
+/// [`BookDepth`] it has no `Default`. Its validating [`TryFrom<u32>`] is the
+/// canonical constructor ([`FromStr`] delegates).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(try_from = "u32", into = "u32")]
 pub struct Level3Depth(u32);
 
 impl Level3Depth {
@@ -264,6 +289,64 @@ impl std::fmt::Display for Level3Depth {
         self.0.fmt(f)
     }
 }
+
+impl From<BookDepth> for u32 {
+    fn from(depth: BookDepth) -> Self {
+        depth.0
+    }
+}
+
+impl From<OhlcInterval> for u32 {
+    fn from(depth: OhlcInterval) -> Self {
+        depth.0
+    }
+}
+
+impl From<Level3Depth> for u32 {
+    fn from(depth: Level3Depth) -> Self {
+        depth.0
+    }
+}
+
+/// The schema for a validated wire integer: the same allow-list its
+/// `TryFrom<u32>` enforces, so a tool schema can never offer a value the
+/// canonical constructor would reject. Written by hand because
+/// `#[serde(try_from = "u32")]` hides the newtype from the derive.
+#[cfg(feature = "schema")]
+fn allow_list_schema(valid: &[u32]) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "integer",
+        "enum": valid,
+    })
+}
+
+/// Generates a [`schemars::JsonSchema`] impl over one of the allow-lists above.
+#[cfg(feature = "schema")]
+macro_rules! allow_list_json_schema {
+    ($newtype:ident from $valid:ident) => {
+        impl schemars::JsonSchema for $newtype {
+            fn schema_name() -> std::borrow::Cow<'static, str> {
+                stringify!($newtype).into()
+            }
+
+            /// Small enough that a `$defs` indirection costs more than it saves.
+            fn inline_schema() -> bool {
+                true
+            }
+
+            fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+                allow_list_schema($valid)
+            }
+        }
+    };
+}
+
+#[cfg(feature = "schema")]
+allow_list_json_schema!(BookDepth from VALID_BOOK_DEPTHS);
+#[cfg(feature = "schema")]
+allow_list_json_schema!(OhlcInterval from VALID_OHLC_INTERVALS);
+#[cfg(feature = "schema")]
+allow_list_json_schema!(Level3Depth from VALID_L3_DEPTHS);
 
 #[cfg(test)]
 mod tests {

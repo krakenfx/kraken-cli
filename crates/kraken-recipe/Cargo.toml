@@ -1,0 +1,28 @@
+[package]
+description            = "Session-derived recipe artifacts for kraken-cli: what to run again, written once from a finished session"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-recipe"
+publish                = false
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+[dependencies]
+chrono           = { workspace = true }
+kraken-recording = { workspace = true }
+kraken-session   = { workspace = true }
+rust_decimal     = { workspace = true }
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+serde_with       = { workspace = true }
+thiserror        = { workspace = true }
+
+[dev-dependencies]
+insta               = { workspace = true }
+kraken-session      = { workspace = true, features = ["fixtures"] }
+rust_decimal_macros = { workspace = true }
+tempfile            = { workspace = true }
+
+[lints]
+workspace = true

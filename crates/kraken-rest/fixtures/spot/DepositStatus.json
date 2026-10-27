@@ -1,0 +1,34 @@
+{
+  "error": [],
+  "result": [
+    {
+      "method": "Bitcoin",
+      "aclass": "currency",
+      "asset": "XXBT",
+      "refid": "FTQcuak-V6Za8qrWnhzTx67yYHz8Tg",
+      "txid": "6544b41b607d8b2512baf801755a3a87b6890eacdb451be8a94059fb11f0a8d9",
+      "info": "2Myd4eaAW96ojk38A2uDK4FbioCayvkEgVq",
+      "amount": "0.78125000",
+      "fee": "0.0000000000",
+      "time": 1688992722,
+      "status": "Success",
+      "status-prop": "return"
+    },
+    {
+      "method": "Ether (Hex)",
+      "aclass": "currency",
+      "asset": "XETH",
+      "refid": "FTQcuak-V6Za8qrPnhsTx47yYLz8Tg",
+      "txid": "0x339c505eba389bf2c6bebb982cc30c6d82d0bd6a37521fa292890b6b180affc0",
+      "info": "0xca210f4121dc891c9154026c3ae3d1832a005048",
+      "amount": "0.1383862742",
+      "time": 1688992722,
+      "status": "Settled",
+      "status-prop": "onhold",
+      "originators": [
+        "0x70b6343b104785574db2c1474b3acb3937ab5de7346a5b857a78ee26954e0e2d",
+        "0x5b32f6f792904a446226b17f607850d0f2f7533cdc35845bfe432b5b99f55b66"
+      ]
+    }
+  ]
+}

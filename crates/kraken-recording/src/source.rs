@@ -5,13 +5,9 @@
 //! market read contracts live with their domain under
 //! [`frames`](crate::frames).
 
-use std::marker::PhantomData;
-use std::path::PathBuf;
-
+use crate::{error::Result, jsonl};
 use serde::de::DeserializeOwned;
-
-use crate::error::Result;
-use crate::jsonl;
+use std::{marker::PhantomData, path::PathBuf};
 
 /// The read side of a recorded track, handed back as entries. The pendant
 /// of [`Sink`](crate::sink::Sink), and generic over the entry type for the
@@ -47,7 +43,8 @@ pub struct JsonlSource<T> {
 }
 
 impl<T: DeserializeOwned> JsonlSource<T> {
-    /// Open an existing log for reading, or `None` when there is nothing on disk.
+    /// Open an existing log for reading, or `None` when there is nothing on
+    /// disk.
     pub fn open(path: PathBuf) -> Option<Self> {
         path.exists().then_some(Self {
             path,
@@ -78,10 +75,9 @@ impl<T: DeserializeOwned> Source for JsonlSource<T> {
 
 #[cfg(test)]
 mod tests {
-    use serde::{Deserialize, Serialize};
-
     use super::*;
     use crate::sink::{JsonlSink, Sink};
+    use serde::{Deserialize, Serialize};
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
     struct Entry {

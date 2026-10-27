@@ -21,10 +21,10 @@ Use this skill for:
 
 ### Market
 
-Fills immediately at best available price. Simple, guaranteed fill, but no price control.
+Fills immediately at best available price. Simple, guaranteed fill, but no price control. `kraken order` and `kraken futures order` default to `--type limit`, so pass `--type market` explicitly.
 
 ```bash
-kraken order buy BTCUSD 0.001 -o json 2>/dev/null
+kraken order buy BTCUSD 0.001 --type market -o json 2>/dev/null
 kraken order sell BTCUSD 0.001 --type market -o json 2>/dev/null
 ```
 
@@ -81,7 +81,7 @@ kraken order sell BTCUSD 0.001 --type trailing-stop --price +500 -o json 2>/dev/
 Trailing stop that triggers a limit order instead of market.
 
 ```bash
-kraken order sell BTCUSD 0.001 --type trailing-stop-limit --price +500 --price2 -100 -o json 2>/dev/null
+kraken order sell BTCUSD 0.001 --type trailing-stop-limit --price +500 --price2=-100 -o json 2>/dev/null
 ```
 
 ## Spot Order Modifiers
@@ -102,7 +102,7 @@ kraken order sell BTCUSD 0.001 --type trailing-stop-limit --price +500 --price2 
 ### Market
 
 ```bash
-kraken futures order buy PF_XBTUSD 1 -o json 2>/dev/null
+kraken futures order buy PF_XBTUSD 1 --type market -o json 2>/dev/null
 ```
 
 ### Limit
@@ -120,7 +120,7 @@ kraken futures order sell PF_XBTUSD 1 --type stop --stop-price 48000 --trigger-s
 ### Trailing Stop (Futures)
 
 ```bash
-kraken futures order sell PF_XBTUSD 1 --type stop --stop-price 68000 --trailing-stop-max-deviation 500 --trailing-stop-deviation-unit quote_currency -o json 2>/dev/null
+kraken futures order sell PF_XBTUSD 1 --type trailing-stop --trailing-stop-max-deviation 500 --trailing-stop-deviation-unit quote_currency --trigger-signal mark -o json 2>/dev/null
 ```
 
 ## Futures Order Modifiers
@@ -143,11 +143,12 @@ kraken futures order sell PF_XBTUSD 1 --type stop --stop-price 68000 --trailing-
 | Lock in profit if price rises | take-profit |
 | Trail a rising price and sell on reversal | trailing-stop |
 | Earn maker rebates | limit + `--oflags post` |
-| Fill immediately or not at all | limit + `--timeinforce IOC` |
+| Fill what you can now, cancel the rest | limit + `--timeinforce IOC` (spot), or futures `--type ioc` with `--price` |
+| Fill completely now or not at all | futures `--type fok` with `--price` |
 
 ## Validation
 
-Always validate before submitting:
+Validate spot orders before submitting. Only `kraken order buy`, `order sell`, `order batch`, `ws add-order` and `ws batch-add` take `--validate`; futures orders, amends, edits and cancels have no dry run, so each needs explicit approval. Rehearse futures orders on `kraken futures paper`.
 
 ```bash
 kraken order buy BTCUSD 0.001 --type limit --price 50000 --validate -o json 2>/dev/null
@@ -156,6 +157,6 @@ kraken order buy BTCUSD 0.001 --type limit --price 50000 --validate -o json 2>/d
 ## Hard Rules
 
 - All order placement commands are dangerous. Never execute without explicit human approval.
-- Always validate with `--validate` before live submission.
+- Always validate spot orders with `--validate` before live submission.
 - Use `--reduce-only` on futures exits to prevent accidental position flips.
 - If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

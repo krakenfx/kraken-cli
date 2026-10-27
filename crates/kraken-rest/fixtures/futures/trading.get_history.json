@@ -1,0 +1,36 @@
+{
+  "result": "success",
+  "history": [
+    {
+      "time": "2026-10-20T13:30:33.20232362Z",
+      "trade_id": 100,
+      "price": 81346,
+      "size": 0.0001,
+      "side": "sell",
+      "type": "fill",
+      "uid": "429810a8-2f53-40d0-9644-9bd2573164a9",
+      "sequence_id": "104553121"
+    },
+    {
+      "time": "2026-10-20T13:30:33.766969888Z",
+      "trade_id": 99,
+      "price": 81345,
+      "size": 0.0132,
+      "side": "buy",
+      "type": "fill",
+      "uid": "a0cd85f5-056b-41ca-ba6a-4553637f3f9a",
+      "sequence_id": "104553122"
+    },
+    {
+      "time": "2026-10-20T13:30:33.768009431Z",
+      "trade_id": 98,
+      "price": 81347,
+      "size": 0.05,
+      "side": "buy",
+      "type": "fill",
+      "uid": "9d69cfa4-04a5-486b-9cfa-e11bc0d2daab",
+      "sequence_id": "104553123"
+    }
+  ],
+  "serverTime": "2026-10-20T13:30:56.427Z"
+}

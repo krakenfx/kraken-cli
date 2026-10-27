@@ -1,0 +1,85 @@
+[package]
+categories = ["command-line-utilities", "finance"]
+# Three binaries live here; `cargo run -p kraken-cli` means the CLI.
+default-run            = "kraken"
+description            = "Kraken CLI — trade, query, and manage your Kraken account from the terminal"
+edition.workspace      = true
+homepage               = "https://github.com/krakenfx/kraken-cli"
+keywords               = ["api", "cli", "crypto", "kraken", "trading"]
+license.workspace      = true
+name                   = "kraken-cli"
+publish                = false
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+# Releases ship binaries, not a crate. `publish = false` turns dist off for a
+# package, so this one opts back in.
+[package.metadata.dist]
+dist = true
+
+[[bin]]
+name = "kraken"
+path = "src/main.rs"
+
+# The release installer ships one package's binaries, so the other two
+# front-ends are built here as shims over their own crates. `doc = false`: each
+# shim shares its crate name with the library it calls.
+[[bin]]
+doc  = false
+name = "kraken-mcp"
+path = "src/bin/kraken-mcp.rs"
+
+[[bin]]
+doc  = false
+name = "kraken-shell"
+path = "src/bin/kraken-shell.rs"
+
+[features]
+# Re-exposed from kraken-app so the flag still works from the workspace root;
+# the union itself is defined there, next to the code that reads the backend.
+# Off by default, so a source install needs `--features record-duckdb`; the
+# released binaries carry it.
+record-duckdb = ["kraken-app/record-duckdb"]
+
+# A front-end, so it depends on the engine and the engine never depends on it.
+# `kraken-mcp` and `kraken-shell` are here only for their binaries' shims: the
+# `kraken` binary names neither, so it links neither rmcp nor rustyline, and
+# `the_kraken_binary_links_neither_rmcp_nor_rustyline` checks the built files.
+[dependencies]
+clap         = { workspace = true, features = ["env"] }
+kraken-app   = { workspace = true }
+kraken-mcp   = { workspace = true }
+kraken-shell = { workspace = true }
+tokio        = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+base64     = { workspace = true }
+# Surface snapshots for the MCP tool contract (tests/mcp_surface.rs).
+insta = { workspace = true }
+# The integration tests drive the shipped binary, but a few reach the engine and
+# the domain crates directly to build fixtures and assert on typed results.
+kraken-app = { workspace = true }
+# The tool surface the MCP pins assert on is the command tree's own.
+kraken-contract  = { workspace = true }
+kraken-paper     = { workspace = true }
+kraken-recording = { workspace = true }
+# Journal-accurate fixture sessions for the timeline consumers' tests;
+# feature unification turns fixtures on for every root test target.
+kraken-session = { workspace = true, features = ["fixtures"] }
+predicates     = "3.1.4"
+# Pins the P&L decomposition identity (explain pnl) over random fill
+# sequences, not just example inputs.
+proptest            = "1.12.0"
+rust_decimal        = { workspace = true }
+rust_decimal_macros = { workspace = true }
+serde_json          = { workspace = true }
+tempfile            = { workspace = true }
+# test-util's paused clock keeps time-based tests (WS read-idle timeout)
+# instant and deterministic.
+tokio    = { version = "1.53.3", features = ["test-util"] }
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

@@ -7,7 +7,8 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
-/// Manifest schema version; compatibility is MAJOR-only (see [`is_compatible`]).
+/// Manifest schema version; compatibility is MAJOR-only (see
+/// [`is_compatible`]).
 pub const WORKSPACE_VERSION: &str = "1.0";
 /// Named explicitly to distinguish the workspace contract from `session.json`.
 pub const WORKSPACE_FILE: &str = "workspace.json";
@@ -26,7 +27,7 @@ pub const DECISIONS_FILE: &str = "decisions.jsonl";
 pub enum WorkspaceMode {
     /// Simulated fills from the event-sourced engine, live market data.
     Paper,
-    /// The real venue; named workspaces remain blocked until credentials can be scoped.
+    /// Real orders attributed to this workspace through the configured account.
     Live,
 }
 
@@ -41,8 +42,10 @@ pub struct WorkspaceManifest {
     pub cli_version: String,
     /// The workspace name (its directory under `workspaces/`).
     pub name: String,
-    /// Starting capital — fixed at create; `workspace reset` returns to it.
-    /// Digit-exact on the wire, like every journaled amount.
+    /// Starting capital. In live mode this is the allocation: the CLI refuses
+    /// spending beyond what the allocation ledger holds (never the order that
+    /// pays the allocated asset back in), but the venue enforces none of it.
+    /// Digit-exact on the wire.
     #[serde(with = "rust_decimal::serde::str")]
     pub capital: Decimal,
     /// Quote currency the capital is denominated in.

@@ -1,13 +1,12 @@
-//! Outgoing framing: the [`Wire`] envelope every method rides, and the [`Request`]
-//! contract binding typed params to their method name and typed response.
-
-use std::num::NonZeroUsize;
-
-use serde::Serialize;
-use serde_with::skip_serializing_none;
+//! Outgoing framing: the [`Wire`] envelope every method rides, and the
+//! [`Request`] contract binding typed params to their method name and typed
+//! response.
 
 use super::response::MethodReply;
 use crate::endpoint::Endpoint;
+use serde::Serialize;
+use serde_with::skip_serializing_none;
+use std::num::NonZeroUsize;
 
 pub trait Request: Serialize {
     type Response: Serialize;
@@ -15,34 +14,38 @@ pub trait Request: Serialize {
     /// The wire `method` name for a request carrying these params.
     const METHOD: &'static str;
 
-    /// This request's typed result, or `None` when the reply answers a different
-    /// method or omits a required body — the caller turns that into a protocol error.
+    /// This request's typed result, or `None` when the reply answers a
+    /// different method or omits a required body — the caller turns that
+    /// into a protocol error.
     fn extract(reply: MethodReply) -> Option<Self::Response>;
 
-    /// How many correlated replies the server streams for this request. One for every
-    /// method except multi-id `cancel_order` (one per identifier); the caller compares
-    /// it against what arrived, so a truncated batch fails instead of passing silently.
+    /// How many correlated replies the server streams for this request. One for
+    /// every method except multi-id `cancel_order` (one per identifier);
+    /// the caller compares it against what arrived, so a truncated batch
+    /// fails instead of passing silently.
     fn expected_replies(&self) -> NonZeroUsize {
         NonZeroUsize::MIN
     }
 
-    /// The socket this request rides. Defaults to the authenticated endpoint, where
-    /// every order method lives.
+    /// The socket this request rides. Defaults to the authenticated endpoint,
+    /// where every order method lives.
     fn endpoint(&self) -> Endpoint {
         Endpoint::Auth
     }
 
-    /// Whether the frame must carry an auth token. Derived from [`endpoint`](Self::endpoint)
-    /// — only the public socket is tokenless — so a request can never declare an endpoint
-    /// and a contradicting token requirement. (Mirrors `WsSubscription::requires_token`.)
+    /// Whether the frame must carry an auth token. Derived from
+    /// [`endpoint`](Self::endpoint) — only the public socket is tokenless —
+    /// so a request can never declare an endpoint and a contradicting token
+    /// requirement. (Mirrors `WsSubscription::requires_token`.)
     fn requires_token(&self) -> bool {
         self.endpoint().requires_token()
     }
 }
 
-/// A params object with the auth `token` flattened alongside its own fields — the
-/// shape v2 expects (the token sits *inside* `params`). The `token` key is dropped when
-/// absent (every public request: market-data subscriptions, `ping`).
+/// A params object with the auth `token` flattened alongside its own fields —
+/// the shape v2 expects (the token sits *inside* `params`). The `token` key is
+/// dropped when absent (every public request: market-data subscriptions,
+/// `ping`).
 #[skip_serializing_none]
 #[derive(Serialize)]
 struct Authenticated<'a, P: Serialize> {
@@ -51,21 +54,23 @@ struct Authenticated<'a, P: Serialize> {
     params: P,
 }
 
-/// The `{method, params, req_id}` frame shared by every outgoing method — orders and
-/// channel subscriptions. The token (when any) is flattened into `params`.
+/// The `{method, params, req_id}` frame shared by every outgoing method —
+/// orders and channel subscriptions. The token (when any) is flattened into
+/// `params`.
 ///
-/// An empty `params` object is never emitted: the v2 server rejects `params: {}` on
-/// paramless methods like `ping`, and a token-less, field-less method has nothing to
-/// send. This is enforced once, structurally, in [`Serialize`](Wire#impl-Serialize) —
-/// no method opts out, so `ping` needs no special case.
+/// An empty `params` object is never emitted: the v2 server rejects `params:
+/// {}` on paramless methods like `ping`, and a token-less, field-less method
+/// has nothing to send. This is enforced once, structurally, in
+/// [`Serialize`](Wire#impl-Serialize) — no method opts out, so `ping` needs no
+/// special case.
 pub struct Wire<'a, P: Serialize> {
     method: &'static str,
     params: Authenticated<'a, P>,
     req_id: Option<u64>,
 }
 
-/// Hand-written: `params` flattens the auth token in; a derived `Debug` would print
-/// a live credential.
+/// Hand-written: `params` flattens the auth token in; a derived `Debug` would
+/// print a live credential.
 impl<P: Serialize> std::fmt::Debug for Wire<'_, P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Wire")

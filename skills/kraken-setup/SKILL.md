@@ -1,6 +1,6 @@
 ---
 name: kraken-setup
-version: 1.0.0
+version: 1.1.0
 description: "Install kraken-cli, create API credentials, and go from paper trading to live in under five minutes."
 metadata:
   openclaw:
@@ -17,23 +17,29 @@ Use this skill when a user says "set up kraken-cli", "install kraken", "get star
 
 ## 1. Install the CLI
 
-Pick one. All three land a `kraken` binary on your PATH.
+The one-liner installs `kraken`, `kraken-mcp` (the MCP server) and
+`kraken-shell` (an interactive shell) into `~/.cargo/bin`, or `$CARGO_HOME/bin` if `CARGO_HOME` is set:
 
 ```bash
-# Homebrew (macOS, Linux)
-brew tap krakenfx/kraken-cli && brew install kraken-cli
-
-# Cargo (any platform with Rust >= 1.77)
-cargo install kraken-cli
-
-# Prebuilt binary
-# Download from https://github.com/krakenfx/kraken-cli/releases and move `kraken` into a directory on $PATH
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh | sh
 ```
+
+From source (Rust 1.97 or later), the same three binaries:
+
+```bash
+cargo install --locked --git https://github.com/krakenfx/kraken-cli kraken-cli
+```
+
+Prebuilt archives are on [GitHub Releases](https://github.com/krakenfx/kraken-cli/releases). Move
+`kraken`, `kraken-mcp` and `kraken-shell` into a directory on `$PATH`.
+
+The installer adds `~/.cargo/bin` (or `$CARGO_HOME/bin`) to PATH for new terminals only. If `kraken` is not found right after install, call it by its full path, `~/.cargo/bin/kraken` or `$CARGO_HOME/bin/kraken`, and
+tell the user to restart the agent from a new terminal window.
 
 Verify:
 
 ```bash
-kraken --version
+kraken --version && kraken-mcp --version
 ```
 
 ## 2. Start with paper trading
@@ -47,9 +53,11 @@ kraken paper buy BTCUSD 0.01 -o json
 kraken workspace status -o json
 ```
 
-Futures paper trading works the same way:
+Futures paper trading has one account that no workspace scopes, and it refuses
+changes while a workspace is selected, so clear it first:
 
 ```bash
+unset KRAKEN_WORKSPACE
 kraken futures paper init --balance 10000 -o json
 kraken futures paper buy PF_XBTUSD 1 --leverage 10 --type market -o json
 kraken futures paper positions -o json
@@ -82,30 +90,28 @@ Manage keys at <https://www.kraken.com/u/security/api>.
 
 ### Provide the key and secret to your agent
 
-The CLI resolves credentials from three tiers, in order: command-line flags (`--api-key` / `--api-secret`), environment variables (`KRAKEN_API_KEY` / `KRAKEN_API_SECRET`), then a secure local config file managed by the CLI (written by `kraken auth set` or `kraken setup`, stored with user-only permissions under your OS's standard config directory). Pick the path that matches your client.
+The CLI resolves credentials from three tiers, in order: command-line flags (`--api-key` / `--api-secret`), environment variables (`KRAKEN_API_KEY` / `KRAKEN_API_SECRET`), then the active stored key in a secure local config file managed by the CLI (stored with user-only permissions under your OS's standard config directory). The stored key is either the key from `kraken auth set` or `kraken setup`, or the sign-in key from `kraken auth login`; `kraken auth switch` selects which one. When an active sign-in key expires, private commands fail with an `auth` error and a hint to sign in again or switch. The CLI does not fall back to the other key. Pick the path that matches your client.
 
-#### Claude Code (install-time prompt)
+#### Claude Code plugin
 
-When you enable the `kraken-cli` plugin from the Plugin Directory, Claude prompts for `api_key` and `api_secret` and stores them in your macOS Keychain. Paste the key and secret, or press Enter on both prompts to stay on paper + market-only. Claude wires the values into the MCP server's environment automatically; no shell exports required.
-
-If you leave the `userConfig` fields blank, the plugin starts with no environment credentials and falls through to whatever the CLI's local config file contains. That means a user who previously ran `kraken auth set` on the same machine will have those CLI credentials available to the plugin. If you want the plugin to be strictly credential-less until you opt in, leave the prompt blank AND clear the config file with `kraken auth reset` before starting Claude.
+The `kraken-cli` plugin starts `kraken-mcp -s market,paper,feedback` and asks for no API key: none of those tools needs one. `kraken-mcp` still reads the active stored key from the CLI's local config, so a key saved earlier with `kraken auth set` or `kraken auth login` on the same machine is available to it. To keep the plugin credential-less, run `kraken auth reset` before starting Claude.
 
 #### Cursor, Codex, Gemini CLI
 
-These hosts do not have Claude's install-time prompt. Either export credentials in the shell that launches the agent:
+Like the Claude plugin, these hosts start `kraken-mcp` with no key of their own. Either export credentials in the shell that launches the agent:
 
 ```bash
 export KRAKEN_API_KEY="your-key"
 export KRAKEN_API_SECRET="your-secret"
 ```
 
-…or rely on the credentials you stored with `kraken auth set` — the plugin reads the same config file as the standalone CLI, so a single `kraken auth set` serves both.
+…or rely on the key you stored with `kraken auth set` or `kraken auth login` — the plugin reads the same config file as the standalone CLI, so one stored key serves both, and `kraken auth switch` changes it for both.
 
-For futures, use a Kraken Futures key and set `KRAKEN_FUTURES_API_KEY` and `KRAKEN_FUTURES_API_SECRET` alongside the spot pair, or run `kraken auth set --futures-api-key ... --futures-api-secret ...` once and let the config file supply them.
+For futures, use a Kraken Futures key and set `KRAKEN_FUTURES_API_KEY` and `KRAKEN_FUTURES_API_SECRET` alongside the spot pair, or store both pairs once with `kraken auth set --api-key <spot-key> --api-secret-file <spot-secret-file> --futures-api-key <futures-key> --futures-api-secret-stdin` and let the config file supply them. `auth set` always saves the spot pair too, so `--api-key` is required.
 
 #### Plain CLI use (not through a plugin)
 
-`kraken auth set` writes credentials to a secure local config file managed by the CLI (stored with user-only permissions in your OS's standard config directory). `kraken auth show` displays the stored key masked as `****wxyz` and the secret as `[REDACTED]`, so you can confirm which key is configured without exposing it. `kraken auth reset` clears the stored credentials.
+`kraken auth set` writes credentials to a secure local config file managed by the CLI (stored with user-only permissions in your OS's standard config directory). `kraken auth login` instead signs you in through the browser and stores the Spot API key it creates there: no withdrawal permissions, and an expiry date (90 days unless `--valid-for` says otherwise). It needs a terminal, so a person runs it, never an agent. `kraken auth show` displays the stored keys masked as `****wxyz` and the secret as `[REDACTED]`, and names the key in use, so you can confirm which key signs without exposing it. `kraken auth reset` clears the stored credentials; a sign-in key stays valid on Kraken until it expires.
 
 ### Verify
 
@@ -127,6 +133,7 @@ The default MCP config in every `kraken-cli` marketplace listing (Claude, Cursor
 |---------|------|-------------------------|
 | `market` | None | Public price data, orderbooks, OHLC. |
 | `paper`  | None | Simulated trading with live prices. |
+| `feedback` | None | Lets the agent report friction or bugs; the text it writes is sent to Kraken. |
 
 A fresh install can never place a real order. Live trading is an explicit
 opt-in: widen the service list in your MCP client's config to `-s market,trade,paper`
@@ -138,17 +145,17 @@ progression.
 ## 5. Safety defaults
 
 - Commands flagged `dangerous` in `agents/tool-catalog.json` require explicit user confirmation. MCP surfaces this via the `destructive_hint` annotation.
-- Always try `--validate` before submitting an order.
+- Always try `--validate` before submitting a spot order. Futures orders have no dry run, so test them on `kraken futures paper` first.
 - Run paper-first, live-second. `skills/kraken-paper-to-live/SKILL.md` covers the promotion checklist.
 
 ## Troubleshooting
 
-**`kraken: command not found`**: the install directory isn't on `$PATH`. For Homebrew: run `brew doctor`. For Cargo: ensure `~/.cargo/bin` is on `$PATH`.
+**`kraken: command not found`**: the install directory isn't on `$PATH` yet. Open a new terminal, or call `~/.cargo/bin/kraken` (or `$CARGO_HOME/bin/kraken`) by its full path.
 
 **`auth` error on every command**: you exported a key with insufficient permissions. Regenerate with the scopes above.
 
 **Futures commands fail with `auth` but spot works**: futures needs its own key. Set `KRAKEN_FUTURES_API_KEY` and `KRAKEN_FUTURES_API_SECRET`.
 
-**MCP client shows no Kraken tools**: confirm `kraken` is on the PATH the client sees (MCP clients often launch from a minimal shell). Then see `kraken-mcp-integration` troubleshooting.
+**MCP client shows no Kraken tools**: confirm `kraken-mcp` is on the PATH the client sees (MCP clients often start with a minimal environment), or set `command` to the absolute path that `command -v kraken-mcp` prints in a new terminal. Most clients start the server without a shell, so `~` and `$CARGO_HOME` stay unexpanded. Releases before this one installed `kraken` only: run the one-liner again. Then see `kraken-mcp-integration` troubleshooting.
 
 If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

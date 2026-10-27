@@ -1,4 +1,5 @@
-//! [`WsSubscription`] — the strictly-typed `subscribe` params, one variant per channel.
+//! [`WsSubscription`] — the strictly-typed `subscribe` params, one variant per
+//! channel.
 //!
 //! Source: the per-channel `subscribe` schemas under
 //! <https://docs.kraken.com/api/docs/websocket-v2>. Params by channel:
@@ -14,21 +15,21 @@
 //! | `balances`   | `snapshot`, `rebased`, `users`                                   |
 //! | `level3`     | `symbol[]`, `depth` (10/100/1000), `snapshot`                    |
 //!
-//! Optional fields are `Option<_>` and omitted when unset, so the server applies its own
-//! defaults. The auth token is not modelled here — it is flattened into `params` at send
-//! time by [`Wire`](crate::Wire).
+//! Optional fields are `Option<_>` and omitted when unset, so the server
+//! applies its own defaults. The auth token is not modelled here — it is
+//! flattened into `params` at send time by [`Wire`](crate::Wire).
 
+use super::channel::{BookDepth, Level3Depth, OhlcInterval, SubscribableChannel};
+use crate::endpoint::Endpoint;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use strum::{Display, EnumString};
 
-use super::channel::{BookDepth, Level3Depth, OhlcInterval, SubscribableChannel};
-use crate::endpoint::Endpoint;
-
-/// What change re-publishes a `ticker` frame: every book event (`bbo`) or only a
-/// trade (`trades`).
+/// What change re-publishes a `ticker` frame: every book event (`bbo`) or only
+/// a trade (`trades`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumString)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum EventTrigger {
@@ -37,9 +38,11 @@ pub enum EventTrigger {
 }
 
 /// The `users` param on the account channels. `all` — the only value the wire
-/// accepts — streams subaccount events alongside the master's (master accounts only).
+/// accepts — streams subaccount events alongside the master's (master accounts
+/// only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumString)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum Users {
@@ -99,13 +102,14 @@ pub enum WsSubscription {
 }
 
 impl WsSubscription {
-    /// The wire `method` every subscription frame carries — the subscribe side's
-    /// counterpart of [`Request::METHOD`](crate::Request::METHOD).
+    /// The wire `method` every subscription frame carries — the subscribe
+    /// side's counterpart of [`Request::METHOD`](crate::Request::METHOD).
     pub const METHOD: &'static str = "subscribe";
 
     /// Force the `snapshot` flag on — the connection does this when replaying a
-    /// subscription after a reconnect, so local state is rebuilt cleanly. A no-op for
-    /// `Executions`, which has no `snapshot` field (`snap_trades`/`snap_orders` instead).
+    /// subscription after a reconnect, so local state is rebuilt cleanly. A
+    /// no-op for `Executions`, which has no `snapshot` field
+    /// (`snap_trades`/`snap_orders` instead).
     pub fn force_snapshot(&mut self) {
         match self {
             Self::Ticker { snapshot: s, .. }
@@ -146,11 +150,13 @@ impl WsSubscription {
         }
     }
 
-    /// Drop the symbols `keep` rejects, in place. Returns whether the subscription still
-    /// subscribes to anything: a symbol-scoped channel emptied out subscribes to nothing,
-    /// while the account channels always do. A narrowed `instrument` list emptied out also
-    /// counts as nothing — an empty list on the wire would *widen* to the whole feed.
-    #[must_use = "a dropped verdict replays an emptied subscription, which for `instrument` widens to the whole feed"]
+    /// Drop the symbols `keep` rejects, in place. Returns whether the
+    /// subscription still subscribes to anything: a symbol-scoped channel
+    /// emptied out subscribes to nothing, while the account channels always
+    /// do. A narrowed `instrument` list emptied out also counts as nothing
+    /// — an empty list on the wire would *widen* to the whole feed.
+    #[must_use = "a dropped verdict replays an emptied subscription, which for `instrument` widens \
+                  to the whole feed"]
     pub fn retain_symbols(&mut self, mut keep: impl FnMut(&str) -> bool) -> bool {
         match self {
             Self::Ticker { symbol, .. }
