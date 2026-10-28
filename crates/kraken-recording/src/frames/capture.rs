@@ -1,26 +1,28 @@
 //! The capture contract: what a recording says about itself.
 //!
 //! One vocabulary shared by the write and read sides — identity
-//! ([`RecordingDeclaration`]), completeness ([`RecordingIntegrity`]), the combined
-//! self-description ([`RecordingManifest`], the `.meta.json` sidecar mirrored in
-//! DuckDB `_meta`), which frames a capture persists (`is_recordable`), and
-//! the on-disk path rules. A sink stamps these; a source hands the exact same
-//! types back.
+//! ([`RecordingDeclaration`]), completeness ([`RecordingIntegrity`]), the
+//! combined self-description ([`RecordingManifest`], the `.meta.json` sidecar
+//! mirrored in DuckDB `_meta`), which frames a capture persists
+//! (`is_recordable`), and the on-disk path rules. A sink stamps these; a source
+//! hands the exact same types back.
 
-use std::io::Write;
-use std::path::{Path, PathBuf};
-
+use crate::{
+    error::{Error, Result},
+    fsync::fsync_parent,
+};
 use chrono::{DateTime, Utc};
 use kraken_core::{Channel, ChannelData, ChannelMessage, SubscribableChannel};
 use serde::{Deserialize, Serialize};
-
-use crate::error::{Error, Result};
-use crate::fsync::fsync_parent;
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 /// Summary of a finished capture, stamped into the tape metadata at finalize
 /// so a tape self-describes when it was captured and whether it is complete.
-/// Serde: the sidecar's [`RecordingManifest`] embeds it verbatim and readers decode
-/// the same type back.
+/// Serde: the sidecar's [`RecordingManifest`] embeds it verbatim and readers
+/// decode the same type back.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordingIntegrity {
     /// Instant the capture ended.
@@ -45,8 +47,9 @@ pub struct RecordingIntegrity {
 pub struct RecordingDeclaration {
     /// Capture source (e.g. [`schema::SOURCE`](crate::schema::SOURCE)).
     pub source: String,
-    /// The recorded trading pairs (the human symbols, e.g. `["BTC/USD","ETH/USD"]`)
-    /// — one tape can hold several, distinguished by each row's `symbol`.
+    /// The recorded trading pairs (the human symbols, e.g.
+    /// `["BTC/USD","ETH/USD"]`) — one tape can hold several, distinguished
+    /// by each row's `symbol`.
     pub symbols: Vec<String>,
     /// Channels captured into this tape (e.g. `["trades","book","ohlc"]`).
     pub channels: Vec<String>,
@@ -58,8 +61,9 @@ pub struct RecordingDeclaration {
 
 /// A capture's self-description (the `.meta.json` sidecar; mirrored in DuckDB
 /// `_meta`): stamped without a summary at every (re)open and completed at
-/// finalize, so a crashed run still has a checkable identity and schema version.
-/// On a reopened tape the summary covers the last run only, not all sessions.
+/// finalize, so a crashed run still has a checkable identity and schema
+/// version. On a reopened tape the summary covers the last run only, not all
+/// sessions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordingManifest {
     /// [`schema::SCHEMA_VERSION`](crate::schema::SCHEMA_VERSION) of the first
@@ -67,8 +71,9 @@ pub struct RecordingManifest {
     pub schema_version: String,
     #[serde(flatten)]
     pub meta: RecordingDeclaration,
-    /// `None` until finalize: the session is live or crashed and its completeness
-    /// unknown — consumers must surface that, not replay holes silently.
+    /// `None` until finalize: the session is live or crashed and its
+    /// completeness unknown — consumers must surface that, not replay holes
+    /// silently.
     #[serde(flatten)]
     pub summary: Option<RecordingIntegrity>,
 }
@@ -129,10 +134,11 @@ pub(crate) const RECORDABLE_CHANNELS: [SubscribableChannel; 4] = [
     SubscribableChannel::Ohlc,
 ];
 
-/// Whether the recording schema persists this frame. One predicate for both sinks, so an
-/// unsolicited `status` or a data-less frame (zero DuckDB rows) is skipped by jsonl too.
-/// Book frames expand per price level, so one whose entries all carry zero levels is
-/// data-less in the recording sense even with a non-empty `data` array.
+/// Whether the recording schema persists this frame. One predicate for both
+/// sinks, so an unsolicited `status` or a data-less frame (zero DuckDB rows) is
+/// skipped by jsonl too. Book frames expand per price level, so one whose
+/// entries all carry zero levels is data-less in the recording sense even with
+/// a non-empty `data` array.
 pub(crate) fn is_recordable(frame: &ChannelMessage) -> bool {
     match &frame.body {
         ChannelData::Ticker(data) => !data.is_empty(),
@@ -162,9 +168,9 @@ pub(crate) fn declared_channels(meta: &RecordingDeclaration) -> Vec<Subscribable
 }
 
 /// The per-frame capture gate, one owned by each sink: a frame is admitted
-/// iff it is recordable and among this session's declared channels. Both backends
-/// build their gate from the same meta, so they skip identical frame sets;
-/// an undeclared channel is warned once per gate, not once per frame.
+/// iff it is recordable and among this session's declared channels. Both
+/// backends build their gate from the same meta, so they skip identical frame
+/// sets; an undeclared channel is warned once per gate, not once per frame.
 #[derive(Debug)]
 pub(crate) struct RecordingFilter {
     declared: Vec<SubscribableChannel>,
@@ -316,9 +322,8 @@ pub(crate) fn load_sidecar(tape: &Path, action: &str) -> Result<RecordingManifes
         Ok(data) => data,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Err(Error::Rejected(format!(
-                "tape '{}' has no metadata sidecar, so its schema version \
-                 cannot be verified (unstamped or foreign); refusing to {action} — \
-                 re-record it or use a new file",
+                "tape '{}' has no metadata sidecar, so its schema version cannot be verified \
+                 (unstamped or foreign); refusing to {action} — re-record it or use a new file",
                 tape.display()
             )));
         }
@@ -346,8 +351,8 @@ pub(crate) fn sidecar_path(tape: &Path) -> PathBuf {
 }
 
 /// Turn a symbol into a filesystem-safe tape id: `BTC/USD` -> `BTC-USD`.
-/// Any character outside `[A-Za-z0-9._-]` becomes `-` so the id is a single safe
-/// path segment.
+/// Any character outside `[A-Za-z0-9._-]` becomes `-` so the id is a single
+/// safe path segment.
 pub fn sanitize_id(symbol: &str) -> String {
     symbol
         .chars()
@@ -365,8 +370,8 @@ pub fn tapes_root(base: &Path) -> PathBuf {
 }
 
 /// Resolve the tape file path: `<base>/tapes/<id>.<ext>`. `base` is the
-/// config dir in production and a temp dir in tests, so the store is test-isolable
-/// without touching the real config directory.
+/// config dir in production and a temp dir in tests, so the store is
+/// test-isolable without touching the real config directory.
 pub fn resolve(base: &Path, id: &str, ext: &str) -> PathBuf {
     tapes_root(base).join(format!("{id}.{ext}"))
 }

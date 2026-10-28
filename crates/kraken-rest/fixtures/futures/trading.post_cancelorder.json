@@ -1,0 +1,28 @@
+{
+  "result": "success",
+  "cancelStatus": {
+    "status": "cancelled",
+    "order_id": "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+    "receivedTime": "2020-07-22T13:26:20.806Z",
+    "orderEvents": [
+      {
+        "type": "CANCEL",
+        "uid": "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+        "order": {
+          "orderId": "cb4e34f6-4eb3-4d4b-9724-4c3035b99d47",
+          "cliOrdId": "1234568",
+          "type": "lmt",
+          "symbol": "PI_XBTUSD",
+          "side": "buy",
+          "quantity": 5500,
+          "filled": 0,
+          "limitPrice": 8000,
+          "reduceOnly": false,
+          "timestamp": "2020-07-22T13:25:56.366Z",
+          "lastUpdateTimestamp": "2020-07-22T13:25:56.366Z"
+        }
+      }
+    ]
+  },
+  "serverTime": "2020-07-22T13:26:20.806Z"
+}

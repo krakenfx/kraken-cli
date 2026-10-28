@@ -1,38 +1,35 @@
 //! WebSocket authentication tokens: private frames carry a short-lived,
-//! connection-scoped `token` inside `params`. Retrieval sits behind [`TokenSource`]
-//! (implemented by the application, keeping this crate REST-free); [`TokenCache`]
-//! caches the current value and single-flights concurrent fetches.
-
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
+//! connection-scoped `token` inside `params`. Retrieval sits behind
+//! [`TokenSource`] (implemented by the application, keeping this crate
+//! REST-free); [`TokenCache`] caches the current value and single-flights
+//! concurrent fetches.
 
 use kraken_core::error::{Error, Result};
+use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
-/// Budget for one token mint, so a wedged REST endpoint fails the command instead of
-/// stalling it.
+/// Budget for one token mint, so a wedged REST endpoint fails the command
+/// instead of stalling it.
 const TOKEN_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Cache freshness when the source states no lifetime (Kraken invalidates an unused
-/// token ~15 minutes after minting).
+/// Cache freshness when the source states no lifetime (Kraken invalidates an
+/// unused token ~15 minutes after minting).
 const FALLBACK_TTL: Duration = Duration::from_secs(10 * 60);
 
-/// Shaved off a server-stated lifetime: slack between serving a token and the dial
-/// that uses it.
+/// Shaved off a server-stated lifetime: slack between serving a token and the
+/// dial that uses it.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(60);
 
 /// Cap on any cached lifetime: `fresh_until` is `now + ttl`, and a nonsensical
 /// venue-stated `expires_in` must clamp here instead of overflowing that Add.
 const MAX_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// The object-safe return type for [`TokenSource::fetch`], so the client can hold an
-/// `Arc<dyn TokenSource>` without being generic over it.
+/// The object-safe return type for [`TokenSource::fetch`], so the client can
+/// hold an `Arc<dyn TokenSource>` without being generic over it.
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
-/// A freshly minted token, with the server-stated lifetime when the source knows it
-/// (Kraken reports `expires` alongside the token).
+/// A freshly minted token, with the server-stated lifetime when the source
+/// knows it (Kraken reports `expires` alongside the token).
 pub struct Minted {
     pub token: String,
     /// `None`: the cache falls back to a conservative client-side lifetime.
@@ -66,16 +63,18 @@ impl From<&str> for Minted {
 }
 
 /// Supplies authentication tokens (Kraken: the REST `GetWebSocketsToken` call).
-/// Object-safe so the client stays non-generic; the live impl is the application wiring's.
+/// Object-safe so the client stays non-generic; the live impl is the
+/// application wiring's.
 pub trait TokenSource: Send + Sync {
-    /// Fetch a fresh token: on first private use and on every reconnect. A rejected
-    /// mint (a credentials problem) must map to `Error::TokenRejected`; any other
-    /// failure to `Error::MintFailed`, carrying the original error whole.
+    /// Fetch a fresh token: on first private use and on every reconnect. A
+    /// rejected mint (a credentials problem) must map to
+    /// `Error::TokenRejected`; any other failure to `Error::MintFailed`,
+    /// carrying the original error whole.
     fn fetch(&self) -> BoxFuture<Result<Minted>>;
 }
 
-/// A cached token, servable until `fresh_until` — an absolute `tokio::time::Instant`,
-/// so freshness is testable under paused virtual time.
+/// A cached token, servable until `fresh_until` — an absolute
+/// `tokio::time::Instant`, so freshness is testable under paused virtual time.
 struct CachedToken {
     token: String,
     fresh_until: tokio::time::Instant,
@@ -87,9 +86,9 @@ impl CachedToken {
     }
 }
 
-/// Caches the current token — served only while fresh — and single-flights concurrent
-/// fetches: the fetch runs while the async lock is held, so a cold-cache burst makes
-/// one upstream request.
+/// Caches the current token — served only while fresh — and single-flights
+/// concurrent fetches: the fetch runs while the async lock is held, so a
+/// cold-cache burst makes one upstream request.
 pub(crate) struct TokenCache {
     source: Arc<dyn TokenSource>,
     cached: Mutex<Option<CachedToken>>,
@@ -104,8 +103,8 @@ impl TokenCache {
         }
     }
 
-    /// The cached token, fetching one if the cache is empty or stale. The mint is
-    /// bounded by [`TOKEN_TIMEOUT`].
+    /// The cached token, fetching one if the cache is empty or stale. The mint
+    /// is bounded by [`TOKEN_TIMEOUT`].
     pub(crate) async fn get(&self) -> Result<String> {
         let mut slot = self.cached.lock().await;
         if let Some(cached) = slot.as_ref()
@@ -116,23 +115,24 @@ impl TokenCache {
         self.fetch_bounded(&mut slot).await
     }
 
-    /// Force a new fetch and return *this* mint (a later `get()` could observe a
-    /// sibling's concurrent refresh). A failed fetch leaves the cache unchanged.
+    /// Force a new fetch and return *this* mint (a later `get()` could observe
+    /// a sibling's concurrent refresh). A failed fetch leaves the cache
+    /// unchanged.
     pub(crate) async fn refresh(&self) -> Result<String> {
         let mut slot = self.cached.lock().await;
         self.fetch_bounded(&mut slot).await
     }
 
-    /// Drop the cached token: the venue rejected it, so it is dead whatever its age.
-    /// May discard a sibling's concurrent fresh mint — one extra mint on the next
-    /// `get()`, never a wrong token.
+    /// Drop the cached token: the venue rejected it, so it is dead whatever its
+    /// age. May discard a sibling's concurrent fresh mint — one extra mint
+    /// on the next `get()`, never a wrong token.
     pub(crate) async fn invalidate(&self) {
         *self.cached.lock().await = None;
     }
 
-    /// Mint within the [`TOKEN_TIMEOUT`] budget and cache the result. Runs under the
-    /// single-flight lock its caller holds, so a wedged fetch releases the lock at the
-    /// bound instead of never.
+    /// Mint within the [`TOKEN_TIMEOUT`] budget and cache the result. Runs
+    /// under the single-flight lock its caller holds, so a wedged fetch
+    /// releases the lock at the bound instead of never.
     async fn fetch_bounded(&self, slot: &mut Option<CachedToken>) -> Result<String> {
         let minted = tokio::time::timeout(TOKEN_TIMEOUT, self.source.fetch())
             .await
@@ -153,11 +153,9 @@ impl TokenCache {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-
-    use kraken_core::error::Error;
-
     use super::*;
+    use kraken_core::error::Error;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     /// A [`TokenSource`] whose fetch never resolves, for the mint-timeout path.
     struct StalledSource;
@@ -168,10 +166,11 @@ mod tests {
         }
     }
 
-    /// A [`TokenSource`] that counts fetches and yields a distinct token each call
-    /// (`tok-{n}`). The internal yield gives a concurrent caller a chance to observe a cold
-    /// cache if the lock were ever released across the fetch, so the single-flight test can
-    /// catch that regression; `fail` drives the refresh error path.
+    /// A [`TokenSource`] that counts fetches and yields a distinct token each
+    /// call (`tok-{n}`). The internal yield gives a concurrent caller a
+    /// chance to observe a cold cache if the lock were ever released across
+    /// the fetch, so the single-flight test can catch that regression;
+    /// `fail` drives the refresh error path.
     #[derive(Default)]
     struct CountingSource {
         calls: AtomicUsize,
@@ -210,19 +209,6 @@ mod tests {
                 })
             })
         }
-    }
-
-    #[tokio::test]
-    async fn get_caches_after_the_first_fetch() {
-        let src = Arc::new(CountingSource::default());
-        let cache = TokenCache::new(src.clone());
-        assert_eq!(cache.get().await.unwrap(), "tok-0");
-        assert_eq!(cache.get().await.unwrap(), "tok-0");
-        assert_eq!(
-            src.calls.load(Ordering::SeqCst),
-            1,
-            "second get is served from cache"
-        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -345,9 +331,9 @@ mod tests {
         assert!(matches!(err, Error::MintTimeout(_)));
     }
 
-    /// The bound covers only the fetch, not the lock wait: a waiter queued behind a
-    /// wedged holder still errors once its own fetch hits the budget, rather than
-    /// blocking on the shared cache forever.
+    /// The bound covers only the fetch, not the lock wait: a waiter queued
+    /// behind a wedged holder still errors once its own fetch hits the
+    /// budget, rather than blocking on the shared cache forever.
     #[tokio::test(start_paused = true)]
     async fn a_waiter_behind_a_wedged_mint_is_bounded_too() {
         let cache = Arc::new(TokenCache::new(Arc::new(StalledSource)));

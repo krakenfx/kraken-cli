@@ -1,30 +1,30 @@
 [package]
-name = "kraken-ws"
-version.workspace = true
-edition.workspace = true
+description            = "Kraken v2 WebSocket client: connection lifecycle, correlation, and transport for kraken-core's wire model"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-ws"
+publish                = false
+repository.workspace   = true
 rust-version.workspace = true
-description = "Kraken v2 WebSocket client: connection lifecycle, correlation, and transport for kraken-core's wire model"
-license.workspace = true
-repository.workspace = true
-publish = false
+version.workspace      = true
 
 # Layer 1: moves kraken-core's types over a socket. Owns connection lifecycle —
 # never payload meaning.
 [dependencies]
-futures-util = { workspace = true }
-kraken-core = { workspace = true }
-rustls = { version = "0.23.43", default-features = false }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "net"] }
-tokio-stream = { workspace = true }
+futures-util      = { workspace = true }
+kraken-core       = { workspace = true }
+rustls            = { version = "0.23.46", default-features = false }
+serde             = { workspace = true }
+serde_json        = { workspace = true }
+tokio             = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
+tokio-stream      = { workspace = true }
 tokio-tungstenite = { workspace = true }
-tokio-util = { workspace = true }
-tracing = { workspace = true }
+tokio-util        = { workspace = true }
+tracing           = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
+tokio    = { workspace = true, features = ["rt-multi-thread", "test-util"] }
 
 [lints]
 workspace = true

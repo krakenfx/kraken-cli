@@ -1,0 +1,82 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "AAOIx/USD": {
+      "aclass_base": "tokenized_asset",
+      "aclass_quote": "currency",
+      "cost_decimals": 5,
+      "pair_decimals": 2,
+      "lot_decimals": 8,
+      "lot_multiplier": 1,
+      "leverage_buy": [],
+      "leverage_sell": [],
+      "fees": [],
+      "fees_maker": [],
+      "fee_volume_currency": "USD",
+      "margin_call": 80,
+      "margin_stop": 40,
+      "ordermin": 0.04,
+      "costmin": 0.5,
+      "tick_size": 0.01,
+      "status": "online",
+      "execution_venue": "international",
+      "long_position_limit": 0,
+      "short_position_limit": 0
+    },
+    "AAPLx/USD": {
+      "aclass_base": "tokenized_asset",
+      "aclass_quote": "currency",
+      "cost_decimals": 5,
+      "pair_decimals": 2,
+      "lot_decimals": 8,
+      "lot_multiplier": 1,
+      "leverage_buy": [
+        2,
+        3
+      ],
+      "leverage_sell": [
+        2,
+        3
+      ],
+      "fees": [],
+      "fees_maker": [],
+      "fee_volume_currency": "USD",
+      "margin_call": 80,
+      "margin_stop": 40,
+      "ordermin": 0.00000001,
+      "costmin": 0.5,
+      "tick_size": 0.01,
+      "status": "online",
+      "execution_venue": "international",
+      "long_position_limit": 400,
+      "short_position_limit": 400
+    }
+  },
+  "headers": [
+    "Pair",
+    "Status",
+    "Tick Size",
+    "Order Min",
+    "Cost Min"
+  ],
+  "rows": [
+    [
+      "AAOIx/USD",
+      "online",
+      "0.01",
+      "0.04",
+      "0.5"
+    ],
+    [
+      "AAPLx/USD",
+      "online",
+      "0.01",
+      "1e-8",
+      "0.5"
+    ]
+  ],
+  "footer": []
+}

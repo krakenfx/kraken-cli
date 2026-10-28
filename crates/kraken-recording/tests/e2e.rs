@@ -8,22 +8,22 @@
 // carve-out as lib.rs, extended to helpers outside `#[test]` functions.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
-use std::io::Write;
-use std::path::Path;
-use std::str::FromStr;
-
-use kraken_core::subscribe::message::{
-    BookData, ExtraFields, MessageType, OhlcData, PriceLevel, StatusData, SystemStatus, TickerData,
-    TradeData,
+use kraken_core::{
+    ChannelData, ChannelMessage, OrderSide, OrderType, SubscribableChannel,
+    subscribe::message::{
+        BookData, ExtraFields, MessageType, OhlcData, PriceLevel, StatusData, SystemStatus,
+        TickerData, TradeData,
+    },
 };
-use kraken_core::{ChannelData, ChannelMessage, OrderSide, OrderType, SubscribableChannel};
 use kraken_recording::{
     CaptureSink, CaptureSource, Error, MarketEvent, RecordingDeclaration, RecordingIntegrity, Sink,
     Source, TapeSink, TapeSource, ensure_recordable, is_lock_held, resolve, sanitize_id, schema,
 };
+use std::{io::Write, path::Path, str::FromStr};
 
 /// Parse a numeric fixture literal into the field's own inferred type —
-/// `Decimal` at every call site, without a direct `rust_decimal` dev-dependency.
+/// `Decimal` at every call site, without a direct `rust_decimal`
+/// dev-dependency.
 fn dec<T: FromStr>(raw: &str) -> T
 where
     T::Err: std::fmt::Debug,
@@ -376,9 +376,8 @@ fn an_empty_capture_finalizes_and_replays_to_zero_events() {
 
 #[cfg(feature = "duckdb")]
 mod duckdb_backend {
-    use kraken_recording::{DuckdbSink, DuckdbSource};
-
     use super::*;
+    use kraken_recording::{DuckdbSink, DuckdbSource};
 
     /// `DuckdbSource` has no Debug impl (unwrap is unavailable): open or panic.
     fn open_duckdb_reader(path: &Path) -> DuckdbSource {

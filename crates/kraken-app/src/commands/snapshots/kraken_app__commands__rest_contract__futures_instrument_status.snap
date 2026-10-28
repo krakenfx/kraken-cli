@@ -1,0 +1,45 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "instrumentStatus": [
+      {
+        "tradeable": "PI_XBTUSD",
+        "experiencingDislocation": false,
+        "priceDislocationDirection": null,
+        "experiencingExtremeVolatility": false,
+        "extremeVolatilityInitialMarginMultiplier": 1
+      },
+      {
+        "tradeable": "PI_ETHUSD",
+        "experiencingDislocation": false,
+        "priceDislocationDirection": null,
+        "experiencingExtremeVolatility": false,
+        "extremeVolatilityInitialMarginMultiplier": 1
+      }
+    ],
+    "serverTime": "2026-10-20T13:30:56.959Z"
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "result",
+      "success"
+    ],
+    [
+      "instrumentStatus",
+      "[{\"tradeable\":\"PI_XBTUSD\",\"experiencingDislocation\":false,\"priceDislocationDirection\":null,\"experiencingExtremeVolatility\":false,\"extremeVolatilityInitialMarginMultiplier\":1},{\"tradeable\":\"PI_ETHUSD\",\"experiencingDislocation\":false,\"priceDislocationDirection\":null,\"experiencingExtremeVolatility\":false,\"extremeVolatilityInitialMarginMultiplier\":1}]"
+    ],
+    [
+      "serverTime",
+      "2026-10-20T13:30:56.959Z"
+    ]
+  ],
+  "footer": []
+}

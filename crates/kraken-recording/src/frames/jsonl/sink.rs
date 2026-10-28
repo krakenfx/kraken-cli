@@ -11,18 +11,21 @@
 //! the recordable-frame filter and the metadata sidecar. The domain-free
 //! sibling is [`JsonlSink`](crate::sink::JsonlSink).
 
-use std::path::{Path, PathBuf};
-
-use kraken_core::ChannelMessage;
-
-use crate::error::Result;
-use crate::frames::CaptureSink;
-use crate::frames::capture::{
-    RecordingDeclaration, RecordingFilter, RecordingIntegrity, RecordingManifest, sidecar_path,
+use crate::{
+    error::Result,
+    frames::{
+        CaptureSink,
+        capture::{
+            RecordingDeclaration, RecordingFilter, RecordingIntegrity, RecordingManifest,
+            sidecar_path,
+        },
+    },
+    jsonl::Log,
+    schema,
+    sink::Sink,
 };
-use crate::jsonl::Log;
-use crate::schema;
-use crate::sink::Sink;
+use kraken_core::ChannelMessage;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct TapeSink {

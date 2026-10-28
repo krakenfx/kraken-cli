@@ -1,8 +1,9 @@
-//! Account permission policy — the paper analogue of live API-key pair
-//! permissions and subaccount walls, enforced at order time.
+//! Account permission policy, enforced locally before orders reach a backend.
 
-use crate::manifest::{WorkspaceManifest, WorkspaceMode};
-use crate::{Result, WorkspaceError};
+use crate::{
+    Result, WorkspaceError,
+    manifest::{WorkspaceManifest, WorkspaceMode},
+};
 
 /// Canonicalize an allow-list: every entry through the engine's pair grammar
 /// (so `BTC/USD`, `btcusd`, and `XBTUSD` are one entry), deduped and sorted.
@@ -44,15 +45,9 @@ pub fn ensure_pair_allowed(manifest: &WorkspaceManifest, canonical_pair: &str) -
     })
 }
 
-/// Mode admissibility at create: live needs scoped credentials first —
-/// without them a live workspace would silently trade the master account.
-pub fn ensure_mode_creatable(mode: WorkspaceMode, name: &str) -> Result<()> {
-    match mode {
-        WorkspaceMode::Paper => Ok(()),
-        WorkspaceMode::Live => Err(WorkspaceError::LiveUnavailable {
-            name: name.to_string(),
-        }),
-    }
+/// Both public modes are valid workspace contracts.
+pub fn ensure_mode_creatable(_mode: WorkspaceMode, _name: &str) -> Result<()> {
+    Ok(())
 }
 
 /// The honest refusal for a money surface with no paper equivalent.
@@ -66,10 +61,9 @@ pub fn unsupported(what: &str, workspace: &str, mode: WorkspaceMode) -> Workspac
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use chrono::Utc;
     use rust_decimal_macros::dec;
-
-    use super::*;
 
     fn manifest(allowed_pairs: Option<Vec<String>>) -> WorkspaceManifest {
         WorkspaceManifest {
@@ -111,8 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn live_mode_is_not_creatable_yet() {
-        let err = ensure_mode_creatable(WorkspaceMode::Live, "scalper").expect_err("refuse");
-        assert!(err.to_string().contains("scoped credentials"), "{err}");
+    fn live_mode_is_creatable() {
+        ensure_mode_creatable(WorkspaceMode::Live, "scalper").expect("live is valid");
     }
 }

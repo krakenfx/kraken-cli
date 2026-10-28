@@ -110,5 +110,5 @@ When one side of a bracket fills, immediately cancel the other.
 - Never place live stop/take-profit orders without explicit human approval.
 - Always cancel the opposite leg when one side of a bracket fills.
 - Use `--reduce-only` on futures exits to prevent accidental position flips.
-- Validate all orders before submission with `--validate`.
+- Validate spot orders before submission with `--validate`. Futures orders have no dry run: rehearse on `kraken futures paper`, then get approval for the exact command.
 - If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

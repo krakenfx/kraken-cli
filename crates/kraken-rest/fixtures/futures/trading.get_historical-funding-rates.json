@@ -1,0 +1,21 @@
+{
+  "result": "success",
+  "serverTime": "2022-06-28T09:29:04.243Z",
+  "rates": [
+    {
+      "timestamp": "2022-06-28T00:00:00.000Z",
+      "fundingRate": -8.15861558E-10,
+      "relativeFundingRate": -0.000016898883333333
+    },
+    {
+      "timestamp": "2022-06-28T04:00:00.000Z",
+      "fundingRate": -2.6115278E-11,
+      "relativeFundingRate": -5.40935416667E-7
+    },
+    {
+      "timestamp": "2022-06-28T08:00:00.000Z",
+      "fundingRate": -4.08356853E-10,
+      "relativeFundingRate": -0.000008521190625
+    }
+  ]
+}

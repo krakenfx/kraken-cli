@@ -1,0 +1,50 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "next_cursor": "2",
+    "items": [
+      {
+        "id": "ESRFUO3-Q62XD-WIOIL7",
+        "asset": "DOT",
+        "lock_type": {
+          "type": "instant",
+          "payout_frequency": 604800
+        },
+        "apr_estimate": {
+          "low": "8.0000",
+          "high": "12.0000"
+        },
+        "user_min_allocation": "0.01",
+        "allocation_fee": "0.0000",
+        "deallocation_fee": "0.0000",
+        "auto_compound": {
+          "type": "enabled"
+        },
+        "yield_source": {
+          "type": "staking"
+        },
+        "can_allocate": true,
+        "can_deallocate": true,
+        "allocation_restriction_info": []
+      }
+    ]
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "next_cursor",
+      "2"
+    ],
+    [
+      "items",
+      "[{\"id\":\"ESRFUO3-Q62XD-WIOIL7\",\"asset\":\"DOT\",\"lock_type\":{\"type\":\"instant\",\"payout_frequency\":604800},\"apr_estimate\":{\"low\":\"8.0000\",\"high\":\"12.0000\"},\"user_min_allocation\":\"0.01\",\"allocation_fee\":\"0.0000\",\"deallocation_fee\":\"0.0000\",\"auto_compound\":{\"type\":\"enabled\"},\"yield_source\":{\"type\":\"staking\"},\"can_allocate\":true,\"can_deallocate\":true,\"allocation_restriction_info\":[]}]"
+    ]
+  ],
+  "footer": []
+}

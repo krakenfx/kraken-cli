@@ -39,7 +39,7 @@ kraken workspace create sandbox --capital 10000 --mode paper -o json 2>/dev/null
 export KRAKEN_WORKSPACE=sandbox
 kraken paper buy BTCUSD 0.01 -o json 2>/dev/null
 kraken workspace status -o json 2>/dev/null
-kraken workspace reset -o json --yes 2>/dev/null
+kraken workspace reset -o json --yes 2>/dev/null  # dangerous: confirm with the user first
 ```
 
 Run paper strategies repeatedly. Compare results across parameter changes. Only move to Level 3 after consistent paper performance.
@@ -51,6 +51,7 @@ The agent places real orders, but a human confirms each one. The API key has tra
 **Kraken API key permissions:** Query Funds, Create & Modify Orders, Cancel/Close Orders
 
 ```bash
+unset KRAKEN_WORKSPACE  # live orders run outside the paper workspace
 export KRAKEN_API_KEY="trade-key"
 export KRAKEN_API_SECRET="trade-secret"
 
@@ -80,7 +81,7 @@ export KRAKEN_API_KEY="full-trade-key"
 export KRAKEN_API_SECRET="full-trade-secret"
 ```
 
-The agent passes `--yes` to skip confirmation prompts and operates on its own schedule.
+The agent operates on its own schedule and passes `--yes` to the commands that prompt: cancel-all, withdrawals and transfers, earn allocations, `workspace create --mode live`, `workspace reset`, `workspace promote`, and `recipe run --real-account`. Placing an order never prompts at any level: the Level 3 approval is a step the agent takes itself.
 
 **Required safeguards at this level:**
 
@@ -100,7 +101,7 @@ The agent passes `--yes` to skip confirmation prompts and operates on its own sc
 
 4. **Error handling.** Autonomous agents must handle every error category:
    - `rate_limit`: back off, reduce frequency
-   - `network`: retry with backoff, do not double-submit orders
+   - `network`: retry with backoff; if `verify_first` is `true`, check state first so an order is never double-submitted
    - `auth`: stop trading, alert the trader
    - `validation`: log and skip, do not retry unchanged
 

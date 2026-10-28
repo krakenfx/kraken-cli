@@ -1,0 +1,65 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "USD": 171288.6158,
+    "EUR": 504861.8946,
+    "BTC": 1011.19088779,
+    "ETH": 818.55,
+    "USDT": 500000.0,
+    "DAI": 9999.9999999999,
+    "DOT": 2.5,
+    "ETH2.S": 198.39708,
+    "ETH2": 2.588557433,
+    "USD.M": 1213029.278
+  },
+  "headers": [
+    "Asset",
+    "Balance"
+  ],
+  "rows": [
+    [
+      "BTC",
+      "1011.19088779"
+    ],
+    [
+      "DAI",
+      "9999.9999999999"
+    ],
+    [
+      "DOT",
+      "2.5"
+    ],
+    [
+      "ETH",
+      "818.55"
+    ],
+    [
+      "ETH2",
+      "2.588557433"
+    ],
+    [
+      "ETH2.S",
+      "198.39708"
+    ],
+    [
+      "EUR",
+      "504861.8946"
+    ],
+    [
+      "USD",
+      "171288.6158"
+    ],
+    [
+      "USD.M",
+      "1213029.278"
+    ],
+    [
+      "USDT",
+      "500000.0"
+    ]
+  ],
+  "footer": []
+}

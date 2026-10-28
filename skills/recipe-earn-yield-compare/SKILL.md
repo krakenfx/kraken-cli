@@ -24,8 +24,8 @@ Compare available staking/earn strategies across assets to find the best risk-ad
    - `kraken earn strategies --asset DOT -o json 2>/dev/null`
    - `kraken earn strategies --asset SOL -o json 2>/dev/null`
    - `kraken earn strategies --asset ATOM -o json 2>/dev/null`
-2. Extract `apr_estimate`, `lock_type`, `min_amount`, `can_allocate` from each
-3. Separate by lock type: flexible vs bonded
+2. Extract `apr_estimate` (`low`, `high`), `lock_type.type`, `user_min_allocation`, `can_allocate` from each entry in `.items`
+3. Separate by lock type: `flex`, `bonded`, `timed`, `instant`
 4. Rank by APR within each lock type
 5. Present comparison table: asset, APR, lock type, minimum amount, availability
 6. Check current allocations: `kraken earn allocations --hide-zero-allocations --converted-asset USD -o json 2>/dev/null`

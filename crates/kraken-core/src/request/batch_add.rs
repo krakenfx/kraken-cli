@@ -1,25 +1,26 @@
-//! `batch_add` — submit many orders for one symbol in a single frame. Each entry is
-//! a [`BatchOrderParams`]; the reply is a `Vec<AddOrderResult>`.
+//! `batch_add` — submit many orders for one symbol in a single frame. Each
+//! entry is a [`BatchOrderParams`]; the reply is a `Vec<AddOrderResult>`.
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/batch_add>. Top level: `symbol`,
-//! `orders` (the docs allow 2–15 per batch, enforced server-side), and the optional
-//! `validate`/`deadline`. Each order entry mirrors the [`add_order`](super::add_order)
-//! params for a single pair.
+//! `orders` (the docs allow 2–15 per batch, enforced server-side), and the
+//! optional `validate`/`deadline`. Each order entry mirrors the
+//! [`add_order`](super::add_order) params for a single pair.
 
+use super::{
+    add_order::{AddOrderResult, ConditionalClose, Triggers},
+    decimal_wire,
+    value::{FeePreference, PriceType, StpType, TimeInForce},
+};
+use crate::{MethodReply, OrderSide, OrderType, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
-use super::add_order::{AddOrderResult, ConditionalClose, Triggers};
-use super::decimal_wire;
-use super::value::{FeePreference, PriceType, StpType, TimeInForce};
-use crate::Request;
-use crate::{MethodReply, OrderSide, OrderType};
-
-/// A single order within a `batch_add` request: the [`AddOrderParams`](super::AddOrderParams)
-/// fields for one pair, minus the batch-level `symbol`/`validate`/`deadline`. Deserialized
-/// from the user-supplied `--orders` JSON, so an unknown key is a typo that must fail
-/// loud, never pass through unvalidated.
+/// A single order within a `batch_add` request: the
+/// [`AddOrderParams`](super::AddOrderParams) fields for one pair, minus the
+/// batch-level `symbol`/`validate`/`deadline`. Deserialized
+/// from the user-supplied `--orders` JSON, so an unknown key is a typo that
+/// must fail loud, never pass through unvalidated.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

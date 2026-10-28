@@ -1,0 +1,77 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "last": 1792494000,
+    "pair": "XBTUSD",
+    "candles": [
+      {
+        "time": 1792490400,
+        "open": 81386.1,
+        "high": 81548.8,
+        "low": 81372.2,
+        "close": 81448.6,
+        "vwap": 81422.1,
+        "volume": 47.20321827,
+        "count": 5532
+      },
+      {
+        "time": 1792494000,
+        "open": 81446.1,
+        "high": 81543.6,
+        "low": 81342.7,
+        "close": 81391.4,
+        "vwap": 81430.4,
+        "volume": 29.58420788,
+        "count": 5444
+      },
+      {
+        "time": 1792497600,
+        "open": 81391.5,
+        "high": 81583.0,
+        "low": 81233.7,
+        "close": 81401.3,
+        "vwap": 81434.0,
+        "volume": 21.59332144,
+        "count": 3716
+      }
+    ]
+  },
+  "headers": [
+    "Time",
+    "Open",
+    "High",
+    "Low",
+    "Close",
+    "Volume"
+  ],
+  "rows": [
+    [
+      "1792490400",
+      "81386.1",
+      "81548.8",
+      "81372.2",
+      "81448.6",
+      "47.20321827"
+    ],
+    [
+      "1792494000",
+      "81446.1",
+      "81543.6",
+      "81342.7",
+      "81391.4",
+      "29.58420788"
+    ],
+    [
+      "1792497600",
+      "81391.5",
+      "81583.0",
+      "81233.7",
+      "81401.3",
+      "21.59332144"
+    ]
+  ],
+  "footer": []
+}

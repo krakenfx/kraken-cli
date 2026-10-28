@@ -5,19 +5,22 @@
 
 #![allow(clippy::unwrap_used)]
 
-use std::path::Path;
-
 use chrono::{DateTime, TimeZone, Utc};
-use kraken_paper::account::{Origin, PaperAccount};
-use kraken_paper::{AccountEvent, CommandEntry, OrderSide, PaperConfig, PaperState};
-use kraken_session::manifest::{PaperRef, SessionManifest, SessionWindow};
-use kraken_session::session::{
-    START_MARKER, STOP_MARKER, SessionTracks, parse_ordinal, read_account_window, read_window,
-    session_dir,
+use kraken_paper::{
+    AccountEvent, CommandEntry, OrderSide, PaperConfig, PaperState,
+    account::{Origin, PaperAccount},
 };
-use kraken_session::timeline::event::{EventPayload, final_epoch_start};
+use kraken_session::{
+    manifest::{PaperRef, SessionManifest, SessionWindow},
+    session::{
+        START_MARKER, STOP_MARKER, SessionTracks, parse_ordinal, read_account_window, read_window,
+        session_dir,
+    },
+    timeline::event::{EventPayload, final_epoch_start},
+};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use std::path::Path;
 
 fn t(minute: u32) -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 1, 1, 0, minute, 0).unwrap()
@@ -302,14 +305,16 @@ fn run_json_carries_the_session_keys_plus_label_and_window() {
     assert!(object.contains_key("label"));
     let window = object["window"].as_object().unwrap();
     let keys: Vec<&str> = window.keys().map(String::as_str).collect();
+    // Struct-declaration order since serde_json preserve_order;
+    // previously the alphabetical BTreeMap accident.
     assert_eq!(
         keys,
         [
-            "ended_at",
-            "opening_complete",
-            "opening_equity",
             "session",
-            "started_at"
+            "started_at",
+            "opening_equity",
+            "opening_complete",
+            "ended_at"
         ],
         "the window's serialized key set is pinned"
     );
@@ -329,9 +334,8 @@ fn ordinals_parse_strictly() {
 }
 
 mod proptests {
-    use proptest::prelude::*;
-
     use super::*;
+    use proptest::prelude::*;
 
     proptest! {
         /// Any prefix of fills folds to the same balances the synthesized

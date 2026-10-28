@@ -1,21 +1,20 @@
 //! `cancel_order` — cancel by order id, client order id, or user reference.
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/cancel_order>. Exactly one
-//! identifier kind per request; the reply carries `order_id` (and echoed `cl_ord_id`)
-//! per cancelled order.
-
-use std::num::NonZeroUsize;
-
-use serde::{Deserialize, Serialize};
+//! identifier kind per request; the reply carries `order_id` (and echoed
+//! `cl_ord_id`) per cancelled order.
 
 use crate::{MethodReply, Request};
+use serde::{Deserialize, Serialize};
+use std::num::NonZeroUsize;
 
-/// `cancel_order` request params: one identifier list per the v2 contract, so the
-/// mixed-kind state is unrepresentable. When several ids are given the engine streams
-/// one reply per id, all sharing the request id; the request path gathers them all
-/// before the server closes the socket — see
-/// [`expected_replies`](CancelOrderParams::expected_replies). Untagged: each variant
-/// serializes as its own wire key (`order_id`, `cl_ord_id`, `order_userref`).
+/// `cancel_order` request params: one identifier list per the v2 contract, so
+/// the mixed-kind state is unrepresentable. When several ids are given the
+/// engine streams one reply per id, all sharing the request id; the request
+/// path gathers them all before the server closes the socket — see
+/// [`expected_replies`](CancelOrderParams::expected_replies). Untagged: each
+/// variant serializes as its own wire key (`order_id`, `cl_ord_id`,
+/// `order_userref`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum CancelOrderParams {
@@ -25,8 +24,8 @@ pub enum CancelOrderParams {
 }
 
 impl CancelOrderParams {
-    /// Identifiers in the populated list — the number of individual replies Kraken
-    /// streams back for this cancel.
+    /// Identifiers in the populated list — the number of individual replies
+    /// Kraken streams back for this cancel.
     fn id_count(&self) -> usize {
         match self {
             Self::OrderIds { order_id } => order_id.len(),
@@ -44,8 +43,9 @@ impl Request for CancelOrderParams {
         reply.try_as_cancel_order().flatten()
     }
 
-    /// One reply per identifier. The CLI guarantees a non-empty list; fall back to one
-    /// defensively rather than panicking on a hand-built empty variant.
+    /// One reply per identifier. The CLI guarantees a non-empty list; fall back
+    /// to one defensively rather than panicking on a hand-built empty
+    /// variant.
     fn expected_replies(&self) -> NonZeroUsize {
         NonZeroUsize::new(self.id_count()).unwrap_or(NonZeroUsize::MIN)
     }

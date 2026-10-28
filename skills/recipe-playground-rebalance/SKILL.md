@@ -21,9 +21,9 @@ Test a target-allocation rebalancing hypothesis on live prices with no real mone
 
 ## Important
 
-Paper results may overstate live performance: fees and slippage are simulated and there are no partial fills (see `kraken-paper-strategy`). This recipe records a session inside a paper workspace; it never places a live order.
+Paper results may overstate live performance: fees and slippage are simulated and there are no partial fills (see `kraken-paper-strategy`). This recipe records a session inside a paper workspace. With that workspace named on every session, balance and order call and checked each round (see Hard Rules), it never places a live order.
 
-Every number that gates a trade or a skip (`targets`, `threshold_usd`, `drift_pct`) belongs in `--strategy-params` — it's what makes two sessions comparable knob-for-knob. A recurring run adds `rounds` and `interval_s` (see step 8). The values in the step-2 example are placeholders: a number the operator names (band, threshold, cadence) replaces the example verbatim — params that don't match the mandate record a hypothesis nobody asked to test. Over a long window this recipe is **interventional** — one visit per `interval_s`, paced by the harness (see `kraken-playground` → Running over a Window).
+Every number that gates a trade or a skip (`targets`, `threshold_usd`, `drift_pct`) belongs in `--strategy-params` — it's what makes two sessions comparable knob-for-knob. A recurring run adds `rounds` and `interval_s` (see Schedule the Rounds). The values in the Start the Session example are placeholders: a number the operator names (band, threshold, cadence) replaces the example verbatim — params that don't match the mandate record a hypothesis nobody asked to test. Over a long window this recipe is **interventional** — one visit per `interval_s`, paced by the harness (see `kraken-playground` → Running over a Window).
 
 ## Quick Start
 
@@ -37,16 +37,14 @@ Check every 2 hours. Report final weights and P&L.
 
 ## Start the Session
 
-Work inside a paper workspace (create one once: `kraken workspace create rebalance --capital 10000 --mode paper`), then:
+Work inside a paper workspace (create one once: `kraken workspace create rebalance --capital 10000 --mode paper`). Every session, balance and order command below names it with `--workspace rebalance`. An exported `KRAKEN_WORKSPACE` does not reach a later shell, such as a `/loop` fire, and without a workspace `kraken order buy` and `kraken order sell` trade the real account.
 
 ```bash
-export KRAKEN_WORKSPACE=rebalance
-
-kraken session start \
+kraken --workspace rebalance session start \
   --symbols BTC/USD,ETH/USD,SOL/USD --channels ticker --to duckdb,jsonl \
   --label rebalance-$(date +%Y%m%d-%H%M%S) \
   --strategy recipe-playground-rebalance \
-  --strategy-params '{"targets":{"BTCUSD":0.50,"ETHUSD":0.35,"SOLUSD":0.15},"interval_s":7200,"drift_pct":5,"threshold_usd":50}' \
+  --strategy-params '{"targets":{"BTCUSD":0.50,"ETHUSD":0.35,"SOLUSD":0.15},"rounds":12,"interval_s":7200,"drift_pct":5,"threshold_usd":50}' \
   -o json 2>/dev/null &
 
 # The session_started stdout line carries the id: {"type":"session_started","session":"s<n>",...}
@@ -67,12 +65,22 @@ Print the session id to the user right after starting, and again in the final re
 Do not re-add an elapsed-time gate inside the round. `/loop` already enforces the spacing. The round cursor lives in the session's typed state cell — a rebalance round writes one decision **per leg**, so the decision log cannot count rounds; the cursor can. Reasons stay narrative (keep "round N" in them for the story; nothing parses it). Stop once the cursor reaches `rounds`:
 
 ```bash
-LAST_ROUND=$(kraken session state get --session s<n> -o json 2>/dev/null \
-  | jq '.cursor.round // 0')
+ROUNDS=12   # the `rounds` you set in --strategy-params
+
+# The trades below are simulated only while rebalance is a paper workspace.
+[ "$(kraken workspace show rebalance -o json 2>/dev/null | jq -r '.mode')" = paper ] \
+  || { echo "workspace rebalance is missing or not paper; no round runs" >&2; exit 1; }
+
+# A failed read must end the firing rather than restart at round 1.
+STATE=$(kraken --workspace rebalance session state get --session s<n> -o json 2>/dev/null) || exit 1
+LAST_ROUND=$(echo "$STATE" | jq '.cursor.round // 0')
 if [ "${LAST_ROUND:-0}" -ge "$ROUNDS" ]; then
-  kraken session stop -o json 2>/dev/null
+  kraken --workspace rebalance session stop -o json 2>/dev/null
   exit 0
 fi
+# A stopped session refuses the cursor writes below, so trading on would repeat legs.
+[ "$(kraken --workspace rebalance session show --session s<n> -o json 2>/dev/null | jq -r '.status')" = recording ] \
+  || { echo "session s<n> is not recording; no round runs" >&2; exit 1; }
 ROUND=$((LAST_ROUND + 1))
 ```
 
@@ -81,9 +89,9 @@ missing leg instead of re-trading executed ones; completing the round writes
 only the round (the replace drops `legs_done` automatically):
 
 ```bash
-kraken session state set --round "$LAST_ROUND" --legs-done "BTC/USD" \
-  --note "round $ROUND: leg 1 of 3 done" -o json 2>/dev/null   # after each leg
-kraken session state set --round "$ROUND" -o json 2>/dev/null   # round complete
+kraken --workspace rebalance session state set --round "$LAST_ROUND" --legs-done "BTC/USD" \
+  --note "round $ROUND: leg 1 of 3 done" -o json 2>/dev/null || exit 1   # after each leg
+kraken --workspace rebalance session state set --round "$ROUND" -o json 2>/dev/null || exit 1   # round complete
 ```
 
 On a fresh firing, `state get`'s `legs_done` names any half-done round — but
@@ -101,8 +109,9 @@ On each firing: READ, THINK, ACT.
 READ: a fresh balance and each symbol's price. Read the balance **every round** — never carry a snapshot across rounds or across trades within a round; each fill mutates cash and holdings.
 
 ```bash
-kraken paper balance -o json 2>/dev/null
-kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[] | .last_price'   # repeat per symbol
+BALANCE=$(kraken --workspace rebalance paper balance -o json 2>/dev/null)
+CASH=$(echo "$BALANCE" | jq -r '.balances.USD.available // empty')
+PRICE_BTC=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[] | .last_price')   # repeat per symbol
 ```
 
 `kraken paper balance` returns `{"balances":{"USD":{"total","reserved","available"},...}}`. Cash is `.balances.USD.available`; a holding is `.balances.<ASSET>.total` (0 if the key is absent). Price is the ticker's last-trade close (`.[] | .last_price`).
@@ -114,7 +123,7 @@ and end the firing (the claimed round stays claimed; the next firing retries):
 
 ```bash
 if [ -z "$CASH" ] || [ -z "$PRICE_BTC" ]; then
-  kraken session note --kind alert \
+  kraken --workspace rebalance session note --kind alert \
     --reason "round $ROUND aborted: READ failed (cash='$CASH' btc='$PRICE_BTC')" -o json 2>/dev/null
   exit 0
 fi
@@ -125,16 +134,16 @@ THINK: value the portfolio, then decide each leg.
 - Per symbol: `value = holdings × price`, `current_pct = value / total_value × 100`, `target_pct = target × 100`, `drift = current_pct − target_pct`, `delta_usd = target_value − value` where `target_value = total_value × target`.
 - A leg needs action only when `|drift| > drift_pct` **AND** `|delta_usd| > threshold_usd`. Otherwise leave it.
 
-ACT: **sells before buys.** Execute every overweight leg (`delta_usd < 0`) first so its proceeds land back in cash, then execute the underweight legs. Size each buy against a fee/slippage reserve so the last leg never rejects: keep the buy cost at or below `available_cash / (1 + fee_rate + slippage_rate)` (defaults 0.0026 fee, 0.0 slippage — read them from `paper status` if unsure). Between legs, re-read the balance rather than assuming the pre-trade cash, and skip or shrink a buy the remaining cash can no longer fund.
+ACT: **sells before buys.** Execute every overweight leg (`delta_usd < 0`) first so its proceeds land back in cash, then execute the underweight legs. Size each buy against a fee/slippage reserve so the last leg never rejects: keep the buy cost at or below `available_cash / (1 + fee_rate + slippage_rate)` (defaults 0.0026 fee, 0.0 slippage — read them from `kraken workspace show rebalance` if unsure). Between legs, re-read the balance rather than assuming the pre-trade cash, and skip or shrink a buy the remaining cash can no longer fund.
 
 ```bash
 # Overweight — sell the excess first
-kraken order sell BTC/USD <volume> --type market \
+kraken --workspace rebalance order sell BTC/USD <volume> --type market \
   --reason "rebalance round N: BTC/USD weight <current_pct>% above target <target_pct>%; selling <volume>" \
   -o json 2>/dev/null
 
 # Underweight — buy toward target, capped by fee-reserved cash
-kraken order buy SOL/USD <volume> --type market \
+kraken --workspace rebalance order buy SOL/USD <volume> --type market \
   --reason "rebalance round N: SOL/USD weight <current_pct>% below target <target_pct>%; buying <volume>" \
   -o json 2>/dev/null
 ```
@@ -142,7 +151,7 @@ kraken order buy SOL/USD <volume> --type market \
 If no leg breaches both thresholds, note a single skip:
 
 ```bash
-kraken session note --kind skip --symbol BTC/USD \
+kraken --workspace rebalance session note --kind skip --symbol BTC/USD \
   --reason "skip round N: all weights within <drift_pct>%/$<threshold_usd> band" \
   -o json 2>/dev/null
 ```
@@ -152,10 +161,10 @@ Always pass the numeric reason so the decision log carries the "why" behind ever
 ## Stop and Review
 
 ```bash
-kraken session stop -o json 2>/dev/null
-kraken session show -o json 2>/dev/null | jq '.summary'
+kraken --workspace rebalance session stop -o json 2>/dev/null
+kraken --workspace rebalance session show -o json 2>/dev/null | jq '.summary'
 
-kraken session decisions --session s<n> -o json 2>/dev/null \
+kraken --workspace rebalance session decisions --session s<n> -o json 2>/dev/null \
   | jq -c '.decisions[] | {kind, symbol, reason, timestamp}'
 ```
 
@@ -168,10 +177,10 @@ Report:
 
 ## Hard Rules
 
-- This recipe records a session inside a paper workspace. It never places a live order.
+- This recipe records a session inside the paper workspace `rebalance` and never places a live order, because every session, balance and order command passes `--workspace rebalance` and every round exits unless `kraken workspace show rebalance` reports mode `paper`. Drop either and the orders can trade the real account.
 - `/loop` drives the pace and the agent runs each round; the CLI has no scheduler and runs no strategy. The scheduler floor is 60s — no sub-minute cadence.
 - Read a fresh balance every round and after each fill. Never size a trade off a stale snapshot — the seed round alone issues three buys, and a fixed pre-trade cash figure overspends once fees are charged.
 - Sells before buys, and reserve fees on every buy, so a multi-leg round cannot reject its last order after earlier fills were already recorded.
-- Keep every gating number (`targets`, `drift_pct`, `threshold_usd`, `interval_s`) in `--strategy-params` and the arithmetic in `jq`/`bc`, so a rerun on the same tape reproduces the decisions.
+- Keep every gating number (`targets`, `drift_pct`, `threshold_usd`, `rounds`, `interval_s`) in `--strategy-params` and the arithmetic in `jq`/`bc`, so a rerun on the same tape reproduces the decisions.
 - The session directory (`session.json`, `decisions.jsonl`, and the tape sinks) is owned by the CLI recorder. The agent only **reads** it, and only for the stop-time summary. Never write, edit, or append inside it — every trade and skip goes through `kraken order buy` / `kraken session note`, so the recorder stays the single writer.
 - If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

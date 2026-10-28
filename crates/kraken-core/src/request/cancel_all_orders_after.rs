@@ -1,15 +1,16 @@
 //! `cancel_all_orders_after` — the dead-man's switch.
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/cancel_after> (the doc page
-//! slug is `cancel_after`, though the wire method is `cancel_all_orders_after`). The reply
-//! echoes the engine's `currentTime` and the `triggerTime` at which the sweep will fire.
-
-use serde::{Deserialize, Serialize};
+//! slug is `cancel_after`, though the wire method is
+//! `cancel_all_orders_after`). The reply echoes the engine's `currentTime` and
+//! the `triggerTime` at which the sweep will fire.
 
 use crate::{MethodReply, Request};
+use serde::{Deserialize, Serialize};
 
-/// `cancel_all_orders_after` request params (the dead-man's switch). `timeout` is in
-/// seconds (max 86400); `0` cancels the timer without touching any orders.
+/// `cancel_all_orders_after` request params (the dead-man's switch). `timeout`
+/// is in seconds (max 86400); `0` cancels the timer without touching any
+/// orders.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CancelAllOrdersAfterParams {
     pub timeout: u64,
@@ -24,8 +25,9 @@ impl Request for CancelAllOrdersAfterParams {
     }
 }
 
-/// `cancel_all_orders_after` result. Both timestamps are RFC3339. Unusually for v2 the
-/// wire keys are camelCase (`currentTime`/`triggerTime`), hence the explicit renames.
+/// `cancel_all_orders_after` result. Both timestamps are RFC3339. Unusually for
+/// v2 the wire keys are camelCase (`currentTime`/`triggerTime`), hence the
+/// explicit renames.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CancelAllOrdersAfterResult {
     #[serde(rename = "currentTime")]
@@ -39,8 +41,8 @@ mod tests {
     use super::*;
     use crate::Inbound;
 
-    /// The crate's only camelCase renames — its most drift-prone serde spot — pinned
-    /// against the docs' reply shape in both directions.
+    /// The crate's only camelCase renames — its most drift-prone serde spot —
+    /// pinned against the docs' reply shape in both directions.
     #[test]
     fn a_docs_shaped_reply_round_trips_its_camel_case_keys() {
         let frame = r#"{"method":"cancel_all_orders_after","req_id":6,"result":{"currentTime":"2023-09-21T12:03:14Z","triggerTime":"2023-09-21T12:04:14Z"},"success":true}"#;

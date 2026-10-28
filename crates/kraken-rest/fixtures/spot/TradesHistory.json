@@ -1,0 +1,39 @@
+{
+  "error": [],
+  "result": {
+    "trades": {
+      "THVRQM-33VKH-UCI7BS": {
+        "ordertxid": "OQCLML-BW3P3-BUCMWZ",
+        "postxid": "TKH2SE-M7IF5-CFI7LT",
+        "pair": "XXBTZUSD",
+        "time": 1688667796.8802,
+        "type": "buy",
+        "ordertype": "limit",
+        "price": "30010.00000",
+        "cost": "600.20000",
+        "fee": "0.00000",
+        "vol": "0.02000000",
+        "margin": "0.00000",
+        "misc": "",
+        "trade_id": 40274859,
+        "maker": true
+      },
+      "TCWJEG-FL4SZ-3FKGH6": {
+        "ordertxid": "OQCLML-BW3P3-BUCMWZ",
+        "postxid": "TKH2SE-M7IF5-CFI7LT",
+        "pair": "XXBTZUSD",
+        "time": 1688667769.6396,
+        "type": "buy",
+        "ordertype": "limit",
+        "price": "30010.00000",
+        "cost": "300.10000",
+        "fee": "0.00000",
+        "vol": "0.01000000",
+        "margin": "0.00000",
+        "misc": "",
+        "trade_id": 39482674,
+        "maker": true
+      }
+    }
+  }
+}

@@ -4,10 +4,13 @@ mod explain;
 mod playback;
 mod source;
 
-pub use explain::explain_pnl;
-pub use explain::report::{
-    Anchor, ComponentKind, ComponentLine, Coverage, EndMarkSource, MissedFill, MissedFillSection,
-    MissedOutcome, OriginSlice, PnlReport, SymbolWindow, TradeLine, WindowSummary,
+pub use explain::{
+    explain_pnl,
+    report::{
+        Anchor, ComponentKind, ComponentLine, Coverage, EndMarkSource, MissedFill,
+        MissedFillSection, MissedOutcome, OriginSlice, PnlReport, SymbolWindow, TradeLine,
+        WindowSummary,
+    },
 };
 pub use playback::{MAX_SPEED, MIN_SPEED, PlaybackClock, replay_events};
 pub use source::resolve_source_path;
@@ -36,8 +39,8 @@ pub enum ReplayError {
     /// A journal with no `Initialized`/`Reset` to anchor the final epoch on.
     /// → envelope `validation`.
     #[error(
-        "session '{session}' has no account initialization on its journal to anchor a final \
-         epoch on"
+        "session '{session}' has no account initialization on its journal to anchor a final epoch \
+         on"
     )]
     NoEpoch { session: String },
     /// A source ref that resolves to no JSONL file (missing, or DuckDB-only).

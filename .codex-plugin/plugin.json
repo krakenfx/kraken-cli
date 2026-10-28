@@ -1,6 +1,6 @@
 {
   "name": "kraken-cli",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken.",
   "author": {
     "name": "Kraken",
@@ -23,14 +23,14 @@
   "skills": "./skills/",
   "mcpServers": {
     "kraken": {
-      "command": "kraken",
-      "args": ["mcp", "-s", "market,paper,feedback"]
+      "command": "kraken-mcp",
+      "args": ["-s", "market,paper,feedback"]
     }
   },
   "interface": {
     "displayName": "Kraken CLI",
     "shortDescription": "Trade crypto, stocks, forex, and derivatives from your AI agent.",
-    "longDescription": "Agent-first CLI with a built-in MCP server. 173 commands covering spot, futures, xStocks, forex, staking, workspaces, recorded sessions, and paper trading. Ships with 59 goal-oriented skills for strategies like DCA, grid trading, basis trades, and portfolio rebalancing. Paper trading works out of the box with no API keys; live trading is an explicit opt-in via expanded MCP service flags.",
+    "longDescription": "Agent-first CLI with a built-in MCP server. 188 commands covering spot, futures, xStocks, forex, staking, workspaces, recorded sessions, recipes, and paper trading. Ships with 59 goal-oriented skills for strategies like DCA, grid trading, basis trades, and portfolio rebalancing. Paper trading works out of the box with no API keys; live trading is an explicit opt-in via expanded MCP service flags.",
     "developerName": "Kraken",
     "category": "Finance",
     "capabilities": ["Read"],

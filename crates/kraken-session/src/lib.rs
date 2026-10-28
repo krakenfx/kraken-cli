@@ -1,8 +1,10 @@
 #![doc = include_str!("../README.md")]
 
-use std::fmt;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 pub mod decision;
 pub mod manifest;
@@ -66,8 +68,8 @@ impl FromStr for SessionName {
         // Shared grammar prevents artifact namespaces from diverging.
         if !kraken_core::name::is_safe_name_segment(s) {
             return Err(SessionError::Rejected(format!(
-                "Invalid session name {s:?}: use only letters, digits, '.', '-', or '_' \
-                 (no '/', spaces, or '.'/'..')."
+                "Invalid session name {s:?}: use only letters, digits, '.', '-', or '_' (no '/', \
+                 spaces, or '.'/'..')."
             )));
         }
         Ok(Self(s.to_owned()))
@@ -106,7 +108,8 @@ pub fn dir(base: &Path, name: &SessionName) -> PathBuf {
     sessions_root(base).join(name.as_ref())
 }
 
-/// The isolated paper account's event log: `<base>/sessions/<name>/events.jsonl`.
+/// The isolated paper account's event log:
+/// `<base>/sessions/<name>/events.jsonl`.
 pub fn events_path(base: &Path, name: &SessionName) -> PathBuf {
     dir(base, name).join("events.jsonl")
 }
@@ -134,9 +137,8 @@ pub fn ensure_provisioned(base: &Path, name: &SessionName) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use super::*;
+    use std::fs;
 
     #[test]
     fn session_name_accepts_safe_segments() {
@@ -177,8 +179,9 @@ mod tests {
 
     #[test]
     fn ensure_provisioned_requires_a_manifest() {
-        // A bare `paper --session` account creates the directory without a manifest; a decision
-        // must not be written there, so the guard keys off the manifest, not the directory.
+        // A bare `paper --session` account creates the directory without a manifest; a
+        // decision must not be written there, so the guard keys off the
+        // manifest, not the directory.
         let base = tempfile::tempdir().unwrap();
         let name: SessionName = "btc-dip".parse().unwrap();
 

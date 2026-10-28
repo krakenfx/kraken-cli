@@ -1,24 +1,26 @@
 //! Run policy over a scope — the directory holding a `journal.jsonl`, be it
 //! a workspace or the config root for the real account. The artifact itself
-//! (layout, `session.json`, the windowed reader) lives in `kraken_session::run`;
-//! here is what the artifact cannot know: how ordinals allocate, what a session
-//! ref resolves to, which run is active, and the pure reconciliation core
-//! that heals a live journal from venue history.
+//! (layout, `session.json`, the windowed reader) lives in
+//! `kraken_session::run`; here is what the artifact cannot know: how ordinals
+//! allocate, what a session ref resolves to, which run is active, and the pure
+//! reconciliation core that heals a live journal from venue history.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt;
-use std::path::Path;
-use std::str::FromStr;
-
+use crate::{Result, WorkspaceError};
 use chrono::{DateTime, Utc};
 use kraken_core::OrderSide;
 use kraken_paper::{BALANCE_DUST, PaperTrade};
-use kraken_session::manifest::SessionManifest;
-use kraken_session::session::{parse_ordinal, session_dir, session_file_path, sessions_root};
+use kraken_session::{
+    manifest::SessionManifest,
+    session::{parse_ordinal, session_dir, session_file_path, sessions_root},
+};
 use rust_decimal::Decimal;
 use serde::Serialize;
-
-use crate::{Result, WorkspaceError};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    fmt,
+    path::Path,
+    str::FromStr,
+};
 
 /// A session's identity within its scope. Displays — and serializes — as the
 /// directory name `s<n>`.
@@ -111,8 +113,8 @@ pub struct SessionRecord {
 }
 
 /// Allocate the next session: `max(s<n>) + 1`, never reusing an ordinal (no
-/// command deletes a session directory). Refuses while a session is still recording,
-/// and refuses a label another run already carries.
+/// command deletes a session directory). Refuses while a session is still
+/// recording, and refuses a label another run already carries.
 ///
 /// Caller contract: hold the scope journal's writer lock (the open
 /// `PaperAccount`) across allocate → provision → start-marker append. That
@@ -334,10 +336,9 @@ pub fn drift(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use kraken_session::manifest::{PaperRef, SessionManifest, SessionWindow};
     use rust_decimal_macros::dec;
-
-    use super::*;
 
     fn write_session(scope: &Path, ordinal: u32, label: Option<&str>, stopped: bool) {
         let manifest = SessionManifest::new(

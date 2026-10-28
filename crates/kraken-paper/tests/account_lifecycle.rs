@@ -2,8 +2,10 @@
 //! boundary proof: if this flow cannot be written against `pub` items, the
 //! next crate up cannot write it either.
 
-use kraken_paper::account::{Origin, PaperAccount};
-use kraken_paper::{AccountEvent, CommandEntry, OrderSide, PaperConfig, PaperError};
+use kraken_paper::{
+    AccountEvent, CommandEntry, OrderSide, PaperConfig, PaperError,
+    account::{Origin, PaperAccount},
+};
 use rust_decimal_macros::dec;
 
 fn config(balance: rust_decimal::Decimal) -> PaperConfig {

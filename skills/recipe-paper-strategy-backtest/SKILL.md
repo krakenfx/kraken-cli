@@ -24,11 +24,10 @@ Paper trading applies configurable fees (default 0.26% taker) and optional flat-
 ## Steps
 
 1. Define strategy parameters (pair, entry/exit rules, position size)
-2. Initialize paper account: `kraken workspace create sandbox --capital 10000 --mode paper --slippage-rate 0.001 -o json 2>/dev/null
-export KRAKEN_WORKSPACE=sandbox`
-3. Round 1: execute strategy logic using paper buy/sell commands
-4. Record round 1 results: `kraken workspace status -o json 2>/dev/null` + `kraken paper history -o json 2>/dev/null`
-5. Reset: `kraken workspace reset -o json 2>/dev/null`
+2. Initialize paper account: `kraken workspace create sandbox --capital 10000 --mode paper --slippage-rate 0.001 -o json 2>/dev/null`
+3. Round 1: execute strategy logic with `kraken --workspace sandbox paper buy ...` and `kraken --workspace sandbox paper sell ...`
+4. Record round 1 results: `kraken workspace status sandbox -o json 2>/dev/null` + `kraken --workspace sandbox paper history -o json 2>/dev/null`
+5. Reset: `kraken workspace reset sandbox -o json --yes 2>/dev/null`
 6. Round 2 with same parameters at a different time (different market conditions)
 7. Record round 2 results
 8. Repeat for 3-5 rounds minimum

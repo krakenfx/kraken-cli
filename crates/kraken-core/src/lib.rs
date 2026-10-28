@@ -1,21 +1,22 @@
-//! Typed wire model and error taxonomy for the Kraken Spot WebSocket v2 protocol.
+//! Typed wire model and error taxonomy for the Kraken Spot WebSocket v2
+//! protocol.
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2>. Split into the outgoing
-//! `request` methods and their `wire` framing, the incoming `response` reply model
-//! and `inbound` frame classification, the [`subscribe`] channel catalogue and
-//! payloads, the [`endpoint`] socket catalogue, the [`error`] type, and the
-//! `primitives` shared by all of them.
+//! `request` methods and their `wire` framing, the incoming `response` reply
+//! model and `inbound` frame classification, the [`subscribe`] channel
+//! catalogue and payloads, the [`endpoint`] socket catalogue, the [`error`]
+//! type, and the `primitives` shared by all of them.
 //!
-//! Layer 0 by construction: pure data — parsing, validation, serialization — with no
-//! I/O, no async runtime, and no transport dependencies.
+//! Layer 0 by construction: pure data — parsing, validation, serialization —
+//! with no I/O, no async runtime, and no transport dependencies.
 //!
-//! Precision bound: inbound JSON numbers decode into `Decimal` through `f64` (~17
-//! significant digits) — `arbitrary_precision` cannot ride the flattened channel
-//! envelope (see the manifest note). Outgoing request params do not share the bound:
-//! their `Decimal` fields serialize digit-exact.
+//! Precision bound: inbound JSON numbers decode into `Decimal` through `f64`
+//! (~17 significant digits) — `arbitrary_precision` cannot ride the flattened
+//! channel envelope (see the manifest note). Outgoing request params do not
+//! share the bound: their `Decimal` fields serialize digit-exact.
 //!
-//! The root re-exports below are the public surface; only the modules external code
-//! actually paths into stay `pub`.
+//! The root re-exports below are the public surface; only the modules external
+//! code actually paths into stay `pub`.
 
 #![warn(missing_debug_implementations)]
 // Tests assert with unwrap/panic by design; the workspace lints deny them elsewhere.

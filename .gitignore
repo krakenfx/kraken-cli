@@ -28,10 +28,13 @@ config.toml
 .claude/hooks/
 .claude/settings.local.json
 
-# Codex MR review local output
+# Local agent output
 .codex-home/
 .codex-review/
 codex-review/
 
 # OS
 .DS_Store
+
+# npm-owned formatters live in pinned per-tool profiles under tools/npm/.
+tools/npm/*/node_modules/

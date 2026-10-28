@@ -1,0 +1,35 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "method": "Bitcoin",
+    "limit": "332.00956139",
+    "amount": "0.72485000",
+    "fee": "0.00020000"
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "method",
+      "Bitcoin"
+    ],
+    [
+      "limit",
+      "332.00956139"
+    ],
+    [
+      "amount",
+      "0.72485000"
+    ],
+    [
+      "fee",
+      "0.00020000"
+    ]
+  ],
+  "footer": []
+}

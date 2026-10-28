@@ -1,0 +1,231 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "instruments": [
+      {
+        "symbol": "PI_XBTUSD",
+        "pair": "XBT:USD",
+        "base": "XBT",
+        "quote": "USD",
+        "type": "futures_inverse",
+        "underlying": "rr_xbtusd",
+        "tickSize": 0.5,
+        "contractSize": 1,
+        "tradeable": true,
+        "impactMidSize": 1,
+        "maxPositionSize": 1000000,
+        "openingDate": "2022-01-01T00:00:00.000Z",
+        "marginLevels": [
+          {
+            "contracts": 0,
+            "initialMargin": 0.02,
+            "maintenanceMargin": 0.01
+          },
+          {
+            "contracts": 500000,
+            "initialMargin": 0.04,
+            "maintenanceMargin": 0.02
+          },
+          {
+            "contracts": 1000000,
+            "initialMargin": 0.06,
+            "maintenanceMargin": 0.03
+          },
+          {
+            "contracts": 3000000,
+            "initialMargin": 0.1,
+            "maintenanceMargin": 0.05
+          }
+        ],
+        "retailMarginLevels": [
+          {
+            "contracts": 0,
+            "initialMargin": 0.5,
+            "maintenanceMargin": 0.25
+          }
+        ],
+        "fundingRateCoefficient": 8,
+        "maxRelativeFundingRate": 0.001,
+        "isin": "GB00J62YGL67",
+        "contractValueTradePrecision": 0,
+        "postOnly": false,
+        "feeScheduleUid": "eef90775-995b-4596-9257-0917f6134766",
+        "category": "",
+        "tags": [],
+        "tradfi": false,
+        "mtf": true,
+        "platformsPermitted": [],
+        "countriesBanned": [],
+        "isExpired": false
+      },
+      {
+        "symbol": "FI_XBTUSD_220930",
+        "pair": "XBT:USD",
+        "base": "XBT",
+        "quote": "USD",
+        "type": "futures_inverse",
+        "underlying": "rr_xbtusd",
+        "tickSize": 0.5,
+        "contractSize": 1,
+        "tradeable": true,
+        "impactMidSize": 1,
+        "maxPositionSize": 1000000,
+        "openingDate": "2022-01-01T00:00:00.000Z",
+        "lastTradingTime": "2022-09-30T15:00:00.000Z",
+        "marginLevels": [
+          {
+            "contracts": 0,
+            "initialMargin": 0.02,
+            "maintenanceMargin": 0.01
+          },
+          {
+            "contracts": 500000,
+            "initialMargin": 0.04,
+            "maintenanceMargin": 0.02
+          },
+          {
+            "contracts": 1000000,
+            "initialMargin": 0.06,
+            "maintenanceMargin": 0.03
+          },
+          {
+            "contracts": 3000000,
+            "initialMargin": 0.1,
+            "maintenanceMargin": 0.05
+          }
+        ],
+        "retailMarginLevels": [
+          {
+            "contracts": 0,
+            "initialMargin": 0.5,
+            "maintenanceMargin": 0.25
+          }
+        ],
+        "isin": "GB00JVMLP260",
+        "contractValueTradePrecision": 0,
+        "postOnly": false,
+        "feeScheduleUid": "eef90775-995b-4596-9257-0917f6134766",
+        "category": "",
+        "tags": [],
+        "tradfi": false,
+        "mtf": false,
+        "platformsPermitted": [],
+        "countriesBanned": [],
+        "isExpired": false
+      },
+      {
+        "symbol": "PF_XBTUSD",
+        "pair": "XBT:USD",
+        "base": "XBT",
+        "quote": "USD",
+        "type": "flexible_futures",
+        "tickSize": 1,
+        "contractSize": 1,
+        "tradeable": true,
+        "impactMidSize": 1,
+        "maxPositionSize": 1000000,
+        "openingDate": "2022-01-01T00:00:00.000Z",
+        "marginLevels": [
+          {
+            "numNonContractUnits": 0,
+            "initialMargin": 0.02,
+            "maintenanceMargin": 0.01
+          },
+          {
+            "numNonContractUnits": 500000,
+            "initialMargin": 0.04,
+            "maintenanceMargin": 0.02
+          },
+          {
+            "numNonContractUnits": 2000000,
+            "initialMargin": 0.1,
+            "maintenanceMargin": 0.05
+          },
+          {
+            "numNonContractUnits": 5000000,
+            "initialMargin": 0.2,
+            "maintenanceMargin": 0.1
+          },
+          {
+            "numNonContractUnits": 10000000,
+            "initialMargin": 0.3,
+            "maintenanceMargin": 0.15
+          },
+          {
+            "numNonContractUnits": 30000000,
+            "initialMargin": 0.5,
+            "maintenanceMargin": 0.25
+          }
+        ],
+        "retailMarginLevels": [
+          {
+            "numNonContractUnits": 0,
+            "initialMargin": 0.02,
+            "maintenanceMargin": 0.01
+          },
+          {
+            "numNonContractUnits": 500000,
+            "initialMargin": 0.04,
+            "maintenanceMargin": 0.02
+          },
+          {
+            "numNonContractUnits": 2000000,
+            "initialMargin": 0.1,
+            "maintenanceMargin": 0.05
+          },
+          {
+            "numNonContractUnits": 5000000,
+            "initialMargin": 0.2,
+            "maintenanceMargin": 0.1
+          },
+          {
+            "numNonContractUnits": 10000000,
+            "initialMargin": 0.3,
+            "maintenanceMargin": 0.15
+          },
+          {
+            "numNonContractUnits": 30000000,
+            "initialMargin": 0.5,
+            "maintenanceMargin": 0.25
+          }
+        ],
+        "fundingRateCoefficient": 8,
+        "maxRelativeFundingRate": 0.001,
+        "contractValueTradePrecision": 4,
+        "postOnly": false,
+        "feeScheduleUid": "5b755fea-c5b0-4307-a66e-b392cd5bd931",
+        "category": "Layer 1",
+        "tags": [],
+        "tradfi": false,
+        "mtf": false,
+        "platformsPermitted": [],
+        "countriesBanned": [],
+        "isExpired": false
+      }
+    ],
+    "serverTime": "2022-06-28T09:29:04.243Z"
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "result",
+      "success"
+    ],
+    [
+      "instruments",
+      "[{\"symbol\":\"PI_XBTUSD\",\"pair\":\"XBT:USD\",\"base\":\"XBT\",\"quote\":\"USD\",\"type\":\"futures_inverse\",\"underlying\":\"rr_xbtusd\",\"tickSize\":0.5,\"contractSize\":1,\"tradeable\":true,\"impactMidSize\":1,\"maxPositionSize\":1000000,\"openingDate\":\"2022-01-01T00:00:00.000Z\",\"marginLevels\":[{\"contracts\":0,\"initialMargin\":0.02,\"maintenanceMargin\":0.01},{\"contracts\":500000,\"initialMargin\":0.04,\"maintenanceMargin\":0.02},{\"contracts\":1000000,\"initialMargin\":0.06,\"maintenanceMargin\":0.03},{\"contracts\":3000000,\"initialMargin\":0.1,\"maintenanceMargin\":0.05}],\"retailMarginLevels\":[{\"contracts\":0,\"initialMargin\":0.5,\"maintenanceMargin\":0.25}],\"fundingRateCoefficient\":8,\"maxRelativeFundingRate\":0.001,\"isin\":\"GB00J62YGL67\",\"contractValueTradePrecision\":0,\"postOnly\":false,\"feeScheduleUid\":\"eef90775-995b-4596-9257-0917f6134766\",\"category\":\"\",\"tags\":[],\"tradfi\":false,\"mtf\":true,\"platformsPermitted\":[],\"countriesBanned\":[],\"isExpired\":false},{\"symbol\":\"FI_XBTUSD_220930\",\"pair\":\"XBT:USD\",\"base\":\"XBT\",\"quote\":\"USD\",\"type\":\"futures_inverse\",\"underlying\":\"rr_xbtusd\",\"tickSize\":0.5,\"contractSize\":1,\"tradeable\":true,\"impactMidSize\":1,\"maxPositionSize\":1000000,\"openingDate\":\"2022-01-01T00:00:00.000Z\",\"lastTradingTime\":\"2022-09-30T15:00:00.000Z\",\"marginLevels\":[{\"contracts\":0,\"initialMargin\":0.02,\"maintenanceMargin\":0.01},{\"contracts\":500000,\"initialMargin\":0.04,\"maintenanceMargin\":0.02},{\"contracts\":1000000,\"initialMargin\":0.06,\"maintenanceMargin\":0.03},{\"contracts\":3000000,\"initialMargin\":0.1,\"maintenanceMargin\":0.05}],\"retailMarginLevels\":[{\"contracts\":0,\"initialMargin\":0.5,\"maintenanceMargin\":0.25}],\"isin\":\"GB00JVMLP260\",\"contractValueTradePrecision\":0,\"postOnly\":false,\"feeScheduleUid\":\"eef90775-995b-4596-9257-0917f6134766\",\"category\":\"\",\"tags\":[],\"tradfi\":false,\"mtf\":false,\"platformsPermitted\":[],\"countriesBanned\":[],\"isExpired\":false},{\"symbol\":\"PF_XBTUSD\",\"pair\":\"XBT:USD\",\"base\":\"XBT\",\"quote\":\"USD\",\"type\":\"flexible_futures\",\"tickSize\":1,\"contractSize\":1,\"tradeable\":true,\"impactMidSize\":1,\"maxPositionSize\":1000000,\"openingDate\":\"2022-01-01T00:00:00.000Z\",\"marginLevels\":[{\"numNonContractUnits\":0,\"initialMargin\":0.02,\"maintenanceMargin\":0.01},{\"numNonContractUnits\":500000,\"initialMargin\":0.04,\"maintenanceMargin\":0.02},{\"numNonContractUnits\":2000000,\"initialMargin\":0.1,\"maintenanceMargin\":0.05},{\"numNonContractUnits\":5000000,\"initialMargin\":0.2,\"maintenanceMargin\":0.1},{\"numNonContractUnits\":10000000,\"initialMargin\":0.3,\"maintenanceMargin\":0.15},{\"numNonContractUnits\":30000000,\"initialMargin\":0.5,\"maintenanceMargin\":0.25}],\"retailMarginLevels\":[{\"numNonContractUnits\":0,\"initialMargin\":0.02,\"maintenanceMargin\":0.01},{\"numNonContractUnits\":500000,\"initialMargin\":0.04,\"maintenanceMargin\":0.02},{\"numNonContractUnits\":2000000,\"initialMargin\":0.1,\"maintenanceMargin\":0.05},{\"numNonContractUnits\":5000000,\"initialMargin\":0.2,\"maintenanceMargin\":0.1},{\"numNonContractUnits\":10000000,\"initialMargin\":0.3,\"maintenanceMargin\":0.15},{\"numNonContractUnits\":30000000,\"initialMargin\":0.5,\"maintenanceMargin\":0.25}],\"fundingRateCoefficient\":8,\"maxRelativeFundingRate\":0.001,\"contractValueTradePrecision\":4,\"postOnly\":false,\"feeScheduleUid\":\"5b755fea-c5b0-4307-a66e-b392cd5bd931\",\"category\":\"Layer 1\",\"tags\":[],\"tradfi\":false,\"mtf\":false,\"platformsPermitted\":[],\"countriesBanned\":[],\"isExpired\":false}]"
+    ],
+    [
+      "serverTime",
+      "2022-06-28T09:29:04.243Z"
+    ]
+  ],
+  "footer": []
+}

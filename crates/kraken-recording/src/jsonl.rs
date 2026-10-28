@@ -13,16 +13,17 @@
 //! by readers, while an interior hole fails the read loud. Consumers that
 //! need multi-event atomicity must encode the transaction as a single line.
 
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
-
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-
-use crate::error::{Error, Result};
-use crate::fsync::fsync_parent;
-use crate::lock::FileLock;
+use crate::{
+    error::{Error, Result},
+    fsync::fsync_parent,
+    lock::FileLock,
+};
+use serde::{Serialize, de::DeserializeOwned};
+use std::{
+    fs::{File, OpenOptions},
+    io::{BufRead, BufReader, Write},
+    path::{Path, PathBuf},
+};
 
 /// An append-only JSONL log with its writer lock held for the handle's
 /// lifetime, so a caller's whole read→decide→append sequence is one
@@ -220,10 +221,9 @@ fn repair_torn_tail(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use proptest::prelude::*;
     use serde::Deserialize;
-
-    use super::*;
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
     struct Entry {

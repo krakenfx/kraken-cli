@@ -1,18 +1,21 @@
 //! The `Workspaces` facade — the one seam the binary dispatches to.
 
-use std::collections::BTreeMap;
-use std::path::PathBuf;
-
+use crate::{
+    Result, WorkspaceError,
+    backing::Claims,
+    manifest::{WorkspaceManifest, WorkspaceMode},
+    naming::{DEFAULT_WORKSPACE, WorkspaceName},
+    store,
+};
 use chrono::{DateTime, Utc};
-use kraken_paper::account::{Origin, PaperAccount};
-use kraken_paper::{AccountEvent, CommandEntry, CommandOutcome, PaperConfig, PaperState};
+use kraken_paper::{
+    AccountEvent, CommandEntry, CommandOutcome, PaperConfig, PaperState,
+    account::{Origin, PaperAccount},
+};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use serde_with::skip_serializing_none;
-
-use crate::manifest::{WorkspaceManifest, WorkspaceMode};
-use crate::naming::{DEFAULT_WORKSPACE, WorkspaceName};
-use crate::{Result, WorkspaceError, store};
+use std::{collections::BTreeMap, path::PathBuf};
 
 /// Validated input for workspace creation; storage owns the timestamp.
 #[derive(Debug, Clone)]
@@ -143,7 +146,7 @@ pub struct AssetBalance {
     pub available: Decimal,
 }
 
-/// The `workspace balance` payload for a paper account.
+/// The locally projected `workspace balance` payload.
 #[derive(Debug, Serialize)]
 pub struct WorkspaceBalances {
     pub workspace: String,
@@ -170,19 +173,21 @@ impl Workspaces {
         store::ensure_exists(&self.base, name)
     }
 
-    /// Creates and funds as one logical operation; failed funding removes the contract.
+    /// Creates and funds as one logical operation; failed funding removes the
+    /// contract.
     pub fn create(&self, spec: CreateSpec, origin: Origin) -> Result<WorkspaceManifest> {
         if spec.name.is_default() {
             return Err(WorkspaceError::CapitalManaged(format!(
-                "'{DEFAULT_WORKSPACE}' is the real Kraken account; its capital is managed by \
-                 the venue. Create a named workspace instead."
+                "'{DEFAULT_WORKSPACE}' is the real Kraken account; its capital is managed by the \
+                 venue. Create a named workspace instead."
             )));
         }
         crate::policy::ensure_mode_creatable(spec.mode, spec.name.as_ref())?;
         kraken_paper::validate_money(spec.capital, "capital")?;
         ensure_rate(spec.fee_rate, "fee rate")?;
         ensure_rate(spec.slippage_rate, "slippage rate")?;
-        // Persist canonical pairs so order-time policy cannot diverge from engine parsing.
+        // Persist canonical pairs so order-time policy cannot diverge from engine
+        // parsing.
         let spec = CreateSpec {
             allowed_pairs: spec
                 .allowed_pairs
@@ -250,6 +255,31 @@ impl Workspaces {
         Ok(rows)
     }
 
+    /// What live workspaces other than `exclude` already claim of `asset`.
+    ///
+    /// Every live workspace draws on the same Kraken balance, so a claim is
+    /// only meaningful net of the other claims against it.
+    pub fn allocated_elsewhere(&self, exclude: &WorkspaceName, asset: &str) -> Result<Claims> {
+        let mut claims = Claims::known(Decimal::ZERO);
+        for (name, manifest) in store::list(&self.base)? {
+            let Ok(manifest) = manifest else {
+                // An unreadable neighbour's claim is unknown, so the total
+                // becomes a floor. Skipping it silently would under-count and
+                // let an over-allocation through — the unsafe direction.
+                claims.complete = false;
+                continue;
+            };
+            if manifest.mode != WorkspaceMode::Live
+                || name.as_ref() == exclude.as_ref() as &str
+                || !manifest.currency.eq_ignore_ascii_case(asset)
+            {
+                continue;
+            }
+            claims.total += manifest.capital;
+        }
+        Ok(claims)
+    }
+
     pub fn show(&self, target: &Target) -> Result<WorkspaceOverview> {
         match target {
             Target::Default => Ok(WorkspaceOverview::synthesized_default()),
@@ -285,8 +315,7 @@ impl Workspaces {
         let mut manifest = store::load(&self.base, name)?;
         if manifest.mode != WorkspaceMode::Paper {
             return Err(WorkspaceError::CapitalManaged(format!(
-                "workspace '{name}' is mode {}; only a paper account can be reset to its \
-                 capital",
+                "workspace '{name}' is mode {}; only a paper account can be reset to its capital",
                 manifest.mode
             )));
         }
@@ -343,19 +372,81 @@ impl Workspaces {
         Ok(manifest)
     }
 
-    /// Promotion stays fail-closed until workspace-scoped credentials can
-    /// prevent a named workspace from inheriting the master account.
+    /// Promote a qualified paper workspace to a live allocation of the account.
     pub fn promote(
         &self,
         name: &WorkspaceName,
-        evidence: crate::promote::PromotionInputs,
+        mut evidence: crate::promote::PromotionInputs,
+        origin: Origin,
     ) -> Result<WorkspaceManifest> {
         let manifest = store::load(&self.base, name)?;
+        if manifest.mode == WorkspaceMode::Live {
+            return Ok(manifest);
+        }
+        // The caller's blockers were measured before its confirmation prompt
+        // and go stale while the user reads it. Re-measure them under the
+        // journal's writer lock — a session or order that slipped in must
+        // refuse the promotion BEFORE anything lands on the record.
+        let mut account = PaperAccount::open_at(self.journal_path(name), origin)?;
+        evidence.active_session =
+            crate::session::active(&crate::workspace_dir(&self.base, name))?.is_some();
+        evidence.open_paper_orders = account.state()?.open_orders.len();
         let checklist = crate::promote::evaluate(&manifest, evidence);
-        Err(WorkspaceError::NotPromotable {
-            workspace: manifest.name,
-            checklist: Box::new(checklist),
-        })
+        if !checklist.promotable {
+            return Err(WorkspaceError::NotPromotable {
+                workspace: manifest.name,
+                checklist: Box::new(checklist),
+            });
+        }
+
+        // One journal now spans both eras. The divide marker (a bare reset
+        // epoch is indistinguishable from a user-invoked reset) and the epoch
+        // that starts live accounting from the allocation rather than
+        // simulated P&L land as ONE durable batch: a half-landed promotion
+        // would leave a still-paper journal claiming venue fills.
+        let config = PaperConfig {
+            balance: manifest.capital,
+            currency: manifest.currency.clone(),
+            fee_rate: manifest.fee_rate,
+            slippage_rate: manifest.slippage_rate,
+        };
+        let entry = CommandEntry {
+            name: "workspace promote".to_string(),
+            balance: Some(manifest.capital),
+            currency: Some(manifest.currency.clone()),
+            fee_rate: Some(manifest.fee_rate),
+            slippage_rate: Some(manifest.slippage_rate),
+            outcome: CommandOutcome::Ok {
+                order_ids: Vec::new(),
+                trade_ids: Vec::new(),
+            },
+            ..CommandEntry::default()
+        };
+        account.commit(
+            vec![
+                AccountEvent::FillSourceChanged {
+                    from: kraken_paper::FillSource::Simulated,
+                    to: kraken_paper::FillSource::Venue,
+                },
+                AccountEvent::Reset(config),
+            ],
+            entry,
+        )?;
+        // Journal before manifest: a crash here leaves marker + epoch down
+        // with the mode still paper, and the retry appends a fresh batch
+        // (readers take the LAST marker). The reverse order would let real
+        // fills land with no divide on the record at all.
+        drop(account);
+        self.activate_live(name)
+    }
+
+    /// Switch the existing workspace contract to live mode.
+    fn activate_live(&self, name: &WorkspaceName) -> Result<WorkspaceManifest> {
+        let mut manifest = store::load(&self.base, name)?;
+        manifest.mode = WorkspaceMode::Live;
+        kraken_recording::write_json_atomic(&store::manifest_path(&self.base, name), &manifest)
+            .map_err(WorkspaceError::Recording)?;
+        Ok(manifest)
     }
 
     /// The account journal: `<base>/workspaces/<name>/journal.jsonl`.
@@ -401,9 +492,8 @@ fn asset_balances(state: &PaperState) -> BTreeMap<String, AssetBalance> {
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use super::*;
+    use rust_decimal_macros::dec;
 
     fn spec(name: &str) -> CreateSpec {
         CreateSpec {
@@ -442,18 +532,131 @@ mod tests {
     }
 
     #[test]
-    fn create_refuses_live_mode_until_scoped_credentials() {
+    fn create_accepts_a_live_contract_with_an_allocation() {
         let base = tempfile::tempdir().expect("tempdir");
         let mut live = spec("scalper");
         live.mode = WorkspaceMode::Live;
-        let err = Workspaces::new(base.path())
+        let workspaces = Workspaces::new(base.path());
+        let manifest = workspaces
             .create(live, Origin::Cli)
-            .expect_err("must refuse");
+            .expect("live create should be local");
+        assert_eq!(manifest.mode, WorkspaceMode::Live);
+        let name: WorkspaceName = "scalper".parse().expect("valid name");
+        let balances = workspaces.balances(&name, Origin::Cli).expect("balances");
+        assert_eq!(balances.balances["USD"].total, dec!(10000));
+    }
+
+    #[test]
+    fn activation_switches_the_existing_workspace_to_live() {
+        let base = tempfile::tempdir().expect("tempdir");
+        let workspaces = Workspaces::new(base.path());
+        workspaces
+            .create(spec("scalper"), Origin::Cli)
+            .expect("paper create");
+        let name: WorkspaceName = "scalper".parse().expect("valid name");
+        let activated = workspaces.activate_live(&name).expect("activate");
+
+        assert_eq!(activated.mode, WorkspaceMode::Live);
+        let reloaded = workspaces.manifest(&name).expect("reload");
+        assert_eq!(reloaded.mode, WorkspaceMode::Live);
+    }
+
+    #[test]
+    fn promotion_preserves_history_and_starts_a_new_logical_epoch() {
+        let base = tempfile::tempdir().expect("tempdir");
+        let workspaces = Workspaces::new(base.path());
+        workspaces
+            .create(spec("scalper"), Origin::Cli)
+            .expect("paper create");
+        let name: WorkspaceName = "scalper".parse().expect("valid name");
+        let promoted = workspaces
+            .promote(
+                &name,
+                crate::promote::PromotionInputs {
+                    experiments: vec![crate::promote::ExperimentEvidence {
+                        experiment: "momentum".into(),
+                        total_sessions: 2,
+                        passing_sessions: 2,
+                        passing_live_sessions: 1,
+                    }],
+                    ..crate::promote::PromotionInputs::default()
+                },
+                Origin::Cli,
+            )
+            .expect("promote");
+
+        assert_eq!(promoted.mode, WorkspaceMode::Live);
+        let journal =
+            std::fs::read_to_string(workspaces.journal_path(&name)).expect("journal exists");
+        assert!(journal.lines().next().unwrap().contains("\"initialized\""));
+        assert!(journal.lines().any(|line| line.contains("\"reset\"")));
         assert!(
-            matches!(err, WorkspaceError::LiveUnavailable { .. }),
-            "{err}"
+            journal
+                .lines()
+                .any(|line| line.contains("\"fill_source_changed\"")),
+            "the era divide is on the record"
         );
-        assert!(err.to_string().contains("scoped credentials"), "{err}");
+    }
+
+    /// A blocker that appears after the caller measured its evidence (the
+    /// confirmation prompt is an open race window) must refuse the promotion
+    /// with nothing on the record: a durable divide marker on a still-paper
+    /// journal would mislabel later simulated fills as venue fills.
+    #[test]
+    fn promotion_re_measures_blockers_and_a_refusal_writes_nothing() {
+        let base = tempfile::tempdir().expect("tempdir");
+        let workspaces = Workspaces::new(base.path());
+        workspaces
+            .create(spec("scalper"), Origin::Cli)
+            .expect("paper create");
+        let name: WorkspaceName = "scalper".parse().expect("valid name");
+
+        // A resting order slips in between evidence gathering and promote.
+        let mut account =
+            PaperAccount::open_at(workspaces.journal_path(&name), Origin::Cli).expect("open");
+        let order = account
+            .state()
+            .expect("state")
+            .decide_limit_order(
+                kraken_paper::OrderSide::Buy,
+                "BTC/USD",
+                dec!(0.1),
+                dec!(100),
+            )
+            .expect("decide");
+        account
+            .commit(
+                vec![AccountEvent::OrderSubmitted { order }],
+                CommandEntry::default(),
+            )
+            .expect("submit");
+        drop(account);
+
+        let stale_evidence = crate::promote::PromotionInputs {
+            experiments: vec![crate::promote::ExperimentEvidence {
+                experiment: "momentum".into(),
+                total_sessions: 2,
+                passing_sessions: 2,
+                passing_live_sessions: 1,
+            }],
+            open_paper_orders: 0, // measured before the order landed
+            ..crate::promote::PromotionInputs::default()
+        };
+        let err = workspaces
+            .promote(&name, stale_evidence, Origin::Cli)
+            .expect_err("must refuse");
+        assert!(matches!(err, WorkspaceError::NotPromotable { .. }), "{err}");
+
+        let journal =
+            std::fs::read_to_string(workspaces.journal_path(&name)).expect("journal exists");
+        assert!(
+            !journal.contains("\"fill_source_changed\""),
+            "a refused promotion leaves no divide marker"
+        );
+        assert_eq!(
+            workspaces.manifest(&name).expect("manifest").mode,
+            WorkspaceMode::Paper
+        );
     }
 
     #[test]

@@ -3,10 +3,11 @@
 //! files, so this is exactly what a fresh agent context replays.
 
 use kraken_lab::{Criteria, Lab, LabError, experiments_root, score};
-use kraken_paper::OrderSide;
-use kraken_paper::account::Origin;
-use kraken_session::manifest::SessionOutcome;
-use kraken_session::timeline::fixtures::{self, SessionBuilder};
+use kraken_paper::{OrderSide, account::Origin};
+use kraken_session::{
+    manifest::SessionOutcome,
+    timeline::fixtures::{self, SessionBuilder},
+};
 use rust_decimal_macros::dec;
 
 // Fixture misuse is a test bug; the parse target is a literal.

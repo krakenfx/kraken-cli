@@ -25,11 +25,11 @@ Use this skill for:
 
 ## Important
 
-This recipe records a session. It never places a live order. Paper results may overstate live performance: fees and slippage are simulated and there are no partial fills (see `kraken-paper-strategy`).
+This recipe records a session inside a paper workspace. With that workspace named on every session and order call and checked before the stream starts (see Hard Rules), it never places a live order. Paper results may overstate live performance: fees and slippage are simulated and there are no partial fills (see `kraken-paper-strategy`).
 
 The stream is the loop, not `/loop`. A `while read` over a stream is a long-lived process that holds state (the reference average, the last-buy time) in memory across events. This is a deliberate exception to the stateless-round model (see `kraken-playground` → Running over a Window); keep the session short and the state minimal.
 
-The stream is blind during reconnect gaps. The CLI reconnects with paced exponential backoff (up to 12 attempts per stream lifecycle, see `kraken-ws-streaming`), and any dip inside that window is missed. The recorder tolerates gaps; a decision loop does not.
+The stream is blind during reconnect gaps. The CLI reconnects a spot stream with exponential backoff (each delay capped at 30 seconds, plus jitter) until you stop it, and any dip inside a gap is missed. The recorder tolerates gaps; a decision loop does not.
 
 ## Params
 
@@ -37,7 +37,7 @@ Every number that gates a buy goes in `--strategy-params`:
 
 - `dollars_per_buy`: quote currency deployed per triggered buy
 - `dip_threshold_pct`: buy when price is at least this far below the short-term average
-- `min_spacing_s`: minimum seconds between buys; the rate limit on the trigger. Enforce it from the typed cursor: `kraken session state set --last-action-at <now>` after each buy, and skip the trigger while `now - .cursor.last_action_at < min_spacing_s` (`kraken session state get`)
+- `min_spacing_s`: minimum seconds between buys; the rate limit on the trigger. The loop keeps the last-buy time in memory and skips the trigger until `min_spacing_s` has passed
 - `max_buys`: session length in buys; stop after this many
 - `sma_refresh_s`: how often to refresh the reference average from REST
 
@@ -53,12 +53,10 @@ it dips more than 0.10% below the 1-hour SMA, but no more than once every
 
 ## Start the Session
 
-Work inside a paper workspace (create one once: `kraken workspace create dcatrig --capital 10000 --mode paper`), then:
+Work inside a paper workspace (create one once: `kraken workspace create dcatrig --capital 10000 --mode paper`). Every session and order command below names it with `--workspace dcatrig`. An exported `KRAKEN_WORKSPACE` does not reach a stream started from another shell, and without a workspace `kraken order buy` trades the real account.
 
 ```bash
-export KRAKEN_WORKSPACE=dcatrig
-
-kraken session start \
+kraken --workspace dcatrig session start \
   --symbols BTC/USD --channels ticker,trade --to duckdb,jsonl \
   --label dcatrig-btc-$(date +%Y%m%d-%H%M%S) \
   --strategy recipe-playground-dca-triggered \
@@ -83,6 +81,10 @@ MIN_SPACING_S=1200
 MAX_BUYS=10
 SMA_REFRESH_S=300
 
+# The buys below are simulated only while dcatrig is a paper workspace.
+[ "$(kraken workspace show dcatrig -o json 2>/dev/null | jq -r '.mode')" = paper ] \
+  || { echo "workspace dcatrig is missing or not paper; not streaming" >&2; exit 1; }
+
 # True 1h SMA: last twelve 5-minute closes. (--interval 60 would average the
 # whole returned window — a multi-day mean, not 1h.)
 SMA=$(kraken ohlc BTCUSD --interval 5 -o json 2>/dev/null | jq '[.candles[-12:][].close] | add/length')
@@ -102,7 +104,7 @@ kraken ws ticker BTC/USD --event-trigger bbo -o json 2>/dev/null | while read -r
 
   # Fail loud, never fabricate: a broken READ must not gate a buy or write a reason.
   if [ -z "$PRICE" ] || [ -z "$SMA" ]; then
-    kraken session note --kind alert --symbol BTC/USD \
+    kraken --workspace dcatrig session note --kind alert --symbol BTC/USD \
       --reason "tick skipped: READ failed (price='$PRICE' sma='$SMA')" -o json 2>/dev/null
     continue
   fi
@@ -111,7 +113,7 @@ kraken ws ticker BTC/USD --event-trigger bbo -o json 2>/dev/null | while read -r
   # THINK: dip tripped AND rate limit satisfied?
   if (( $(echo "$VS_SMA <= $DIP_THRESHOLD_PCT" | bc -l) )) && [ $((NOW - LAST_BUY)) -ge $MIN_SPACING_S ]; then
     VOL=$(echo "scale=8; $DOLLARS_PER_BUY / $PRICE" | bc -l)
-    kraken order buy BTC/USD "$VOL" --type market \
+    kraken --workspace dcatrig order buy BTC/USD "$VOL" --type market \
       --reason "dip-triggered buy: BTC/USD at $PRICE is ${VS_SMA}% below 1h SMA $SMA (threshold ${DIP_THRESHOLD_PCT}%); deploying \$$DOLLARS_PER_BUY" \
       -o json 2>/dev/null
     LAST_BUY=$NOW
@@ -120,7 +122,7 @@ kraken ws ticker BTC/USD --event-trigger bbo -o json 2>/dev/null | while read -r
   fi
 done
 
-kraken session stop -o json 2>/dev/null
+kraken --workspace dcatrig session stop -o json 2>/dev/null
 ```
 
 Notes on the decision:
@@ -131,9 +133,9 @@ Notes on the decision:
 ## Stop and Review
 
 ```bash
-kraken session show -o json 2>/dev/null | jq '.summary'
+kraken --workspace dcatrig session show -o json 2>/dev/null | jq '.summary'
 
-kraken session decisions --session s<n> -o json 2>/dev/null \
+kraken --workspace dcatrig session decisions --session s<n> -o json 2>/dev/null \
   | jq -c '.decisions[] | {kind, symbol, reason}'
 ```
 
@@ -145,11 +147,11 @@ Report:
 
 ## Hard Rules
 
-- This recipe records a session. It never places a live order.
+- This recipe records a session inside the paper workspace `dcatrig` and never places a live order, because every session and order command passes `--workspace dcatrig` and the stream does not start unless `kraken workspace show dcatrig` reports mode `paper`. Drop either and `kraken order buy` can trade the real account.
 - The stream is the loop. Do not also wrap it in `/loop`; that is two clocks on one decision.
 - Treat stream output as NDJSON, one object per line. Never parse it as a single document (see `kraken-ws-streaming`).
 - The loop is blind during reconnect gaps. Keep the session short and accept that dips inside a backoff window are missed.
 - Rate-limit buys with `min_spacing_s` so a sustained dip does not fire on every tick.
 - Keep every gating number in `--strategy-params` and the arithmetic in `jq`/`bc`.
-- The session directory (`decisions.jsonl` and the DuckDB/JSONL sinks) is owned by the CLI recorder. The agent only **reads** it, and only for the stop-time summary. Never write, edit, `mkdir`, or append inside it — every buy goes through `kraken paper buy`, so the recorder stays the single writer.
+- The session directory (`decisions.jsonl` and the DuckDB/JSONL sinks) is owned by the CLI recorder. The agent only **reads** it, and only for the stop-time summary. Never write, edit, `mkdir`, or append inside it — every buy goes through `kraken order buy`, so the recorder stays the single writer.
 - If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

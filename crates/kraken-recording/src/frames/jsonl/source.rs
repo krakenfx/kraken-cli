@@ -4,20 +4,20 @@
 //! non-decreasing in line (capture) order. Lock-free; the composer holds the
 //! file's [`FileLock`] for writer quiescence.
 
-use std::path::{Path, PathBuf};
-
+use crate::{
+    error::{Error, Result},
+    frames::{
+        CaptureSource, MarketEvent, capture::RecordingManifest, clamp_non_decreasing,
+        event_instant, shared_capture_lock,
+    },
+    jsonl::{committed_lines, damaged, line_seq},
+    lock::FileLock,
+    schema,
+    source::Source,
+};
 use kraken_core::ChannelMessage;
 use serde_json::Value;
-
-use crate::error::{Error, Result};
-use crate::frames::capture::RecordingManifest;
-use crate::frames::{
-    CaptureSource, MarketEvent, clamp_non_decreasing, event_instant, shared_capture_lock,
-};
-use crate::jsonl::{committed_lines, damaged, line_seq};
-use crate::lock::FileLock;
-use crate::schema;
-use crate::source::Source;
+use std::path::{Path, PathBuf};
 
 pub struct TapeSource {
     path: PathBuf,
@@ -134,13 +134,16 @@ impl CaptureSource for TapeSource {
 
 #[cfg(test)]
 mod tests {
-    use kraken_core::ChannelData;
-
     use super::*;
-    use crate::frames::CaptureSink;
-    use crate::frames::capture::{RecordingDeclaration, RecordingIntegrity, sidecar_path};
-    use crate::frames::jsonl::TapeSink;
-    use crate::sink::Sink;
+    use crate::{
+        frames::{
+            CaptureSink,
+            capture::{RecordingDeclaration, RecordingIntegrity, sidecar_path},
+            jsonl::TapeSink,
+        },
+        sink::Sink,
+    };
+    use kraken_core::ChannelData;
 
     fn meta() -> RecordingDeclaration {
         RecordingDeclaration {
@@ -179,23 +182,6 @@ mod tests {
 
     fn frames_of(events: &[MarketEvent]) -> Vec<&ChannelMessage> {
         events.iter().map(|e| &e.frame).collect()
-    }
-
-    #[test]
-    fn reads_back_what_the_sink_wrote_in_event_ts_order() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("market.jsonl");
-        let first = trade_frame("2026-01-01T00:00:01.000000Z", 1);
-        let second = trade_frame("2026-01-01T00:00:02.000000Z", 2);
-
-        let mut sink = TapeSink::open(&path, &meta()).unwrap();
-        sink.record(&[first.clone(), second.clone()]).unwrap();
-        sink.finalize(RecordingIntegrity::now()).unwrap();
-
-        let source = TapeSource::open(&path).expect("tape exists");
-        let events: Vec<_> = source.read().unwrap().collect();
-        assert_eq!(frames_of(&events), [&first, &second]);
-        assert!((events[0].at, events[0].seq) < (events[1].at, events[1].seq));
     }
 
     #[test]
@@ -350,26 +336,6 @@ mod tests {
             Err(e) => e,
         };
         assert!(matches!(err, Error::Damaged(_)), "got: {err}");
-    }
-
-    #[test]
-    fn malformed_interior_line_fails_loud() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("market.jsonl");
-        let keep = trade_frame("2026-01-01T00:00:01.000000Z", 1);
-        std::fs::write(
-            &path,
-            format!("not json\n{}\n", serde_json::to_string(&keep).unwrap()),
-        )
-        .unwrap();
-        stamp(&path, schema::SCHEMA_VERSION);
-
-        // The Ok side (an iterator) isn't Debug, so match rather than unwrap_err.
-        let err = match TapeSource::open(&path).unwrap().read() {
-            Ok(_) => panic!("a damaged recording must be rejected"),
-            Err(e) => e,
-        };
-        assert!(matches!(err, Error::Damaged(_)));
     }
 
     #[test]

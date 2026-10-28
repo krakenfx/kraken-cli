@@ -17,15 +17,15 @@ mod source;
 pub(crate) mod table;
 pub(crate) mod tables;
 
-use std::path::Path;
-
+use crate::{
+    error::{Error, Result},
+    lock::FileLock,
+    schema,
+};
 use duckdb::{Connection, params};
 pub use sink::DuckdbSink;
 pub use source::DuckdbSource;
-
-use crate::error::{Error, Result};
-use crate::lock::FileLock;
-use crate::schema;
+use std::path::Path;
 
 /// One version gate for both DuckDB halves: `_meta` must exist as a table
 /// (probed here — a foreign DuckDB file has none, and querying it would
@@ -36,8 +36,7 @@ use crate::schema;
 pub(crate) fn ensure_recording_stamp(db: &Db, action: &str) -> Result<String> {
     let not_a_recording = || {
         Error::Rejected(format!(
-            "existing file is not a kraken tape (no schema metadata); \
-             refusing to {action}"
+            "existing file is not a kraken tape (no schema metadata); refusing to {action}"
         ))
     };
     if !table::table_exists(db.conn(), "_meta")? {
@@ -100,9 +99,9 @@ impl Db {
         Ok(())
     }
 
-    /// Roll back the open transaction on an error path. A failure is logged, not
-    /// returned: the caller is already propagating the original error, and the
-    /// engine discards the transaction with the connection anyway.
+    /// Roll back the open transaction on an error path. A failure is logged,
+    /// not returned: the caller is already propagating the original error,
+    /// and the engine discards the transaction with the connection anyway.
     pub(crate) fn rollback(&self) {
         if let Err(err) = self.execute_batch("ROLLBACK") {
             tracing::warn!(%err, "ROLLBACK failed; the transaction dies with the connection");

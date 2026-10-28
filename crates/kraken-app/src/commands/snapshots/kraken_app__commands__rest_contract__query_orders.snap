@@ -1,0 +1,101 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+assertion_line: 277
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "OBCMZD-JIEE7-77TH3F": {
+      "descr": {
+        "pair": "XBTUSD",
+        "side": "buy",
+        "ordertype": "stop-loss-limit",
+        "price": 27500.0,
+        "price2": 0.0,
+        "leverage": "none",
+        "order": "buy 1.25000000 XBTUSD @ limit 27500.0",
+        "close": ""
+      },
+      "refid": "None",
+      "userref": 0,
+      "status": "closed",
+      "opentm": "1688665496.7808",
+      "closetm": "1688665499.1922",
+      "starttm": "0",
+      "expiretm": "0",
+      "volume": 1.25,
+      "volume_executed": 1.25,
+      "cost": 27526.2,
+      "fee": 26.2,
+      "price": 27500.0,
+      "stopprice": 0.0,
+      "limitprice": 0.0,
+      "misc": "",
+      "oflags": "fciq",
+      "trades": [
+        "TZX2WP-XSEOP-FP7WYR"
+      ],
+      "trigger": "index",
+      "time_in_force": "gtc"
+    },
+    "OMMDB2-FSB6Z-7W3HPO": {
+      "descr": {
+        "pair": "XBTUSD",
+        "side": "sell",
+        "ordertype": "market",
+        "price": 0.0,
+        "price2": 0.0,
+        "leverage": "none",
+        "order": "sell 0.25000000 XBTUSD @ market",
+        "close": ""
+      },
+      "refid": "None",
+      "userref": 0,
+      "status": "closed",
+      "opentm": "1688592012.2317",
+      "closetm": "1688592012.2335",
+      "starttm": "0",
+      "expiretm": "0",
+      "volume": 0.25,
+      "volume_executed": 0.25,
+      "cost": 7500.0,
+      "fee": 7.5,
+      "price": 30000.0,
+      "stopprice": 0.0,
+      "limitprice": 0.0,
+      "misc": "",
+      "oflags": "fcib",
+      "trades": [
+        "TJUW2K-FLX2N-AR2FLU"
+      ],
+      "time_in_force": "gtc"
+    }
+  },
+  "headers": [
+    "TXID",
+    "Status",
+    "Side",
+    "Pair",
+    "Price",
+    "Volume"
+  ],
+  "rows": [
+    [
+      "OBCMZD-JIEE7-77TH3F",
+      "closed",
+      "buy",
+      "XBTUSD",
+      "27500.0",
+      "1.25"
+    ],
+    [
+      "OMMDB2-FSB6Z-7W3HPO",
+      "closed",
+      "sell",
+      "XBTUSD",
+      "0.0",
+      "0.25"
+    ]
+  ],
+  "footer": []
+}

@@ -48,6 +48,10 @@ kraken paper history -o json 2>/dev/null
 
 ## Live DCA Single Buy
 
+Live orders run outside the paper workspace, so run `unset KRAKEN_WORKSPACE`
+first. Inside it, the buy fills on paper and `trades-history --consolidate-taker`
+is refused.
+
 Each interval, the agent executes one market buy for the fixed amount:
 
 1. Check current price:

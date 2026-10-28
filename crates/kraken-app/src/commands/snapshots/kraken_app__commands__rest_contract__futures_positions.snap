@@ -1,0 +1,77 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "openPositions": [
+      {
+        "side": "short",
+        "symbol": "PI_XBTUSD",
+        "price": 9392.749993345931,
+        "size": 10000,
+        "unrealizedPnl": -607250.006654067,
+        "unrealizedFunding": 0.00001045432180096817
+      },
+      {
+        "side": "long",
+        "symbol": "FI_XBTUSD_201225",
+        "price": 9399.749966754434,
+        "size": 20000,
+        "unrealizedPnl": 1199500.664911316,
+        "unrealizedFunding": null
+      },
+      {
+        "side": "long",
+        "symbol": "PF_DEFIUSD",
+        "price": 570,
+        "size": 1,
+        "unrealizedPnl": 12.34,
+        "unrealizedFunding": -0.007342804597226389,
+        "pnlCurrency": "BTC",
+        "maxFixedLeverage": 5
+      }
+    ],
+    "serverTime": "2020-07-22T14:39:12.376Z"
+  },
+  "headers": [
+    "symbol",
+    "side",
+    "size",
+    "price",
+    "fillTime",
+    "pnlCurrency",
+    "unrealizedFunding"
+  ],
+  "rows": [
+    [
+      "PI_XBTUSD",
+      "short",
+      "10000",
+      "9392.749993345931",
+      "-",
+      "-",
+      "0.00001045432180096817"
+    ],
+    [
+      "FI_XBTUSD_201225",
+      "long",
+      "20000",
+      "9399.749966754434",
+      "-",
+      "-",
+      "null"
+    ],
+    [
+      "PF_DEFIUSD",
+      "long",
+      "1",
+      "570",
+      "-",
+      "BTC",
+      "-0.007342804597226389"
+    ]
+  ],
+  "footer": []
+}

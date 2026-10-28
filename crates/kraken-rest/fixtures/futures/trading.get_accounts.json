@@ -1,0 +1,77 @@
+{
+  "accounts": {
+    "cash": {
+      "balances": {
+        "xbt": "141.31756797",
+        "xrp": "52465.1254"
+      },
+      "type": "cashAccount"
+    },
+    "fi_xbtusd": {
+      "auxiliary": {
+        "af": 100.73891563,
+        "funding": 100.73891563,
+        "pnl": 12.42134766,
+        "pv": 153.73891563,
+        "usd": 0
+      },
+      "balances": {
+        "FI_XBTUSD_171215": "50000",
+        "FI_XBTUSD_180615": "-15000",
+        "xbt": "141.31756797",
+        "xrp": "0"
+      },
+      "currency": "xbt",
+      "marginRequirements": {
+        "im": 52.8,
+        "lt": 39.6,
+        "mm": 23.76,
+        "tt": 15.84
+      },
+      "triggerEstimates": {
+        "im": 3110,
+        "lt": 2890,
+        "mm": 3000,
+        "tt": 2830
+      },
+      "type": "marginAccount"
+    },
+    "flex": {
+      "type": "multiCollateralMarginAccount",
+      "currencies": {
+        "XBT": {
+          "quantity": 0.1185308247,
+          "value": 4998.721054420551,
+          "collateral": 4886.49976674881,
+          "available": 0.1185308247
+        },
+        "USD": {
+          "quantity": 5000,
+          "value": 5000,
+          "collateral": 5000,
+          "available": 5000
+        },
+        "EUR": {
+          "quantity": 4540.5837374453,
+          "value": 4999.137289089901,
+          "collateral": 4886.906656949836,
+          "available": 4540.5837374453
+        }
+      },
+      "balanceValue": 34995.52,
+      "portfolioValue": 34995.52,
+      "collateralValue": 34122.66,
+      "initialMargin": 0,
+      "initialMarginWithOrders": 0,
+      "maintenanceMargin": 0,
+      "pnl": 0,
+      "unrealizedFunding": 0,
+      "totalUnrealized": 0,
+      "totalUnrealizedAsMargin": 0,
+      "marginEquity": 34122.66,
+      "availableMargin": 34122.66
+    }
+  },
+  "result": "success",
+  "serverTime": "2016-02-25T09:45:53.818Z"
+}

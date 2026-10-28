@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "kraken": {
-      "command": "kraken",
-      "args": ["mcp", "-s", "market,paper,feedback"]
+      "command": "kraken-mcp",
+      "args": ["-s", "market,paper,feedback"]
     }
   }
 }

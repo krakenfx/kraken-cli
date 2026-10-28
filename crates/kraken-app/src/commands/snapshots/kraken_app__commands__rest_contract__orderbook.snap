@@ -1,0 +1,80 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "asks": [
+      {
+        "price": 81401.4,
+        "volume": 0.898,
+        "timestamp": 1792499898
+      },
+      {
+        "price": 81401.6,
+        "volume": 0.708,
+        "timestamp": 1792499898
+      },
+      {
+        "price": 81402.3,
+        "volume": 2.119,
+        "timestamp": 1792499898
+      }
+    ],
+    "bids": [
+      {
+        "price": 81401.3,
+        "volume": 0.001,
+        "timestamp": 1792499898
+      },
+      {
+        "price": 81399.5,
+        "volume": 0.001,
+        "timestamp": 1792499890
+      },
+      {
+        "price": 81398.2,
+        "volume": 0.002,
+        "timestamp": 1792499899
+      }
+    ]
+  },
+  "headers": [
+    "Side",
+    "Price",
+    "Volume"
+  ],
+  "rows": [
+    [
+      "ASK",
+      "81401.4",
+      "0.898"
+    ],
+    [
+      "ASK",
+      "81401.6",
+      "0.708"
+    ],
+    [
+      "ASK",
+      "81402.3",
+      "2.119"
+    ],
+    [
+      "BID",
+      "81401.3",
+      "0.001"
+    ],
+    [
+      "BID",
+      "81399.5",
+      "0.001"
+    ],
+    [
+      "BID",
+      "81398.2",
+      "0.002"
+    ]
+  ],
+  "footer": []
+}

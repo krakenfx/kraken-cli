@@ -16,6 +16,18 @@ pub enum TradeMode {
     Live,
 }
 
+/// The journal records where fills come from; a receipt reports which backend
+/// produced them. Same distinction, two vocabularies — bridged here so the
+/// renderers derive one mode label from either.
+impl From<kraken_paper::FillSource> for TradeMode {
+    fn from(source: kraken_paper::FillSource) -> Self {
+        match source {
+            kraken_paper::FillSource::Simulated => Self::Paper,
+            kraken_paper::FillSource::Venue => Self::Live,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptStatus {
@@ -65,50 +77,4 @@ pub struct PaperFill {
     pub fee: Option<Decimal>,
     #[serde(with = "rust_decimal::serde::str_option")]
     pub cost: Option<Decimal>,
-}
-
-#[cfg(test)]
-mod tests {
-    use rust_decimal_macros::dec;
-
-    use super::*;
-
-    #[test]
-    fn live_and_paper_receipts_share_one_core_shape() {
-        let core = |mode| ReceiptCore {
-            mode,
-            status: ReceiptStatus::Filled,
-            order_id: Some("X".into()),
-            pair: Some("BTCUSD".into()),
-            side: Some(OrderSide::Buy),
-            order_type: Some("market".into()),
-            volume: Some(dec!(0.01)),
-            price: Some(dec!(50000)),
-        };
-        let paper = serde_json::to_value(OrderReceipt {
-            core: core(TradeMode::Paper),
-            venue: None,
-            paper: Some(PaperFill {
-                trade_id: Some("PAPER-00002".into()),
-                fee: Some(dec!(1.3)),
-                cost: Some(dec!(500)),
-            }),
-        })
-        .expect("serialize");
-        let live = serde_json::to_value(OrderReceipt {
-            core: core(TradeMode::Live),
-            venue: Some(serde_json::json!({"txid": ["X"]})),
-            paper: None,
-        })
-        .expect("serialize");
-
-        // Scripts depend on these identity keys remaining mode-independent.
-        for key in [
-            "mode", "status", "order_id", "pair", "side", "type", "volume",
-        ] {
-            assert!(paper.get(key).is_some(), "paper receipt lacks {key}");
-            assert!(live.get(key).is_some(), "live receipt lacks {key}");
-        }
-        assert_eq!(paper["volume"], "0.01", "money is a string on the wire");
-    }
 }

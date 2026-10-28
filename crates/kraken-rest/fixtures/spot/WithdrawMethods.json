@@ -1,0 +1,32 @@
+{
+  "error": [],
+  "result": [
+    {
+      "asset": "XXBT",
+      "method": "Bitcoin",
+      "method_id": "12fca2ad-edae-4d8c-acbb-4a424c1fbdeb",
+      "network": "Bitcoin",
+      "network_id": "ee9d686d-aeb6-4e61-9d83-448e3a7511f3",
+      "minimum": "0.0004",
+      "fee": {
+        "aclass": "currency",
+        "asset": "XXBT",
+        "fee": "0.00001500"
+      }
+    },
+    {
+      "asset": "XXBT",
+      "method": "Bitcoin Lightning",
+      "method_id": "1ac8da36-8eec-4ed0-977a-82e4b50f2e49",
+      "network": "Lightning",
+      "network_id": "03ed9b12-29f1-4dc3-8d05-bd58e3798518",
+      "minimum": "0.00001",
+      "fee": {
+        "aclass": "currency",
+        "asset": "XXBT",
+        "fee": "0",
+        "fee_percentage": "0.1"
+      }
+    }
+  ]
+}

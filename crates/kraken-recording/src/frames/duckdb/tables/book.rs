@@ -1,15 +1,20 @@
 //! The `book` table: one row per price level, regrouped into frames on read.
 
-use kraken_core::ChannelData;
-use kraken_core::subscribe::message::{BookData, ChannelMessage, MessageType, PriceLevel};
-use strum::{Display, EnumString};
-
-use crate::error::Result;
-use crate::frames::duckdb::table::{
-    Cell, ColType, Column, DriftPolicy, Recordable, Row, RowError, Stored, TableSpec, read_decimal,
-    read_rows,
+use crate::{
+    error::Result,
+    frames::duckdb::{
+        table::{
+            Cell, ColType, Column, DriftPolicy, Recordable, Row, RowError, Stored, TableSpec,
+            read_decimal, read_rows,
+        },
+        tables::message_type,
+    },
 };
-use crate::frames::duckdb::tables::message_type;
+use kraken_core::{
+    ChannelData,
+    subscribe::message::{BookData, ChannelMessage, MessageType, PriceLevel},
+};
+use strum::{Display, EnumString};
 
 /// Which side of the book a level row belongs to. `Display`/`FromStr` share one
 /// lowercase vocabulary, so the `side` column parses back exactly as written.

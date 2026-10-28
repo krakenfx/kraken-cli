@@ -20,14 +20,14 @@ allow = [
 ]
 
 [bans]
-multiple-versions = "warn"
 deny = [
   # reqwest and tokio-tungstenite are already on their rustls backends; keep
   # a future dep from dragging native TLS back into the graph.
-  { crate = "openssl-sys", reason = "rustls-only TLS stack" },
   { crate = "native-tls", reason = "rustls-only TLS stack" },
+  { crate = "openssl-sys", reason = "rustls-only TLS stack" },
 ]
+multiple-versions = "warn"
 
 [sources]
+unknown-git      = "deny"
 unknown-registry = "deny"
-unknown-git = "deny"

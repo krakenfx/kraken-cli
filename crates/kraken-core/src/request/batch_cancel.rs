@@ -1,14 +1,13 @@
-//! `batch_cancel` — cancel many orders by id in a single frame. Replies with the
-//! shared [`CountResult`].
+//! `batch_cancel` — cancel many orders by id in a single frame. Replies with
+//! the shared [`CountResult`].
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/batch_cancel>. `orders` holds
-//! Kraken `order_id`s or numeric `order_userref`s (the docs allow 2–50 per batch); the
-//! optional `cl_ord_id` list cancels by client id.
-
-use serde::Serialize;
+//! Kraken `order_id`s or numeric `order_userref`s (the docs allow 2–50 per
+//! batch); the optional `cl_ord_id` list cancels by client id.
 
 use super::cancel_all::CountResult;
 use crate::{MethodReply, Request};
+use serde::Serialize;
 
 /// `batch_cancel` request params (see the module schema).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]

@@ -1,0 +1,18 @@
+{
+  "result": "success",
+  "serverTime": "2022-06-13T18:01:18.695Z",
+  "queue": [
+    {
+      "symbol": "PF_GMTUSD",
+      "percentile": 100
+    },
+    {
+      "symbol": "FI_ETHUSD_220624",
+      "percentile": 20
+    },
+    {
+      "symbol": "PF_UNIUSD",
+      "percentile": 80
+    }
+  ]
+}

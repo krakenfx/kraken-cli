@@ -1,0 +1,219 @@
+---
+source: crates/kraken-mcp/tests/seam_snapshots.rs
+expression: "pinned_definitions(&registry(false, GateMode::Paper))"
+---
+[
+  {
+    "name": "kraken_order_buy",
+    "title": "kraken order buy",
+    "description": "Place a buy order.\n\nRouted by workspace mode: fills on the paper journal inside a paper workspace, trades the real account otherwise. Inside a live workspace, an order spending beyond what the allocation ledger holds free of resting orders is refused before the venue (a validation envelope); the order that pays the allocated asset back in is never refused.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pair": {
+          "type": "string",
+          "description": "Trading pair (e.g. XBTUSD)."
+        },
+        "volume": {
+          "type": "string",
+          "description": "Order volume."
+        },
+        "type": {
+          "type": "string",
+          "description": "Order type (market, limit, iceberg, stop-loss, take-profit, stop-loss-limit, take-profit-limit, trailing-stop, trailing-stop-limit, settle-position).",
+          "default": "limit"
+        },
+        "price": {
+          "type": "string",
+          "description": "Price (required for non-market orders)."
+        },
+        "price2": {
+          "type": "string",
+          "description": "Limit price for stop-loss-limit, take-profit-limit, and trailing-stop-limit orders."
+        },
+        "displayvol": {
+          "type": "string",
+          "description": "Display volume for iceberg orders (visible portion in the order book)."
+        },
+        "trigger": {
+          "type": "string",
+          "description": "Price signal for triggered orders (last or index). Applies to stop-loss, stop-loss-limit, take-profit, take-profit-limit, trailing-stop, trailing-stop-limit."
+        },
+        "leverage": {
+          "type": "string",
+          "description": "Leverage."
+        },
+        "reduce_only": {
+          "type": "boolean",
+          "description": "Reduce-only flag.",
+          "default": false
+        },
+        "timeinforce": {
+          "type": "string",
+          "description": "Time-in-force (GTC, IOC, GTD)."
+        },
+        "start_time": {
+          "type": "string",
+          "description": "Start time."
+        },
+        "expire_time": {
+          "type": "string",
+          "description": "Expire time."
+        },
+        "userref": {
+          "type": "integer",
+          "format": "int32",
+          "description": "User reference ID (signed 32-bit, for tagging groups of orders)."
+        },
+        "cl_ord_id": {
+          "type": "string",
+          "description": "Client order ID (mutually exclusive with userref)."
+        },
+        "oflags": {
+          "type": "string",
+          "description": "Order flags (comma-delimited: post, fcib, fciq, nompp, viqc)."
+        },
+        "stptype": {
+          "type": "string",
+          "description": "Self-trade prevention type (cancel-newest, cancel-oldest, cancel-both)."
+        },
+        "close_ordertype": {
+          "type": "string",
+          "description": "Conditional close order type (limit, stop-loss, take-profit, stop-loss-limit, take-profit-limit)."
+        },
+        "close_price": {
+          "type": "string",
+          "description": "Conditional close order price."
+        },
+        "close_price2": {
+          "type": "string",
+          "description": "Conditional close order secondary price."
+        },
+        "deadline": {
+          "type": "string",
+          "description": "RFC3339 deadline for the order to reach the matching engine."
+        },
+        "validate": {
+          "type": "boolean",
+          "description": "Validate only (do not submit).",
+          "default": false
+        },
+        "asset_class": {
+          "type": "string",
+          "description": "Asset class (required for non-crypto pairs, e.g. tokenized_asset for xstocks)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Rationale to record in the decision log: the active session's when one is recording, else the workspace's, or the real account's outside one."
+        }
+      },
+      "required": [
+        "pair",
+        "volume"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false
+    }
+  },
+  {
+    "name": "kraken_ticker",
+    "title": "kraken ticker",
+    "description": "Get ticker information for one or more pairs; asset classes may be mixed. Required shape: give exactly one of `pairs`, `all`.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pairs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "One or more trading pairs.",
+          "default": []
+        },
+        "all": {
+          "type": "boolean",
+          "description": "Every tradable pair (currency + tokenized_asset; forex pairs are not enumerable upstream and need explicit pairs).",
+          "default": false
+        },
+        "asset_class": {
+          "type": "string",
+          "enum": [
+            "currency",
+            "tokenized_asset",
+            "forex"
+          ],
+          "description": "Asset class filter."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true
+    }
+  },
+  {
+    "name": "kraken_withdraw",
+    "title": "kraken withdraw",
+    "description": "[DANGEROUS: requires human confirmation] Make a withdrawal.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "asset": {
+          "type": "string",
+          "description": "Asset being withdrawn."
+        },
+        "key": {
+          "type": "string",
+          "description": "Withdrawal key name, as set up on your account."
+        },
+        "amount": {
+          "type": "string",
+          "description": "Amount to withdraw."
+        },
+        "asset_class": {
+          "type": "string",
+          "enum": [
+            "currency",
+            "tokenized_asset",
+            "forex"
+          ],
+          "description": "Asset class (currency or tokenized_asset for xstocks)."
+        },
+        "address": {
+          "type": "string",
+          "description": "Crypto address to confirm it matches the key."
+        },
+        "max_fee": {
+          "type": "string",
+          "description": "Max fee — fails if processed fee exceeds this."
+        },
+        "rebase_multiplier": {
+          "type": "string",
+          "enum": [
+            "rebased",
+            "base"
+          ],
+          "description": "Rebase multiplier for xstocks data (rebased or base)."
+        },
+        "acknowledged": {
+          "type": "boolean",
+          "description": "Set to true to state that you intend this operation. It is not the confirmation: where the client can reach the user, the user is asked and their answer decides."
+        }
+      },
+      "required": [
+        "asset",
+        "key",
+        "amount",
+        "acknowledged"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false
+    }
+  }
+]

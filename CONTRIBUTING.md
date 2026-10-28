@@ -1,14 +1,18 @@
 # Contributing to kraken-cli
 
-Thank you for your interest in contributing. This document explains how to submit changes and report issues.
+Thank you for your interest in contributing. This document explains how to
+submit changes and report issues.
 
 ## How to Contribute
 
-Open PRs and issues here on GitHub. The maintainers review submissions and merge accepted changes into future releases. Response times vary. Not every PR will be accepted, and some may require changes before they can be merged.
+Open PRs and issues here on GitHub. The maintainers review submissions and merge
+accepted changes into future releases. Response times vary. Not every PR will be
+accepted, and some may require changes before they can be merged.
 
 ## Issues and Feature Requests
 
-Use [GitHub Issues](https://github.com/krakenfx/kraken-cli/issues) for bug reports and feature requests.
+Use [GitHub Issues](https://github.com/krakenfx/kraken-cli/issues) for bug
+reports and feature requests.
 
 **Bug reports.** Include:
 
@@ -18,7 +22,9 @@ Use [GitHub Issues](https://github.com/krakenfx/kraken-cli/issues) for bug repor
 - Your OS and architecture (`uname -a`).
 - The CLI version (`kraken --version`).
 
-**Feature requests.** Describe what you want the CLI to do and why. Include a usage example if possible. Prefix the title with `Feature request:` so it is easy to find.
+**Feature requests.** Describe what you want the CLI to do and why. Include a
+usage example if possible. Prefix the title with `Feature request:` so it is
+easy to find.
 
 ## Submitting Changes
 
@@ -34,7 +40,8 @@ Use [GitHub Issues](https://github.com/krakenfx/kraken-cli/issues) for bug repor
 - Write clear commit messages. Describe what changed and why.
 - Add or update tests for new behavior.
 - Do not include unrelated formatting or refactoring changes.
-- Enable "Allow edits from maintainers" on your PR so the team can make small adjustments before merging.
+- Enable "Allow edits from maintainers" on your PR so the team can make small
+  adjustments before merging.
 
 ### What Makes a Good PR
 
@@ -52,17 +59,30 @@ Use [GitHub Issues](https://github.com/krakenfx/kraken-cli/issues) for bug repor
 ## Code Style
 
 - Follow existing patterns in the codebase.
-- Before submitting, run the CI gates locally:
-  - `cargo clippy --all-targets -- -D warnings`
-  - `cargo +nightly fmt` (formatting uses nightly rustfmt for import grouping; see `rustfmt.toml`)
-  - `cargo sort` (keeps `Cargo.toml` tables alphabetized)
-  - `cargo test`
-- No nightly-only language features. The crate itself must build on stable Rust (MSRV in `Cargo.toml`); only `rustfmt` runs on nightly.
+- Before submitting, run `just ready`. It needs
+  [just](https://github.com/casey/just), plus Node.js 22.23.4 or later and npm
+  for the Markdown formatters: run `just install-tools` once first. `just ready`
+  is the single source of truth for the quality gates maintainers run before
+  merging (`fmt`, `toml`, `markdown`, `clippy`, `test`, `catalog-check`, `docs`,
+  `deny`, `msrv`, `duckdb`). Equivalent individual commands:
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `just fmt-check` (rustfmt runs on the nightly pinned in the `justfile`; a
+    plain `cargo +nightly fmt` uses another nightly and rewrites the tree; see
+    `rustfmt.toml`)
+  - `taplo fmt --check` (formats and alphabetizes every TOML file; see
+    `.taplo.toml`)
+  - `just lint-markdown` (prose wrapped at 80 columns by prettier, rules by
+    markdownlint; run `just install-tools` once first)
+  - `cargo test` / `cargo nextest run --workspace`
+- No nightly-only language features. The crate itself must build on stable Rust
+  (MSRV in `Cargo.toml`); only `rustfmt` runs on nightly.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contributions will be licensed under the
+[MIT License](LICENSE).
 
 ## Security
 
-If you discover a security vulnerability, do **not** open a public issue. Follow the responsible disclosure process described in [DISCLAIMER.md](DISCLAIMER.md).
+If you discover a security vulnerability, do **not** open a public issue. Report
+it privately as described in [SECURITY.md](SECURITY.md).

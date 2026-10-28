@@ -1,0 +1,46 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "pair": "YFI/EUR",
+    "bids": [
+      {
+        "price": "3062.00000",
+        "qty": "0.29665800",
+        "order_id": "O5KJU4-IEQTM-NDMS6W",
+        "timestamp": 1765622008594292000
+      },
+      {
+        "price": "3062.00000",
+        "qty": "0.13917400",
+        "order_id": "OERRY6-MXYER-6EQKNY",
+        "timestamp": 1765622011396903000
+      }
+    ],
+    "asks": [
+      {
+        "price": "3066.00000",
+        "qty": "0.00278335",
+        "order_id": "ORAWGV-N5L4J-LBA3WH",
+        "timestamp": 1765622008499456000
+      },
+      {
+        "price": "3067.00000",
+        "qty": "0.13902210",
+        "order_id": "OZWNZS-QE3G6-ZPKZUT",
+        "timestamp": 1765622021013826600
+      }
+    ]
+  },
+  "headers": [
+    "Data"
+  ],
+  "rows": [
+    [
+      "L3 orderbook data returned (see JSON output)"
+    ]
+  ],
+  "footer": []
+}

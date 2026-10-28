@@ -3,14 +3,12 @@
 //! Payloads reuse persisted models and serialize flat, keeping merged output
 //! sink-compatible without a parallel read model.
 
+use crate::decision::Decision;
 use chrono::{DateTime, Utc};
 use kraken_core::ChannelMessage;
-use kraken_paper::AccountEvent;
-use kraken_paper::account::AccountRecord;
+use kraken_paper::{AccountEvent, account::AccountRecord};
 use kraken_recording::MarketEvent;
 use serde::Serialize;
-
-use crate::decision::Decision;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TimelineEvent {
@@ -33,7 +31,8 @@ pub enum EventPayload {
     Decision(Decision),
 }
 
-/// Load-bearing tie-break order: market context, account effect, then rationale.
+/// Load-bearing tie-break order: market context, account effect, then
+/// rationale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Track {
     Market,
@@ -66,7 +65,8 @@ impl TimelineEvent {
         }
     }
 
-    /// Orders by instant and track before comparing unrelated per-track sequences.
+    /// Orders by instant and track before comparing unrelated per-track
+    /// sequences.
     pub fn key(&self) -> (DateTime<Utc>, Track, i64) {
         (self.at, self.track(), self.seq)
     }
@@ -128,13 +128,14 @@ impl From<MarketEvent> for TimelineEvent {
 
 #[cfg(test)]
 mod tests {
-    use kraken_paper::PaperConfig;
-    use kraken_paper::account::{Origin, RECORD_VERSION};
-    use kraken_recording::parse_instant;
-    use rust_decimal_macros::dec;
-
     use super::*;
     use crate::decision::DecisionKind;
+    use kraken_paper::{
+        PaperConfig,
+        account::{Origin, RECORD_VERSION},
+    };
+    use kraken_recording::parse_instant;
+    use rust_decimal_macros::dec;
 
     fn decision_at(ts: &str) -> TimelineEvent {
         TimelineEvent::decision(

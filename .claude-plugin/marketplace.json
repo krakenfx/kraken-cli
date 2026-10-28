@@ -1,0 +1,12 @@
+{
+  "name": "kraken",
+  "owner": { "name": "Kraken", "email": "support@kraken.com" },
+  "metadata": { "description": "Official Kraken plugins for AI agents." },
+  "plugins": [
+    {
+      "name": "kraken-cli",
+      "source": "./",
+      "description": "Market data, paper trading and Kraken trading tools for agents, backed by kraken-cli."
+    }
+  ]
+}

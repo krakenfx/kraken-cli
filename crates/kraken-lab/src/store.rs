@@ -6,15 +6,17 @@
 //! on disk. All state is files, so a fresh agent context reproduces any verdict
 //! from the store alone — there is no in-memory cache and no daemon to trust.
 
-use std::path::{Path, PathBuf};
-
+use crate::{
+    LabError, Result,
+    experiment::{self, Criteria, Experiment, SessionPlan},
+};
 use chrono::Utc;
 use kraken_recording::write_json_atomic;
-use kraken_session::manifest::SessionManifest;
-use kraken_session::session::{parse_ordinal, session_file_path, sessions_root};
-
-use crate::experiment::{self, Criteria, Experiment, SessionPlan};
-use crate::{LabError, Result};
+use kraken_session::{
+    manifest::SessionManifest,
+    session::{parse_ordinal, session_file_path, sessions_root},
+};
+use std::path::{Path, PathBuf};
 
 /// One discovered run of an experiment.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,8 +103,8 @@ pub(crate) fn load(base: &Path, name: &str) -> Result<Experiment> {
 }
 
 /// All of `experiment`'s runs under `base`, ordinal-ascending. Membership is
-/// the `session.json` experiment stamp alone — labels are display handles, never
-/// a discovery key. A damaged `session.json` cannot be attributed to any
+/// the `session.json` experiment stamp alone — labels are display handles,
+/// never a discovery key. A damaged `session.json` cannot be attributed to any
 /// experiment, so the session is skipped with a warning. This stays the single
 /// discovery seam — every consumer routes through it.
 pub(crate) fn discover_sessions(base: &Path, experiment: &str) -> Result<Vec<SessionRef>> {
@@ -147,12 +149,13 @@ pub(crate) fn discover_sessions(base: &Path, experiment: &str) -> Result<Vec<Ses
 
 #[cfg(test)]
 mod tests {
-    use kraken_session::manifest::{PaperRef, SessionManifest, SessionWindow};
-    use kraken_session::session::session_dir;
+    use super::*;
+    use kraken_session::{
+        manifest::{PaperRef, SessionManifest, SessionWindow},
+        session::session_dir,
+    };
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
-
-    use super::*;
 
     fn criteria() -> Criteria {
         Criteria {

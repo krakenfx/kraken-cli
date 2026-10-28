@@ -1,0 +1,37 @@
+[package]
+description            = "MCP server front-end for kraken-cli: tool discovery, gating, and audit over a host execution seam"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-mcp"
+publish                = false
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+
+[features]
+# Forwarded so a workspace-wide `--features record-duckdb` resolves here too.
+# The shipped binary gets the backend through `kraken-cli`'s feature.
+record-duckdb = ["kraken-app/record-duckdb"]
+
+[dependencies]
+chrono = { workspace = true }
+clap   = { workspace = true }
+# A front-end depends on the engine; the engine never depends on a front-end.
+kraken-app       = { workspace = true }
+kraken-contract  = { workspace = true }
+kraken-workspace = { workspace = true }
+rmcp             = { workspace = true }
+schemars         = { workspace = true }
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+thiserror        = { workspace = true }
+tokio            = { workspace = true, features = ["rt-multi-thread", "sync"] }
+tracing          = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

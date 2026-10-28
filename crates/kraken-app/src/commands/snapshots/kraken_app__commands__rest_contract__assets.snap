@@ -1,0 +1,82 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "ETH": {
+      "aclass": "currency",
+      "altname": "ETH",
+      "decimals": 10,
+      "display_decimals": 5,
+      "collateral_value": 0.99,
+      "status": "enabled",
+      "margin_rate": "0.02"
+    },
+    "BTC": {
+      "aclass": "currency",
+      "altname": "XBT",
+      "decimals": 10,
+      "display_decimals": 5,
+      "collateral_value": 0.99,
+      "status": "enabled",
+      "margin_rate": "0.01"
+    },
+    "EUR": {
+      "aclass": "currency",
+      "altname": "EUR",
+      "decimals": 4,
+      "display_decimals": 2,
+      "collateral_value": 1.0,
+      "status": "enabled",
+      "margin_rate": "0.02"
+    },
+    "USD": {
+      "aclass": "currency",
+      "altname": "USD",
+      "decimals": 4,
+      "display_decimals": 2,
+      "collateral_value": 1.0,
+      "status": "enabled",
+      "margin_rate": "0.028"
+    }
+  },
+  "headers": [
+    "Asset",
+    "Altname",
+    "Decimals",
+    "Display Decimals",
+    "Status"
+  ],
+  "rows": [
+    [
+      "BTC",
+      "XBT",
+      "10",
+      "5",
+      "enabled"
+    ],
+    [
+      "ETH",
+      "ETH",
+      "10",
+      "5",
+      "enabled"
+    ],
+    [
+      "EUR",
+      "EUR",
+      "4",
+      "2",
+      "enabled"
+    ],
+    [
+      "USD",
+      "USD",
+      "4",
+      "2",
+      "enabled"
+    ]
+  ],
+  "footer": []
+}

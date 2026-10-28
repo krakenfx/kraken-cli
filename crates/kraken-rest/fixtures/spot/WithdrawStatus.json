@@ -1,0 +1,32 @@
+{
+  "error": [],
+  "result": [
+    {
+      "method": "Bitcoin",
+      "aclass": "currency",
+      "asset": "XXBT",
+      "refid": "FTQcuak-V6Za8qrWnhzTx67yYHz8Tg",
+      "txid": "29323ce235cee8dae22503caba7....8ad3a506879a03b1e87992923d80428",
+      "info": "bc1qm32pq....3ewt0j37s2g",
+      "amount": "0.72485000",
+      "fee": "0.00020000",
+      "time": 1688014586,
+      "status": "Pending",
+      "key": "btc-wallet-1"
+    },
+    {
+      "method": "Bitcoin",
+      "aclass": "currency",
+      "asset": "XXBT",
+      "refid": "FTQcuak-V6Za8qrPnhsTx47yYLz8Tg",
+      "txid": "29323ce212ceb2daf81255cbea8a5...ad7a626471e05e1f82929501e82934",
+      "info": "bc1qa35ls....3egf0872h3w",
+      "amount": "0.72485000",
+      "fee": "0.00020000",
+      "time": 1688015423,
+      "status": "Failure",
+      "status-prop": "canceled",
+      "key": "btc-wallet-2"
+    }
+  ]
+}

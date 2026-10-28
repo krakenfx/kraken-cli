@@ -1,0 +1,12 @@
+{
+  "error": [],
+  "result": [
+    {
+      "address": "bc1qxdsh4sdd29h6ldehz0se5c61asq8cgwyjf2y3z",
+      "asset": "XBT",
+      "method": "Bitcoin",
+      "key": "btc-wallet-1",
+      "verified": true
+    }
+  ]
+}

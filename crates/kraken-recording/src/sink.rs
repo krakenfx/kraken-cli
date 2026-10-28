@@ -4,13 +4,9 @@
 //! contract; domain extensions (e.g. the market capture's
 //! `CaptureSink`) live with their domains under [`frames`](crate::frames).
 
-use std::marker::PhantomData;
-use std::path::PathBuf;
-
+use crate::{error::Result, jsonl::Log};
 use serde::Serialize;
-
-use crate::error::Result;
-use crate::jsonl::Log;
+use std::{marker::PhantomData, path::PathBuf};
 
 /// The write side of a recorded track: a destination that persists (or
 /// renders) batches of entries. Generic over the entry type so every log
@@ -61,9 +57,9 @@ pub struct JsonlSink<T> {
 }
 
 impl<T> JsonlSink<T> {
-    /// Open the log at `path` (creating it if absent) and hold its single-writer
-    /// lock for the sink's lifetime. `purpose` names the holder in the busy-log
-    /// error a contender sees.
+    /// Open the log at `path` (creating it if absent) and hold its
+    /// single-writer lock for the sink's lifetime. `purpose` names the
+    /// holder in the busy-log error a contender sees.
     pub fn create(path: PathBuf, purpose: impl Into<String>) -> Result<Self> {
         Ok(Self {
             log: Log::open(path, purpose)?,
@@ -90,12 +86,9 @@ impl<T: Serialize> Sink for JsonlSink<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::Cell;
-    use std::rc::Rc;
-
-    use serde::Deserialize;
-
     use super::*;
+    use serde::Deserialize;
+    use std::{cell::Cell, rc::Rc};
 
     struct Probe {
         flushes: Rc<Cell<u32>>,

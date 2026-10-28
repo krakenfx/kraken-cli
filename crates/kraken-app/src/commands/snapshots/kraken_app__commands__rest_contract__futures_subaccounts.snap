@@ -1,0 +1,153 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "masterAccountUid": "ba598ca1-65c1-4f48-927d-0e2b647d627a",
+    "subaccounts": [
+      {
+        "accountUid": "7f5c528e-2285-45f0-95f5-83d53d4bfcd2",
+        "fullName": "John Doe",
+        "email": "john.doe@example.com",
+        "holdingAccounts": [
+          {
+            "currency": "gbp",
+            "amount": 0
+          },
+          {
+            "currency": "bch",
+            "amount": 0.00004
+          },
+          {
+            "currency": "xrp",
+            "amount": 13662.85078
+          },
+          {
+            "currency": "usd",
+            "amount": 0
+          },
+          {
+            "currency": "eth",
+            "amount": 3.0000485057
+          },
+          {
+            "currency": "usdt",
+            "amount": 0
+          },
+          {
+            "currency": "ltc",
+            "amount": 0.00002
+          },
+          {
+            "currency": "usdc",
+            "amount": 0
+          },
+          {
+            "currency": "xbt",
+            "amount": 0.00000000346
+          }
+        ],
+        "futuresAccounts": [
+          {
+            "name": "f-xrp:usd",
+            "availableMargin": 16187.33210488726
+          },
+          {
+            "name": "f-eth:usd",
+            "availableMargin": 67.59768318324302
+          },
+          {
+            "name": "f-xbt:usd",
+            "availableMargin": -0.0009056832839642472
+          },
+          {
+            "name": "f-ltc:usd",
+            "availableMargin": 67.51126059691163
+          },
+          {
+            "name": "f-xrp:xbt",
+            "availableMargin": 0.00000000234
+          },
+          {
+            "name": "f-bch:usd",
+            "availableMargin": 47.151615710695495
+          }
+        ],
+        "flexAccount": {
+          "currencies": [
+            {
+              "currency": "eth",
+              "quantity": 0.5,
+              "value": 1646.575,
+              "collateral": 1543.91104875,
+              "available": 0.49999966035931903
+            },
+            {
+              "currency": "usdt",
+              "quantity": 0,
+              "value": 0,
+              "collateral": 0,
+              "available": 0
+            },
+            {
+              "currency": "gbp",
+              "quantity": 0,
+              "value": 0,
+              "collateral": 0,
+              "available": 0
+            },
+            {
+              "currency": "xbt",
+              "quantity": 0,
+              "value": 0,
+              "collateral": 0,
+              "available": 0
+            },
+            {
+              "currency": "usdc",
+              "quantity": 0,
+              "value": 0,
+              "collateral": 0,
+              "available": 0
+            },
+            {
+              "currency": "usd",
+              "quantity": 0,
+              "value": 0,
+              "collateral": 0,
+              "available": 0
+            }
+          ],
+          "initialMargin": 0,
+          "initialMarginWithOrders": 0,
+          "maintenanceMargin": 0,
+          "balanceValue": 1646.58,
+          "portfolioValue": 1646.58,
+          "collateralValue": 1543.91,
+          "pnl": 0,
+          "unrealizedFunding": 0,
+          "totalUnrealized": 0,
+          "totalUnrealizedAsMargin": 0,
+          "availableMargin": 1543.91,
+          "marginEquity": 1543.91
+        }
+      }
+    ],
+    "serverTime": "2022-03-31T20:38:53.677Z"
+  },
+  "headers": [
+    "accountUid",
+    "email",
+    "fullName"
+  ],
+  "rows": [
+    [
+      "7f5c528e-2285-45f0-95f5-83d53d4bfcd2",
+      "john.doe@example.com",
+      "John Doe"
+    ]
+  ],
+  "footer": []
+}

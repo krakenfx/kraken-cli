@@ -25,8 +25,8 @@ pub const SOURCE: &str = "kraken-spot-ws-v2";
 pub const META_DDL: &str =
     "CREATE TABLE IF NOT EXISTS _meta (key VARCHAR PRIMARY KEY, value VARCHAR)";
 
-/// Whether an on-disk schema version is compatible with what this build writes —
-/// true iff they share a MAJOR component. Ungated: the jsonl sidecar carries
+/// Whether an on-disk schema version is compatible with what this build writes
+/// — true iff they share a MAJOR component. Ungated: the jsonl sidecar carries
 /// the same stamp, so version checks don't need the `duckdb` feature.
 pub fn is_compatible(found: &str) -> bool {
     major(found) == major(SCHEMA_VERSION)

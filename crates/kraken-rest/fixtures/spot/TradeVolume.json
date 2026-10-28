@@ -1,0 +1,33 @@
+{
+  "error": [],
+  "result": {
+    "currency": "ZUSD",
+    "asset_class": "currency",
+    "volume": "200709587.4223",
+    "inputs": {
+      "domain_spot_volume_30d": "200709587.4223",
+      "domain_futures_volume_30d": "0.0000",
+      "domain_assets_on_platform": "0.0000"
+    },
+    "fees": {
+      "XXBTZUSD": {
+        "fee": "0.1000",
+        "minfee": "0.1000",
+        "maxfee": "0.2600",
+        "nextfee": null,
+        "tiervolume": "10000000.0000",
+        "nextvolume": null
+      }
+    },
+    "fees_maker": {
+      "XXBTZUSD": {
+        "fee": "0.0000",
+        "minfee": "0.0000",
+        "maxfee": "0.1600",
+        "nextfee": null,
+        "tiervolume": "10000000.0000",
+        "nextvolume": null
+      }
+    }
+  }
+}

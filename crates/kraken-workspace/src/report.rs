@@ -2,12 +2,14 @@
 //!
 //! Unscored sessions remain error rows rather than contributing invented zeros.
 
+use crate::{
+    WorkspaceManifest, WorkspaceMode,
+    session::{DriftLine, SessionStatus},
+};
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::Serialize;
 use serde_with::skip_serializing_none;
-
-use crate::session::{DriftLine, SessionStatus};
-use crate::{WorkspaceManifest, WorkspaceMode};
 
 /// One session's line of the report. Money fields are `None` exactly when
 /// `error` says why — a row never carries invented numbers.
@@ -49,6 +51,10 @@ pub struct ReportInputs {
     pub running: Option<String>,
     pub manual_fills: usize,
     pub reset_epochs: usize,
+    /// When this workspace's fills stopped being simulated, from the journal's
+    /// `fill_source_changed` marker. `None` for a workspace that never
+    /// switched — a live-from-birth one included, since it has no paper era.
+    pub live_since: Option<DateTime<Utc>>,
     /// Current equity as the caller valued it (the crate stays
     /// network-free): `(value, complete)`.
     pub equity: Option<(Decimal, bool)>,
@@ -72,6 +78,9 @@ pub struct WorkspaceReport {
     #[serde(with = "rust_decimal::serde::str")]
     pub sessions_pnl: Decimal,
     pub reset_epochs: usize,
+    /// When simulated history ends and real history begins, for a workspace
+    /// that was promoted rather than created live.
+    pub live_since: Option<DateTime<Utc>>,
     pub sessions: Vec<SessionRow>,
     pub manual: ManualSegment,
     /// Disclosed AND excluded from every sum.
@@ -88,6 +97,7 @@ pub fn assemble(manifest: &WorkspaceManifest, inputs: ReportInputs) -> Workspace
         running,
         manual_fills,
         reset_epochs,
+        live_since,
         equity,
         drift,
     } = inputs;
@@ -98,8 +108,8 @@ pub fn assemble(manifest: &WorkspaceManifest, inputs: ReportInputs) -> Workspace
     let unscored = sessions.iter().filter(|row| row.error.is_some()).count();
     if unscored > 0 {
         caveats.push(format!(
-            "{unscored} session(s) carry no numbers (see their error field); sessions_pnl sums only \
-             the scored rows"
+            "{unscored} session(s) carry no numbers (see their error field); sessions_pnl sums \
+             only the scored rows"
         ));
     }
     if let Some(run) = &running {
@@ -115,6 +125,14 @@ pub fn assemble(manifest: &WorkspaceManifest, inputs: ReportInputs) -> Workspace
     if reset_epochs > 0 {
         caveats.push(format!(
             "{reset_epochs} reset epoch(s): equity is measured from the newest epoch's capital"
+        ));
+    }
+    // Without this the promotion's epoch is indistinguishable from an ordinary
+    // reset, and a reader cannot tell which half of the journal was simulated.
+    if let Some(at) = live_since {
+        caveats.push(format!(
+            "fills before {at} were simulated; this workspace went live then, and equity is \
+             measured from the live epoch's allocation"
         ));
     }
     let (equity, valuation_complete) = match equity {
@@ -142,6 +160,7 @@ pub fn assemble(manifest: &WorkspaceManifest, inputs: ReportInputs) -> Workspace
         valuation_complete,
         sessions_pnl,
         reset_epochs,
+        live_since,
         sessions,
         manual: ManualSegment {
             fills: manual_fills,
@@ -154,9 +173,8 @@ pub fn assemble(manifest: &WorkspaceManifest, inputs: ReportInputs) -> Workspace
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use super::*;
+    use rust_decimal_macros::dec;
 
     fn manifest() -> WorkspaceManifest {
         WorkspaceManifest {
@@ -201,7 +219,11 @@ mod tests {
             fills: None,
             manual_trades: None,
             verdict: None,
-            error: Some("validation: session 's2' has no final summary to anchor on; run 'kraken session stop' first".to_string()),
+            error: Some(
+                "validation: session 's2' has no final summary to anchor on; run 'kraken session \
+                 stop' first"
+                    .to_string(),
+            ),
         }
     }
 

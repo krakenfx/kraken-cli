@@ -1,10 +1,11 @@
 //! The order primitives shared by the request and subscribe sides.
 
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
+use strum::{Display, EnumIter, EnumString};
 
 /// Order side. Shared by order requests and the `trade` channel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display, EnumString)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum OrderSide {
@@ -15,7 +16,10 @@ pub enum OrderSide {
 /// Order type — the ten execution models the `add_order` schema accepts
 /// (<https://docs.kraken.com/api/docs/websocket-v2/add_order>). Also decodes the `trade`
 /// channel's taker `ord_type`, where only `limit`/`market` occur.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display, EnumString)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Display, EnumString, EnumIter,
+)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case", ascii_case_insensitive)]
 pub enum OrderType {

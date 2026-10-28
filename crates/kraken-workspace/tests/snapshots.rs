@@ -6,10 +6,10 @@
 
 use chrono::{TimeZone, Utc};
 use insta::assert_json_snapshot;
-use kraken_workspace::receipt::{OrderReceipt, PaperFill, ReceiptCore, ReceiptStatus, TradeMode};
 use kraken_workspace::{
     AssetBalance, ListedWorkspace, WORKSPACE_VERSION, WorkspaceBalances, WorkspaceManifest,
     WorkspaceMode, WorkspaceOverview,
+    receipt::{OrderReceipt, PaperFill, ReceiptCore, ReceiptStatus, TradeMode},
 };
 use rust_decimal_macros::dec;
 
@@ -44,19 +44,22 @@ fn manifest_1_0_keys_are_pinned() {
         .keys()
         .map(String::as_str)
         .collect();
+    // Struct-declaration order since serde_json preserve_order;
+    // previously the alphabetical BTreeMap accident. Existing manifests parse
+    // unchanged — JSON key order is not meaningful to the reader.
     assert_eq!(
         keys,
         [
-            "allowed_pairs",
-            "capital",
-            "cli_version",
-            "created_at",
-            "currency",
-            "fee_rate",
-            "mode",
-            "name",
-            "slippage_rate",
             "workspace_version",
+            "cli_version",
+            "name",
+            "capital",
+            "currency",
+            "mode",
+            "fee_rate",
+            "slippage_rate",
+            "allowed_pairs",
+            "created_at",
         ]
     );
 }
@@ -158,10 +161,9 @@ fn live_order_receipt_wire_shape_is_pinned() {
 }
 
 mod proptests {
+    use super::*;
     use proptest::prelude::*;
     use rust_decimal::Decimal;
-
-    use super::*;
 
     proptest! {
         /// Digit-exactness is the law for money: any capital survives the

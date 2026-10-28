@@ -1,0 +1,27 @@
+{
+  "result": "success",
+  "serverTime": "2026-10-20T14:40:46.081Z",
+  "instrumentStatus": [
+    {
+      "tradeable": "PI_XBTUSD",
+      "experiencingDislocation": false,
+      "priceDislocationDirection": null,
+      "experiencingExtremeVolatility": false,
+      "extremeVolatilityInitialMarginMultiplier": 1
+    },
+    {
+      "tradeable": "PI_ETHUSD",
+      "experiencingDislocation": false,
+      "priceDislocationDirection": null,
+      "experiencingExtremeVolatility": false,
+      "extremeVolatilityInitialMarginMultiplier": 1
+    },
+    {
+      "tradeable": "PI_LTCUSD",
+      "experiencingDislocation": false,
+      "priceDislocationDirection": null,
+      "experiencingExtremeVolatility": false,
+      "extremeVolatilityInitialMarginMultiplier": 1
+    }
+  ]
+}

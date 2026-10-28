@@ -1,0 +1,96 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "open": {
+      "OQCLML-BW3P3-BUCMWZ": {
+        "descr": {
+          "pair": "XBTUSD",
+          "side": "buy",
+          "ordertype": "limit",
+          "price": 30010.0,
+          "price2": 0.0,
+          "leverage": "none",
+          "order": "buy 1.25000000 XBTUSD @ limit 30010.0",
+          "close": ""
+        },
+        "refid": "None",
+        "userref": 0,
+        "status": "open",
+        "opentm": "1688666559.8974",
+        "starttm": "0",
+        "expiretm": "0",
+        "volume": 1.25,
+        "volume_executed": 0.375,
+        "cost": 11253.7,
+        "fee": 0.0,
+        "price": 30010.0,
+        "stopprice": 0.0,
+        "limitprice": 0.0,
+        "misc": "",
+        "oflags": "fciq",
+        "trades": [
+          "TCCCTY-WE2O6-P3NB37"
+        ],
+        "time_in_force": "gtc"
+      },
+      "OB5VMB-B4U2U-DK2WRW": {
+        "descr": {
+          "pair": "XBTUSD",
+          "side": "buy",
+          "ordertype": "limit",
+          "price": 14500.0,
+          "price2": 0.0,
+          "leverage": "5:1",
+          "order": "buy 0.27500000 XBTUSD @ limit 14500.0 with 5:1 leverage",
+          "close": ""
+        },
+        "refid": "None",
+        "userref": 45326,
+        "status": "open",
+        "opentm": "1688665899.5699",
+        "starttm": "0",
+        "expiretm": "0",
+        "volume": 0.275,
+        "volume_executed": 0.0,
+        "cost": 0.0,
+        "fee": 0.0,
+        "price": 0.0,
+        "stopprice": 0.0,
+        "limitprice": 0.0,
+        "misc": "",
+        "oflags": "fciq",
+        "time_in_force": "gtc"
+      }
+    }
+  },
+  "headers": [
+    "TXID",
+    "Status",
+    "Side",
+    "Pair",
+    "Price",
+    "Volume"
+  ],
+  "rows": [
+    [
+      "OQCLML-BW3P3-BUCMWZ",
+      "open",
+      "buy",
+      "XBTUSD",
+      "30010.0",
+      "1.25"
+    ],
+    [
+      "OB5VMB-B4U2U-DK2WRW",
+      "open",
+      "buy",
+      "XBTUSD",
+      "14500.0",
+      "0.275"
+    ]
+  ],
+  "footer": []
+}

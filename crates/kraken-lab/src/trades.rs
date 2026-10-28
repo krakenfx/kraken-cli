@@ -3,10 +3,9 @@
 //! Fees are allocated pro rata and open lots are excluded. Sign-flip
 //! heuristics misgrade scaled entries, so sells close the oldest buy lots.
 
-use std::collections::{HashMap, VecDeque};
-
 use kraken_paper::{OrderSide, PaperTrade};
 use rust_decimal::Decimal;
+use std::collections::{HashMap, VecDeque};
 
 /// One FIFO-closed round trip. `net_pnl` is quoted in the pair's own quote
 /// currency — cross-currency sums are the caller's judgment call.
@@ -66,10 +65,9 @@ pub(crate) fn round_trips(fills: &[PaperTrade]) -> Vec<RoundTrip> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use chrono::Utc;
     use rust_decimal_macros::dec;
-
-    use super::*;
 
     fn fill(side: OrderSide, volume: Decimal, price: Decimal, fee: Decimal) -> PaperTrade {
         PaperTrade {

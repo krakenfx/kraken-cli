@@ -1,34 +1,34 @@
 //! Both connection flavours over the one [`Transport`] seam, as one generic
 //! [`Connection`] machine — the clients above never touch a socket directly.
 //!
-//! The shared mechanism is written once: dialing paced by [`Backoff`], token minting
-//! through [`TokenCache`], data exchange over one events channel, drop-triggered
-//! shutdown via [`CancellationToken`]. What differs is the session intent, carried by
-//! the [`Mode`] value: [`Stream`] replays a fixed subscription set and reconnects
-//! forever; [`OneShot`] sends one request and ends at the server's close — never
-//! re-sending, since a redelivered order is a double-submit. A mode says what to put
-//! on the wire at session start; what the replies *mean* stays with each client (the
-//! stream types its frames only because rejection-driven routing is lifecycle policy).
+//! The shared mechanism is written once: dialing paced by [`Backoff`], token
+//! minting through [`TokenCache`], data exchange over one events channel,
+//! drop-triggered shutdown via [`CancellationToken`]. What differs is the
+//! session intent, carried by the [`Mode`] value: [`Stream`] replays a fixed
+//! subscription set and reconnects forever; [`OneShot`] sends one request and
+//! ends at the server's close — never re-sending, since a redelivered order is
+//! a double-submit. A mode says what to put on the wire at session start; what
+//! the replies *mean* stays with each client (the stream types its frames only
+//! because rejection-driven routing is lifecycle policy).
 
-use std::sync::Arc;
-use std::time::Duration;
-
-use kraken_core::endpoint::Endpoint;
-use kraken_core::error::{Error, Result};
+use super::{
+    backoff::{Backoff, ReconnectPolicy},
+    token::TokenCache,
+    transport::{ConnEvent, ConnReader, ConnWriter, Transport},
+};
 use kraken_core::{
     ChannelMessage, Inbound, Method, MethodReply, MethodResponse, PingParams, Request, Wire,
     WsSubscription,
+    endpoint::Endpoint,
+    error::{Error, Result},
 };
+use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::backoff::{Backoff, ReconnectPolicy};
-use super::token::TokenCache;
-use super::transport::{ConnEvent, ConnReader, ConnWriter, Transport};
-
-/// A connection flavour: the session intent the shared machinery drives, and the
-/// vocabulary it publishes. A mode carries what to say once the socket is up — never
-/// how to interpret what comes back.
+/// A connection flavour: the session intent the shared machinery drives, and
+/// the vocabulary it publishes. A mode carries what to say once the socket is
+/// up — never how to interpret what comes back.
 pub(crate) trait Mode: Send + Sync + 'static {
     /// What this flavour publishes on its events channel.
     type Event: Send;
@@ -36,12 +36,14 @@ pub(crate) trait Mode: Send + Sync + 'static {
 
 /// The streaming intent: a fixed subscription set, replayed on every reconnect.
 pub(crate) struct Stream {
-    /// Reconnect pacing — caller intent here, unlike the one-shot's fixed dial schedule.
+    /// Reconnect pacing — caller intent here, unlike the one-shot's fixed dial
+    /// schedule.
     pub(super) policy: ReconnectPolicy,
-    /// Fixed at construction; re-sent (with a forced snapshot) on every reconnect.
+    /// Fixed at construction; re-sent (with a forced snapshot) on every
+    /// reconnect.
     pub(super) subs: Vec<WsSubscription>,
-    /// The caller's `--req-id` echoed on the initial subscribe ack; multiplexed streams
-    /// pass `None`.
+    /// The caller's `--req-id` echoed on the initial subscribe ack; multiplexed
+    /// streams pass `None`.
     pub(super) req_id: Option<std::num::NonZeroU64>,
 }
 
@@ -56,26 +58,28 @@ pub(crate) struct OneShot<P> {
 }
 
 impl<P: Request + Send + Sync + 'static> Mode for OneShot<P> {
-    /// Raw frames, verbatim: parsing, correlation, and gathering are the request
-    /// client's job.
+    /// Raw frames, verbatim: parsing, correlation, and gathering are the
+    /// request client's job.
     type Event = ConnEvent;
 }
 
 pub(crate) type StreamConnection<T> = Connection<T, Stream>;
 pub(crate) type OneShotConnection<T, P> = Connection<T, OneShot<P>>;
 
-/// One session machine over a [`Transport`], generic in its [`Mode`]. The shared
-/// fields are the shared mechanism; each mode's `run` drives them to completion.
+/// One session machine over a [`Transport`], generic in its [`Mode`]. The
+/// shared fields are the shared mechanism; each mode's `run` drives them to
+/// completion.
 ///
-/// Built as a struct literal by its client (`StreamClient` / `RequestClient`), so the
-/// fields are `pub(super)` rather than a six-argument constructor.
+/// Built as a struct literal by its client (`StreamClient` / `RequestClient`),
+/// so the fields are `pub(super)` rather than a six-argument constructor.
 pub(crate) struct Connection<T: Transport, M: Mode> {
     pub(super) endpoint: Endpoint,
     pub(super) transport: T,
-    /// `Some` exactly when this session authenticates; both flavours mint through it.
+    /// `Some` exactly when this session authenticates; both flavours mint
+    /// through it.
     pub(super) token_cache: Option<Arc<TokenCache>>,
-    /// Fan-in sender for this mode's events; the send fails only once the client's
-    /// receiving end is dropped.
+    /// Fan-in sender for this mode's events; the send fails only once the
+    /// client's receiving end is dropped.
     pub(super) events_tx: mpsc::UnboundedSender<M::Event>,
     /// Cancelled when the owning handle is dropped; every phase races it.
     pub(super) shutdown: CancellationToken,
@@ -84,17 +88,19 @@ pub(crate) struct Connection<T: Transport, M: Mode> {
 }
 
 impl<T: Transport, M: Mode> Connection<T, M> {
-    /// Close the socket on teardown. A failed close is traced and the writer dropped —
-    /// an abrupt TCP close — never propagated: the session is ending either way.
+    /// Close the socket on teardown. A failed close is traced and the writer
+    /// dropped — an abrupt TCP close — never propagated: the session is
+    /// ending either way.
     async fn close_quietly(&self, writer: &mut T::Writer) {
         if let Err(error) = writer.close().await {
             tracing::debug!(endpoint = %self.endpoint, %error, "close failed during teardown");
         }
     }
 
-    /// Publish an event. A failed send after shutdown is the drained fan-out (traced);
-    /// mid-session it means every consumer vanished — a socket feeding nobody has no
-    /// reason to stay open, so it cancels this connection like a handle drop.
+    /// Publish an event. A failed send after shutdown is the drained fan-out
+    /// (traced); mid-session it means every consumer vanished — a socket
+    /// feeding nobody has no reason to stay open, so it cancels this
+    /// connection like a handle drop.
     fn emit(&self, event: M::Event) {
         if self.events_tx.send(event).is_ok() {
             return;
@@ -110,8 +116,8 @@ impl<T: Transport, M: Mode> Connection<T, M> {
         }
     }
 
-    /// This session's token, or `None` for an unauthenticated session — the cache is
-    /// `Some` exactly when the session authenticates.
+    /// This session's token, or `None` for an unauthenticated session — the
+    /// cache is `Some` exactly when the session authenticates.
     async fn session_token(&self) -> Result<Option<String>> {
         match &self.token_cache {
             Some(cache) => cache.get().await.map(Some),
@@ -119,9 +125,9 @@ impl<T: Transport, M: Mode> Connection<T, M> {
         }
     }
 
-    /// Like [`Self::session_token`], but mints fresh instead of trusting the cache:
-    /// tokens are connection-scoped, and re-reading the shared cache could pick up a
-    /// sibling's concurrent mint.
+    /// Like [`Self::session_token`], but mints fresh instead of trusting the
+    /// cache: tokens are connection-scoped, and re-reading the shared cache
+    /// could pick up a sibling's concurrent mint.
     async fn fresh_session_token(&self) -> Result<Option<String>> {
         match &self.token_cache {
             Some(cache) => cache.refresh().await.map(Some),
@@ -142,17 +148,18 @@ impl<T: Transport, M: Mode> Connection<T, M> {
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Maximum read-half silence before the socket is presumed dead. A healthy socket sees
-/// frames continuously (heartbeats, pongs, data), so silence spanning several ping
-/// rounds means a wedged read a ping write hasn't yet failed on.
+/// Maximum read-half silence before the socket is presumed dead. A healthy
+/// socket sees frames continuously (heartbeats, pongs, data), so silence
+/// spanning several ping rounds means a wedged read a ping write hasn't yet
+/// failed on.
 pub(super) const READ_IDLE_TIMEOUT: Duration = PING_INTERVAL.saturating_mul(3);
 
 /// `sub` minus every evicted symbol: `None` once nothing subscribable remains.
-/// Eviction is symbol-scoped, not (channel, symbol)-scoped: the rejection ack names
-/// only the offending pair, so an evicted symbol drops out of *every* channel on this
-/// connection — a channel-specific rejection (say, an unsupported book depth) takes
-/// the pair's healthy channels with it. Tightening this needs per-subscription
-/// `req_id` correlation on the acks.
+/// Eviction is symbol-scoped, not (channel, symbol)-scoped: the rejection ack
+/// names only the offending pair, so an evicted symbol drops out of *every*
+/// channel on this connection — a channel-specific rejection (say, an
+/// unsupported book depth) takes the pair's healthy channels with it.
+/// Tightening this needs per-subscription `req_id` correlation on the acks.
 fn effective_subscription(sub: &WsSubscription, evicted: &[String]) -> Option<WsSubscription> {
     let mut params = sub.clone();
     params
@@ -160,13 +167,14 @@ fn effective_subscription(sub: &WsSubscription, evicted: &[String]) -> Option<Ws
         .then_some(params)
 }
 
-/// Open rejection incidents, scoped to what the rejection ack named: per symbol for
-/// named rejections, per endpoint for anonymous ones. Each incident earns exactly one
-/// fresh-token reconnect (a stale token is the one cause a retry cures); a repeat is
-/// the second strike. An incident closes when its symbol's re-subscribe is acked
-/// ([`cure`](Self::cure)) or when a session streams past the stability threshold;
-/// recording happens in `run()` *after* the stability clear, so the strike that ended
-/// a session always survives into the retry it pays for.
+/// Open rejection incidents, scoped to what the rejection ack named: per symbol
+/// for named rejections, per endpoint for anonymous ones. Each incident earns
+/// exactly one fresh-token reconnect (a stale token is the one cause a retry
+/// cures); a repeat is the second strike. An incident closes when its symbol's
+/// re-subscribe is acked ([`cure`](Self::cure)) or when a session streams past
+/// the stability threshold; recording happens in `run()` *after* the stability
+/// clear, so the strike that ended a session always survives into the retry it
+/// pays for.
 #[derive(Default)]
 struct RejectionIncidents {
     /// Symbols whose rejection already spent its fresh-token retry.
@@ -193,9 +201,10 @@ impl RejectionIncidents {
         }
     }
 
-    /// A successful re-subscribe ack for `symbol`: the fresh token cured it, so a
-    /// later rejection is a new incident owed its own retry. Anonymous incidents have
-    /// no ack to key on and close only via the stability clear.
+    /// A successful re-subscribe ack for `symbol`: the fresh token cured it, so
+    /// a later rejection is a new incident owed its own retry. Anonymous
+    /// incidents have no ack to key on and close only via the stability
+    /// clear.
     fn cure(&mut self, symbol: &str) {
         self.symbols.retain(|s| s != symbol);
     }
@@ -206,35 +215,38 @@ impl RejectionIncidents {
     }
 }
 
-/// An event published by a streaming connection onto the client's event channel.
+/// An event published by a streaming connection onto the client's event
+/// channel.
 #[derive(Debug, Clone)]
 pub enum Event {
     /// The socket connected (initial connect or a reconnect).
     Connected(Endpoint),
     /// The socket dropped; a reconnect attempt follows.
     Disconnected(Endpoint),
-    /// The session never became live: the dial failed, or its setup (token mint,
-    /// subscribe write) failed before anything streamed. Distinct from
-    /// [`Disconnected`](Self::Disconnected) so the monitor can tell "never started"
-    /// from a healthy-but-quiet stream.
+    /// The session never became live: the dial failed, or its setup (token
+    /// mint, subscribe write) failed before anything streamed. Distinct
+    /// from [`Disconnected`](Self::Disconnected) so the monitor can tell
+    /// "never started" from a healthy-but-quiet stream.
     ConnectFailed(Endpoint),
     /// A decoded channel-data frame.
     Message(ChannelMessage),
-    /// A successful subscribe acknowledgement — the only method success a stream socket
-    /// surfaces (pong is dropped, anything else is drift), so readiness can key off it.
+    /// A successful subscribe acknowledgement — the only method success a
+    /// stream socket surfaces (pong is dropped, anything else is drift), so
+    /// readiness can key off it.
     Ack(MethodResponse),
     /// A rejected method acknowledgement with no awaiting caller.
     ApiError(MethodResponse),
-    /// A server keepalive: the monitor's connection-level liveness signal, independent
-    /// of market activity.
+    /// A server keepalive: the monitor's connection-level liveness signal,
+    /// independent of market activity.
     Heartbeat,
-    /// An inbound frame failed the pinned schema and was dropped before reaching any
-    /// consumer. The capture-integrity signal: sinks and monitors count it, because
-    /// the loss is invisible to them otherwise — the frame never becomes a `Message`.
+    /// An inbound frame failed the pinned schema and was dropped before
+    /// reaching any consumer. The capture-integrity signal: sinks and
+    /// monitors count it, because the loss is invisible to them otherwise —
+    /// the frame never becomes a `Message`.
     ParseFailure(Endpoint),
-    /// The connection gave up for good; `cause` carries why, so consumers render the
-    /// actor's decision instead of assuming one. The session must end as an error,
-    /// not a clean capture.
+    /// The connection gave up for good; `cause` carries why, so consumers
+    /// render the actor's decision instead of assuming one. The session
+    /// must end as an error, not a clean capture.
     Aborted {
         endpoint: Endpoint,
         cause: AbortCause,
@@ -242,12 +254,14 @@ pub enum Event {
 }
 
 /// Why a connection gave up. A new terminal give-up must name itself here — the
-/// cause travels on [`Event::Aborted`] rather than living in a consumer's string.
+/// cause travels on [`Event::Aborted`] rather than living in a consumer's
+/// string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AbortCause {
-    /// Every subscription was rejected on a fresh token. Carries the server's last
-    /// rejection string (when the ack had one) so the binary edge classifies the
-    /// abort — auth, rate limit — instead of flattening it to a generic category.
+    /// Every subscription was rejected on a fresh token. Carries the server's
+    /// last rejection string (when the ack had one) so the binary edge
+    /// classifies the abort — auth, rate limit — instead of flattening it
+    /// to a generic category.
     AllSubscriptionsRejected { reason: Option<String> },
 }
 
@@ -274,17 +288,18 @@ impl std::fmt::Display for AbortCause {
     }
 }
 
-/// Which attempt of the reconnect loop a session belongs to — decides the token (reuse
-/// vs. re-mint) and the subscribe shape. An enum because only three of the four flag
-/// combinations are legal: a replay always re-mints.
+/// Which attempt of the reconnect loop a session belongs to — decides the token
+/// (reuse vs. re-mint) and the subscribe shape. An enum because only three of
+/// the four flag combinations are legal: a replay always re-mints.
 #[derive(Clone, Copy)]
 enum Attempt {
     /// The very first attempt: subscribe with the token minted up front.
     First,
-    /// A prior attempt failed before a session established: re-mint (the up-front token
-    /// may have gone stale), but subscribe as a first send.
+    /// A prior attempt failed before a session established: re-mint (the
+    /// up-front token may have gone stale), but subscribe as a first send.
     Redial,
-    /// A served session dropped: re-mint and replay with a forced snapshot, no `req_id`.
+    /// A served session dropped: re-mint and replay with a forced snapshot, no
+    /// `req_id`.
     Replay,
 }
 
@@ -294,7 +309,8 @@ impl Attempt {
         !matches!(self, Attempt::First)
     }
 
-    /// Whether the subscribe replays with a forced snapshot and no echoed `req_id`.
+    /// Whether the subscribe replays with a forced snapshot and no echoed
+    /// `req_id`.
     fn is_replay(self) -> bool {
         matches!(self, Attempt::Replay)
     }
@@ -303,8 +319,8 @@ impl Attempt {
 /// What the event loop should do after one inbound frame.
 enum FrameOutcome {
     Continue,
-    /// A `subscribe` was rejected; carries the pair the ack named (for eviction) and
-    /// the server's error string (for the abort cause).
+    /// A `subscribe` was rejected; carries the pair the ack named (for
+    /// eviction) and the server's error string (for the abort cause).
     SubscribeRejected {
         symbol: Option<String>,
         reason: Option<String>,
@@ -317,17 +333,20 @@ enum ServeOutcome {
     Stop,
     /// An established session's socket dropped. Reconnect.
     Disconnected,
-    /// A subscribe was rejected before the incident's fresh-token retry was spent:
-    /// reconnect so the replay re-mints.
+    /// A subscribe was rejected before the incident's fresh-token retry was
+    /// spent: reconnect so the replay re-mints.
     SubscribeRejected {
-        /// The pair the rejection named, if any — recorded in `run()` post-clear.
+        /// The pair the rejection named, if any — recorded in `run()`
+        /// post-clear.
         symbol: Option<String>,
     },
-    /// Every subscription rejected on a fresh token: stop instead of reconnect-flapping.
-    /// Carries the last rejection's server error string for the abort cause.
+    /// Every subscription rejected on a fresh token: stop instead of
+    /// reconnect-flapping. Carries the last rejection's server error string
+    /// for the abort cause.
     AllRejected { reason: Option<String> },
-    /// The dial, token mint, or subscribe write failed before the event loop started.
-    /// Retried on backoff, so the consumer never sees a `Connected` flap.
+    /// The dial, token mint, or subscribe write failed before the event loop
+    /// started. Retried on backoff, so the consumer never sees a
+    /// `Connected` flap.
     SetupFailed,
 }
 
@@ -438,7 +457,8 @@ impl<T: Transport> Connection<T, Stream> {
     }
 
     /// Resolve the session's token and send the subscription set, raced against
-    /// shutdown. `Some` short-circuits `serve`; `None` means the session is live.
+    /// shutdown. `Some` short-circuits `serve`; `None` means the session is
+    /// live.
     async fn establish_session(
         &self,
         writer: &mut T::Writer,
@@ -566,9 +586,10 @@ impl<T: Transport> Connection<T, Stream> {
         }
     }
 
-    /// Send the subscription set, skipping anything `evicted` names. A first send keeps
-    /// each subscription's own snapshot preference and echoes the mode's `req_id`; a
-    /// replay forces a snapshot (local state rebuilds cleanly) and echoes no id.
+    /// Send the subscription set, skipping anything `evicted` names. A first
+    /// send keeps each subscription's own snapshot preference and echoes
+    /// the mode's `req_id`; a replay forces a snapshot (local state
+    /// rebuilds cleanly) and echoes no id.
     async fn send_subscriptions(
         &self,
         writer: &mut T::Writer,
@@ -628,9 +649,10 @@ impl<T: Transport> Connection<T, Stream> {
         FrameOutcome::Continue
     }
 
-    /// Route a method reply by (method, success) — the streaming twin of the one-shot
-    /// client's `correlated`. Every [`Method`] is enumerated — no catch-all — so a new
-    /// variant fails to compile until it picks a row here.
+    /// Route a method reply by (method, success) — the streaming twin of the
+    /// one-shot client's `correlated`. Every [`Method`] is enumerated — no
+    /// catch-all — so a new variant fails to compile until it picks a row
+    /// here.
     fn route_method(
         &self,
         resp: MethodResponse,
@@ -690,13 +712,14 @@ impl<T: Transport> Connection<T, Stream> {
     }
 
     /// Decide what a rejected subscribe means. First rejection of an incident:
-    /// reconnect, since a stale token is the one cause a retry cures — one retry per
-    /// incident, scoped to the pair the ack named (an unrelated later rejection is its
-    /// own incident with its own retry). The same pair rejected again on its fresh
-    /// token: evict it (the remainder keeps streaming), stop once nothing is left. No
-    /// pair named: count it — one dead channel among live ones is left dead rather
-    /// than flapping the endpoint, but once every live subscription has been rejected
-    /// the socket streams nothing and must abort (its own keepalive pongs would
+    /// reconnect, since a stale token is the one cause a retry cures — one
+    /// retry per incident, scoped to the pair the ack named (an unrelated
+    /// later rejection is its own incident with its own retry). The same
+    /// pair rejected again on its fresh token: evict it (the remainder
+    /// keeps streaming), stop once nothing is left. No pair named: count it
+    /// — one dead channel among live ones is left dead rather than flapping
+    /// the endpoint, but once every live subscription has been rejected the
+    /// socket streams nothing and must abort (its own keepalive pongs would
     /// otherwise defeat the idle watchdog forever).
     fn on_subscribe_rejected(
         &self,
@@ -735,8 +758,8 @@ impl<T: Transport> Connection<T, Stream> {
         (self.live_subscriptions(evicted) == 0).then_some(ServeOutcome::AllRejected { reason })
     }
 
-    /// How many subscriptions still have anything to subscribe once `evicted` is
-    /// applied.
+    /// How many subscriptions still have anything to subscribe once `evicted`
+    /// is applied.
     fn live_subscriptions(&self, evicted: &[String]) -> usize {
         self.mode
             .subs
@@ -763,10 +786,11 @@ mod tests {
 
 // ── One-shot connections ────────────────────────────────────────────────────
 
-/// The one-shot dial's pacing: the same [`Backoff`] the streaming actor uses, with
-/// jitter disabled — a single process probing one host has no herd to de-correlate.
-/// The schedule is 250ms, 500ms, 1s, 2s (~3.75s of sleeps inside [`DIAL_TIMEOUT`]).
-/// Machinery, not caller intent, so it lives here rather than in the [`OneShot`] mode.
+/// The one-shot dial's pacing: the same [`Backoff`] the streaming actor uses,
+/// with jitter disabled — a single process probing one host has no herd to
+/// de-correlate. The schedule is 250ms, 500ms, 1s, 2s (~3.75s of sleeps inside
+/// [`DIAL_TIMEOUT`]). Machinery, not caller intent, so it lives here rather
+/// than in the [`OneShot`] mode.
 const DIAL_RETRY: ReconnectPolicy = ReconnectPolicy {
     initial: Duration::from_millis(250),
     max: Duration::from_secs(2),
@@ -775,25 +799,26 @@ const DIAL_RETRY: ReconnectPolicy = ReconnectPolicy {
     stable_after: Duration::ZERO,
 };
 
-/// Dial attempts before giving up. Bounds the retry *count* independently of the
-/// dial budget — a fast-failing host would otherwise burst through the window — and
-/// is what makes the dial surface the concrete last error instead of retrying
-/// forever like the streaming flavour deliberately does.
+/// Dial attempts before giving up. Bounds the retry *count* independently of
+/// the dial budget — a fast-failing host would otherwise burst through the
+/// window — and is what makes the dial surface the concrete last error instead
+/// of retrying forever like the streaming flavour deliberately does.
 const DIAL_MAX_ATTEMPTS: u32 = 5;
 
 /// Overall dial budget across every retry. A miss is the retry-safe
 /// [`Error::DialTimeout`]: nothing has been sent yet.
 const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Reply budget once the request is on the wire, for a server that never closes the
-/// socket. An elapse surfaces as [`Error::Unacknowledged`] — never a retry-safe
-/// timeout, since the frame may have reached the exchange.
+/// Reply budget once the request is on the wire, for a server that never closes
+/// the socket. An elapse surfaces as [`Error::Unacknowledged`] — never a
+/// retry-safe timeout, since the frame may have reached the exchange.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Brand a post-send stop reason. Only the connection knows which side of the send a
-/// failure happened on: dial and mint failures keep their own class (retry-safe, nothing
-/// reached the wire), while a failure at or after the send must not read as blindly
-/// retryable — the request may have reached the exchange.
+/// Brand a post-send stop reason. Only the connection knows which side of the
+/// send a failure happened on: dial and mint failures keep their own class
+/// (retry-safe, nothing reached the wire), while a failure at or after the send
+/// must not read as blindly retryable — the request may have reached the
+/// exchange.
 fn verify_first(stop: Error) -> Error {
     if stop.is_verify_first() {
         stop
@@ -803,9 +828,10 @@ fn verify_first(stop: Error) -> Error {
 }
 
 impl<T: Transport, P: Request + Send + Sync + 'static> Connection<T, OneShot<P>> {
-    /// Drive the session to completion: dial, send the one request, pump raw replies
-    /// onto the events channel. Every terminal path emits `Closed` or `Error` last, so
-    /// the gathering client always learns how the exchange ended.
+    /// Drive the session to completion: dial, send the one request, pump raw
+    /// replies onto the events channel. Every terminal path emits `Closed`
+    /// or `Error` last, so the gathering client always learns how the
+    /// exchange ended.
     pub(crate) async fn run(self) {
         let Some(dialed) = self.dial().await else {
             return; // shutdown while dialing: the caller is gone
@@ -839,8 +865,8 @@ impl<T: Transport, P: Request + Send + Sync + 'static> Connection<T, OneShot<P>>
         }
     }
 
-    /// Dial with the capped retry, the whole schedule inside one [`DIAL_TIMEOUT`]
-    /// budget; `None` on shutdown.
+    /// Dial with the capped retry, the whole schedule inside one
+    /// [`DIAL_TIMEOUT`] budget; `None` on shutdown.
     async fn dial(&self) -> Option<Result<(T::Writer, T::Reader)>> {
         let attempts = async {
             let mut backoff = Backoff::new(DIAL_RETRY);
@@ -871,11 +897,12 @@ impl<T: Transport, P: Request + Send + Sync + 'static> Connection<T, OneShot<P>>
         }
     }
 
-    /// Mint (when the session authenticates), frame, send. The socket stays open —
-    /// the client's gather ends the batch at its expected reply count, and the close
-    /// handshake runs afterwards. A mint failure propagates with its own class — it
-    /// is pre-send, so it must never read as verify-first; the send is where the
-    /// verify-first branding starts.
+    /// Mint (when the session authenticates), frame, send. The socket stays
+    /// open — the client's gather ends the batch at its expected reply
+    /// count, and the close handshake runs afterwards. A mint failure
+    /// propagates with its own class — it is pre-send, so it must never
+    /// read as verify-first; the send is where the verify-first branding
+    /// starts.
     async fn establish(&self, writer: &mut T::Writer) -> Result<()> {
         // Never a re-mint: a one-shot has no retry incident a fresh token could cure.
         let token = self.session_token().await?;
@@ -923,13 +950,15 @@ impl<T: Transport, P: Request + Send + Sync + 'static> Connection<T, OneShot<P>>
 
 #[cfg(test)]
 mod one_shot_tests {
+    use super::*;
+    use crate::{
+        mock_transport::{MockTransport, wait_until},
+        token::{BoxFuture, Minted, TokenSource},
+    };
     use std::sync::atomic::Ordering;
 
-    use super::*;
-    use crate::mock_transport::{MockTransport, wait_until};
-    use crate::token::{BoxFuture, Minted, TokenSource};
-
-    /// A one-shot `ping` session over `transport`, plus its gather-side receiver.
+    /// A one-shot `ping` session over `transport`, plus its gather-side
+    /// receiver.
     fn one_shot(
         transport: MockTransport,
     ) -> (

@@ -18,3 +18,5 @@ scripts/ci/** export-ignore
 scripts/release/ export-ignore
 scripts/release/** export-ignore
 renovate.json5 export-ignore
+AGENTS.override.md export-ignore
+.claude/CLAUDE.md export-ignore

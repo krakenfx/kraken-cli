@@ -1,0 +1,44 @@
+{
+  "error": [],
+  "result": {
+    "converted_asset": "USD",
+    "total_allocated": "49.2398",
+    "total_rewarded": "0.0675",
+    "next_cursor": "2",
+    "items": [
+      {
+        "strategy_id": "ESDQCOL-WTZEU-NU55QF",
+        "native_asset": "ETH",
+        "amount_allocated": {
+          "bonding": {
+            "native": "0.0210000000",
+            "converted": "39.0645",
+            "allocation_count": 2,
+            "allocations": [
+              {
+                "created_at": "2023-07-06T10:52:05Z",
+                "expires": "2023-08-19T02:34:05.807Z",
+                "native": "0.0010000000",
+                "converted": "1.8602"
+              },
+              {
+                "created_at": "2023-08-01T11:25:52Z",
+                "expires": "2023-09-06T07:55:52.648Z",
+                "native": "0.0200000000",
+                "converted": "37.2043"
+              }
+            ]
+          },
+          "total": {
+            "native": "0.0210000000",
+            "converted": "39.0645"
+          }
+        },
+        "total_rewarded": {
+          "native": "0",
+          "converted": "0.0000"
+        }
+      }
+    ]
+  }
+}

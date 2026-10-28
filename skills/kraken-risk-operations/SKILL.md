@@ -28,11 +28,11 @@ Dead-man switch:
 kraken order cancel-after 60 -o json 2>/dev/null
 ```
 
-Mass cancel:
+Mass cancel. `--yes` skips the CLI prompt, so pass it only after the user approves:
 
 ```bash
-kraken order cancel-all -o json 2>/dev/null
-kraken futures cancel-all -o json 2>/dev/null
+kraken order cancel-all --yes -o json 2>/dev/null
+kraken futures cancel-all --yes -o json 2>/dev/null
 ```
 
 Position visibility:
@@ -45,7 +45,7 @@ kraken futures positions -o json 2>/dev/null
 
 ## Failure Handling
 
-- `network`: exponential backoff retry
+- `network`: exponential backoff retry; if `verify_first` is `true`, check order or transfer state first
 - `rate_limit`: read `suggestion` and `docs_url` fields, reduce call frequency or switch to WebSocket
 - `auth`: stop and refresh credentials
 - `validation` or `api`: stop, fix request, do not blind retry

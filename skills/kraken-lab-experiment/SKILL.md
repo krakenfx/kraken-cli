@@ -33,9 +33,13 @@ Use this skill for:
 
 ## Safety rules
 
-- Paper only: run experiments inside a paper workspace
-  (`export KRAKEN_WORKSPACE=<name>`), where the order verbs fill on the
-  paper account and no real funds are reachable.
+- Seal and run experiments in a paper workspace (`export KRAKEN_WORKSPACE=<name>`),
+  where the order verbs fill on the paper account: a replay leg needs the
+  simulator.
+- Reading and scoring also work in a live workspace, where the order verbs
+  trade real funds. The scorecard names the scope it came from, so live-era
+  sessions are never mistaken for paper evidence. Before any step that places
+  an order, confirm `kraken workspace show -o json` reports `"mode": "paper"`.
 - Never edit a frozen experiment file. The seal exists to catch exactly
   that; a tampered spec fails every later step with a `parse` envelope.
 - Never report a verdict you did not obtain from `lab score --experiment`
@@ -155,9 +159,9 @@ One command produces the honest scorecard *and* the mechanical verdict:
 kraken lab score --session latest --experiment momentum-1 -o json 2>/dev/null
 ```
 
-- `source`: what the session traded against — `{kind:"replay", dataset, speed}`
-  or `{kind:"live", symbols}`, derived from the session's contract, not
-  asserted.
+- `source`: what the session traded against — `{kind:"replay", tape, speed}`
+  or `{kind:"live", symbols, window_secs}`, derived from the session's
+  contract, not asserted. `window_secs` is absent while the window is open.
 - `anchor` + `components[]`: the stop totals and the explain-pnl waterfall,
   carried verbatim — this output can never disagree with
   `kraken explain pnl`.

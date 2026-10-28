@@ -1,26 +1,31 @@
-//! The transport seam: a split read/write socket plus the live `tokio-tungstenite`
-//! implementation. Split so the actor can hold the [`ConnWriter`] while `select!`-ing
-//! on the [`ConnReader`] (one combined `&mut` can't), and so a mock can script a feed.
-//! Every write is time-bounded here; the read's liveness bound stays with the callers —
-//! an inner timer would reset on every `select!` re-poll and never trip.
+//! The transport seam: a split read/write socket plus the live
+//! `tokio-tungstenite` implementation. Split so the actor can hold the
+//! [`ConnWriter`] while `select!`-ing on the [`ConnReader`] (one combined
+//! `&mut` can't), and so a mock can script a feed. Every write is time-bounded
+//! here; the read's liveness bound stays with the callers — an inner timer
+//! would reset on every `select!` re-poll and never trip.
 
-use std::sync::Arc;
-use std::time::Duration;
-
-use futures_util::stream::{SplitSink, SplitStream};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{
+    SinkExt, StreamExt,
+    stream::{SplitSink, SplitStream},
+};
 use kraken_core::error::{Error, Result};
-use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{ClientConfig, DigitallySignedStruct, Error as RustlsError, SignatureScheme};
+use rustls::{
+    ClientConfig, DigitallySignedStruct, Error as RustlsError, SignatureScheme,
+    client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
+    pki_types::{CertificateDer, ServerName, UnixTime},
+};
 use serde::Serialize;
+use std::{sync::Arc, time::Duration};
 use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use tokio_tungstenite::tungstenite::http::{HeaderValue, Request};
-use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use tokio_tungstenite::{
     Connector as TlsConnector, MaybeTlsStream, WebSocketStream, connect_async,
     connect_async_tls_with_config,
+    tungstenite::{
+        Message, Utf8Bytes,
+        client::IntoClientRequest,
+        http::{HeaderValue, Request},
+    },
 };
 
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -30,12 +35,12 @@ const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 /// A connected `tokio-tungstenite` stream.
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-/// An event read from a connection. This seam ships raw frames — parsing them, and
-/// tolerating ones that fail the pinned schema, is each consumer's concern.
+/// An event read from a connection. This seam ships raw frames — parsing them,
+/// and tolerating ones that fail the pinned schema, is each consumer's concern.
 #[derive(Debug)]
 pub(crate) enum ConnEvent {
-    /// One raw inbound text frame, verbatim — a cheaply-cloneable view of the wire
-    /// bytes, not a copy.
+    /// One raw inbound text frame, verbatim — a cheaply-cloneable view of the
+    /// wire bytes, not a copy.
     Frame(Utf8Bytes),
     /// The peer closed, or the stream ended.
     Closed,
@@ -47,8 +52,9 @@ pub(crate) trait ConnWriter: Send {
     /// Serialize `frame` and send it as one text frame.
     async fn send_frame(&mut self, frame: &impl Serialize) -> Result<()>;
 
-    /// Close handshake. The outcome is the caller's to interpret — teardown paths trace a
-    /// failure and drop the writer (an abrupt TCP close) rather than propagate it.
+    /// Close handshake. The outcome is the caller's to interpret — teardown
+    /// paths trace a failure and drop the writer (an abrupt TCP close)
+    /// rather than propagate it.
     async fn close(&mut self) -> Result<()>;
 }
 
@@ -58,7 +64,8 @@ pub(crate) trait ConnReader: Send {
     async fn recv(&mut self) -> ConnEvent;
 }
 
-/// Opens split [`ConnWriter`]/[`ConnReader`] pairs on demand, once per (re)connect.
+/// Opens split [`ConnWriter`]/[`ConnReader`] pairs on demand, once per
+/// (re)connect.
 pub(crate) trait Transport: Send + Sync + 'static {
     type Writer: ConnWriter;
     type Reader: ConnReader;
@@ -66,18 +73,19 @@ pub(crate) trait Transport: Send + Sync + 'static {
     async fn connect(&self) -> Result<(Self::Writer, Self::Reader)>;
 }
 
-/// Production transport backed by `tokio-tungstenite`. Owns its URL and handshake
-/// headers so it stays `'static` for the spawned connection task.
+/// Production transport backed by `tokio-tungstenite`. Owns its URL and
+/// handshake headers so it stays `'static` for the spawned connection task.
 pub(crate) struct TungsteniteTransport {
     url: String,
     skip_verify: bool,
-    /// Extra handshake headers (client identity/telemetry), injected by the application —
-    /// this crate carries no telemetry knowledge of its own.
+    /// Extra handshake headers (client identity/telemetry), injected by the
+    /// application — this crate carries no telemetry knowledge of its own.
     headers: Vec<(String, String)>,
 }
 
 impl TungsteniteTransport {
-    /// `skip_verify` disables TLS verification (`--accept-invalid-certs`), for beta/UAT hosts only.
+    /// `skip_verify` disables TLS verification
+    /// (`--danger-accept-invalid-certs`), for test hosts only.
     pub(crate) fn new(
         url: impl Into<String>,
         skip_verify: bool,
@@ -154,8 +162,8 @@ impl ConnReader for TungReader {
     }
 }
 
-/// Build the WebSocket handshake request for `url`, carrying the caller-injected
-/// client/telemetry headers.
+/// Build the WebSocket handshake request for `url`, carrying the
+/// caller-injected client/telemetry headers.
 fn handshake_request(url: &str, extra: &[(String, String)]) -> Result<Request<()>> {
     let mut request = url.into_client_request().map_err(Error::transport)?;
     let headers = request.headers_mut();
@@ -175,10 +183,10 @@ fn handshake_request(url: &str, extra: &[(String, String)]) -> Result<Request<()
     Ok(request)
 }
 
-/// A TLS connector that accepts any server certificate — the one implementation of the
-/// `--accept-invalid-certs` escape hatch, shared by the spot and futures WS stacks so
-/// the dangerous block exists exactly once. Warns once per process: a reconnect loop
-/// would otherwise flood stderr.
+/// A TLS connector that accepts any server certificate — the one implementation
+/// of the `--accept-invalid-certs` escape hatch, shared by the spot and futures
+/// WS stacks so the dangerous block exists exactly once. Warns once per
+/// process: a reconnect loop would otherwise flood stderr.
 pub fn dangerous_tls_connector() -> TlsConnector {
     static TLS_WARN: std::sync::Once = std::sync::Once::new();
     TLS_WARN.call_once(|| {
@@ -192,8 +200,8 @@ pub fn dangerous_tls_connector() -> TlsConnector {
     TlsConnector::Rustls(Arc::new(config))
 }
 
-/// A `rustls` verifier that accepts any certificate. Never constructed directly:
-/// [`dangerous_tls_connector`] is the sole gateway.
+/// A `rustls` verifier that accepts any certificate. Never constructed
+/// directly: [`dangerous_tls_connector`] is the sole gateway.
 #[derive(Debug)]
 struct NoVerify;
 

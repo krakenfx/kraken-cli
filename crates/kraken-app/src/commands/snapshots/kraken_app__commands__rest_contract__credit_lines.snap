@@ -1,0 +1,45 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "asset_details": {
+      "USD": {
+        "balance": "1000.5000",
+        "hold_trade": "0.0000",
+        "credit": "50000.0000",
+        "credit_used": "12500.0000"
+      },
+      "EUR": {
+        "balance": "500.2500",
+        "hold_trade": "100.0000",
+        "credit": "25000.0000",
+        "credit_used": "5000.0000"
+      }
+    },
+    "limits_monitor": {
+      "total_credit_usd": "100000.0000",
+      "total_credit_used_usd": "25000.0000",
+      "total_collateral_value_usd": "150000.0000",
+      "equity_usd": "125000.0000",
+      "ongoing_balance": "1.5000",
+      "debt_to_equity": "0.2000"
+    }
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "asset_details",
+      "{\"USD\":{\"balance\":\"1000.5000\",\"hold_trade\":\"0.0000\",\"credit\":\"50000.0000\",\"credit_used\":\"12500.0000\"},\"EUR\":{\"balance\":\"500.2500\",\"hold_trade\":\"100.0000\",\"credit\":\"25000.0000\",\"credit_used\":\"5000.0000\"}}"
+    ],
+    [
+      "limits_monitor",
+      "{\"total_credit_usd\":\"100000.0000\",\"total_credit_used_usd\":\"25000.0000\",\"total_collateral_value_usd\":\"150000.0000\",\"equity_usd\":\"125000.0000\",\"ongoing_balance\":\"1.5000\",\"debt_to_equity\":\"0.2000\"}"
+    ]
+  ],
+  "footer": []
+}

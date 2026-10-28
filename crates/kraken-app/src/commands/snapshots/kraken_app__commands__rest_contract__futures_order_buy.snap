@@ -1,0 +1,24 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "order_id": "179f9af8-e45e-469d-b3e9-2fd4675cb7d0",
+    "result": "success",
+    "status": "placed"
+  },
+  "headers": [
+    "order_id",
+    "Result",
+    "Status"
+  ],
+  "rows": [
+    [
+      "179f9af8-e45e-469d-b3e9-2fd4675cb7d0",
+      "success",
+      "placed"
+    ]
+  ],
+  "footer": []
+}

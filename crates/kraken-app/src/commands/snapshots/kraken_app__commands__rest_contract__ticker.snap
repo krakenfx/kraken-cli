@@ -1,0 +1,80 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "XETHZUSD": {
+      "ask_price": 2388.75,
+      "ask_whole_lot_volume": 1.0,
+      "ask_lot_volume": 1.0,
+      "bid_price": 2388.74,
+      "bid_whole_lot_volume": 7.0,
+      "bid_lot_volume": 7.0,
+      "last_price": 2388.95,
+      "last_volume": 0.016,
+      "volume_today": 8898.23425957,
+      "volume_24h": 19210.05308236,
+      "vwap_today": 2389.31013,
+      "vwap_24h": 2395.42882,
+      "trades_today": 20842,
+      "trades_24h": 46745,
+      "low_today": 2370.41,
+      "low_24h": 2370.41,
+      "high_today": 2414.78,
+      "high_24h": 2427.3,
+      "open": 2405.43
+    },
+    "XXBTZUSD": {
+      "ask_price": 81401.4,
+      "ask_whole_lot_volume": 1.0,
+      "ask_lot_volume": 1.0,
+      "bid_price": 81401.3,
+      "bid_whole_lot_volume": 1.0,
+      "bid_lot_volume": 1.0,
+      "last_price": 81401.3,
+      "last_volume": 0.00188397,
+      "volume_today": 570.7486853,
+      "volume_24h": 1371.76541087,
+      "vwap_today": 81559.59151,
+      "vwap_24h": 81830.00711,
+      "trades_today": 74533,
+      "trades_24h": 149364,
+      "low_today": 81099.7,
+      "low_24h": 81099.7,
+      "high_today": 82157.5,
+      "high_24h": 82670.3,
+      "open": 81843.0
+    }
+  },
+  "headers": [
+    "Pair",
+    "Ask",
+    "Bid",
+    "Last",
+    "Volume (24h)",
+    "High (24h)",
+    "Low (24h)"
+  ],
+  "rows": [
+    [
+      "XETHZUSD",
+      "2388.75",
+      "2388.74",
+      "2388.95",
+      "19210.05308236",
+      "2427.3",
+      "2370.41"
+    ],
+    [
+      "XXBTZUSD",
+      "81401.4",
+      "81401.3",
+      "81401.3",
+      "1371.76541087",
+      "82670.3",
+      "81099.7"
+    ]
+  ],
+  "footer": []
+}

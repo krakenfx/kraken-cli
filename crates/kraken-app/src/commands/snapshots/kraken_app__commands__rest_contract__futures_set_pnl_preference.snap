@@ -1,0 +1,25 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "serverTime": "2022-06-28T14:48:58.711Z"
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "result",
+      "success"
+    ],
+    [
+      "serverTime",
+      "2022-06-28T14:48:58.711Z"
+    ]
+  ],
+  "footer": []
+}

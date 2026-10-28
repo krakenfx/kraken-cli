@@ -7,12 +7,19 @@ set -euo pipefail
 PAIR="BTCUSD"
 INITIAL_BALANCE=10000
 BUY_VOLUME="0.01"
+# A workspace of its own keeps the script off the global paper account and rerunnable.
+export KRAKEN_WORKSPACE="paper-workflow-example"
 
 echo "=== Paper Trading Workflow ==="
 
-# Step 1: Initialize
+# Step 1: Initialize (a rerun resets the workspace instead)
 echo "Step 1: Initialize paper account with \$${INITIAL_BALANCE}"
-INIT=$(kraken paper init --balance "$INITIAL_BALANCE" -o json 2>/dev/null)
+if kraken workspace show -o json >/dev/null 2>&1; then
+  # --yes: the reset only touches this script's own paper workspace.
+  INIT=$(kraken paper reset --balance "$INITIAL_BALANCE" --yes -o json 2>/dev/null)
+else
+  INIT=$(kraken paper init --balance "$INITIAL_BALANCE" -o json 2>/dev/null)
+fi
 echo "$INIT" | jq '.'
 
 # Step 2: Get current price
@@ -54,6 +61,6 @@ kraken paper history -o json 2>/dev/null | jq '.'
 
 # Step 9: Reset
 echo "Step 9: Reset paper account"
-kraken paper reset -o json 2>/dev/null | jq '.'
+kraken paper reset --yes -o json 2>/dev/null | jq '.'
 
 echo "=== Workflow complete ==="

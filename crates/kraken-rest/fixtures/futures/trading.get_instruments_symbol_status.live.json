@@ -1,0 +1,9 @@
+{
+  "result": "success",
+  "serverTime": "2026-10-20T14:40:47.562Z",
+  "tradeable": "PF_XBTUSD",
+  "experiencingDislocation": false,
+  "priceDislocationDirection": null,
+  "experiencingExtremeVolatility": false,
+  "extremeVolatilityInitialMarginMultiplier": 1
+}

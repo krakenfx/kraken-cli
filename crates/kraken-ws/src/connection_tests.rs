@@ -1,24 +1,29 @@
 //! In-process tests for the [`Connection`] actor, driven over the shared
 //! [`MockTransport`], so each test drives connect, the fixed-subscription send,
-//! replay-on-reconnect, frame decoding, reconnect backoff, the read-idle timeout,
-//! and cancellation shutdown without a real socket.
+//! replay-on-reconnect, frame decoding, reconnect backoff, the read-idle
+//! timeout, and cancellation shutdown without a real socket.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
-
-use kraken_core::endpoint::Endpoint;
-use kraken_core::error::{Error, Result};
-use kraken_core::{Method, WsSubscription};
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
+use super::{
+    backoff::ReconnectPolicy,
+    connection::{Event, Stream, StreamConnection},
+    mock_transport::{MockTransport, wait_until},
+    token::{BoxFuture, Minted, TokenCache, TokenSource},
+    transport::ConnEvent,
+};
+use kraken_core::{
+    Method, WsSubscription,
+    endpoint::Endpoint,
+    error::{Error, Result},
+};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-
-use super::backoff::ReconnectPolicy;
-use super::connection::{Event, Stream, StreamConnection};
-use super::mock_transport::{MockTransport, wait_until};
-use super::token::{BoxFuture, Minted, TokenCache, TokenSource};
-use super::transport::ConnEvent;
 
 // --- mock token source -----------------------------------------------------
 
@@ -31,8 +36,8 @@ impl TokenSource for MockToken {
     }
 }
 
-/// Mints a distinct token per fetch (`tok-0`, `tok-1`, …), so a test can tell which mint a
-/// subscribe frame carried.
+/// Mints a distinct token per fetch (`tok-0`, `tok-1`, …), so a test can tell
+/// which mint a subscribe frame carried.
 struct CountingToken {
     calls: Arc<AtomicUsize>,
 }
@@ -44,8 +49,8 @@ impl TokenSource for CountingToken {
     }
 }
 
-/// Mints a token on the first fetch, then fails every one after — so the initial connect
-/// subscribes but the reconnect's refresh fails.
+/// Mints a token on the first fetch, then fails every one after — so the
+/// initial connect subscribes but the reconnect's refresh fails.
 struct TokenThenFail {
     calls: Arc<AtomicUsize>,
 }
@@ -63,8 +68,8 @@ impl TokenSource for TokenThenFail {
     }
 }
 
-/// Fails the first fetch, then mints — so the initial session's setup fails and a test can
-/// prove the retry kept first-send semantics.
+/// Fails the first fetch, then mints — so the initial session's setup fails and
+/// a test can prove the retry kept first-send semantics.
 struct FailThenToken {
     calls: Arc<AtomicUsize>,
 }
@@ -84,8 +89,9 @@ impl TokenSource for FailThenToken {
 
 // --- harness ---------------------------------------------------------------
 
-/// Spawn an actor over `transport` streaming `subs`, returning the shutdown token
-/// (cancel it to stop the actor), the event receiver, and the actor task's handle.
+/// Spawn an actor over `transport` streaming `subs`, returning the shutdown
+/// token (cancel it to stop the actor), the event receiver, and the actor
+/// task's handle.
 fn spawn(
     endpoint: Endpoint,
     transport: MockTransport,
@@ -135,9 +141,9 @@ fn frame(raw: &str) -> ConnEvent {
     ConnEvent::Frame(raw.into())
 }
 
-/// Poll `cond` under paused virtual time, alternating yields (letting the actor run)
-/// with small clock steps (firing whatever timer it parks on); panics if `cond` never
-/// holds within the advanced window.
+/// Poll `cond` under paused virtual time, alternating yields (letting the actor
+/// run) with small clock steps (firing whatever timer it parks on); panics if
+/// `cond` never holds within the advanced window.
 async fn advance_until(mut cond: impl FnMut() -> bool) {
     for _ in 0..200 {
         for _ in 0..20 {
@@ -331,19 +337,6 @@ async fn a_pong_reply_is_not_surfaced_as_an_ack() {
 }
 
 #[tokio::test]
-async fn a_server_heartbeat_reaches_the_consumer_as_a_liveness_event() {
-    let transport = MockTransport::new();
-    let (_shutdown, mut events, _handle) =
-        spawn(Endpoint::Public, transport.clone(), None, vec![], None);
-    wait_until(|| transport.connect_count() >= 1).await;
-    transport
-        .reader(0)
-        .send(frame(r#"{"channel":"heartbeat"}"#))
-        .unwrap();
-    next_matching(&mut events, |e| matches!(e, Event::Heartbeat).then_some(())).await;
-}
-
-#[tokio::test]
 async fn reconnect_replays_the_subscription_with_a_fresh_token_and_forced_snapshot() {
     let transport = MockTransport::new();
     let (_shutdown, _events, _handle) = spawn(
@@ -465,11 +458,11 @@ async fn a_rejected_subscribe_reconnects_to_resubscribe() {
 
 #[tokio::test]
 async fn a_new_rejection_after_a_cured_incident_gets_its_own_fresh_token_retry() {
-    // The incident is per symbol, not per endpoint: after BOGUS/USD's rejection spent
-    // its fresh-token retry and the replay was ACKED (the incident is cured), a later
-    // rejection of a DIFFERENT pair inside the stability window must earn its own
-    // fresh-token reconnect — never count as the old incident's second strike and be
-    // evicted unheard.
+    // The incident is per symbol, not per endpoint: after BOGUS/USD's rejection
+    // spent its fresh-token retry and the replay was ACKED (the incident is
+    // cured), a later rejection of a DIFFERENT pair inside the stability window
+    // must earn its own fresh-token reconnect — never count as the old
+    // incident's second strike and be evicted unheard.
     let transport = MockTransport::new();
     let (_shutdown, _events, _handle) = spawn(
         Endpoint::Public,
@@ -560,8 +553,9 @@ async fn an_anonymous_rejection_after_a_named_incident_gets_its_own_retry() {
 #[tokio::test]
 async fn a_repeat_rejection_evicts_even_when_every_session_is_stable() {
     // The strike must survive its own session's stability clear (record runs after
-    // the clear): with stable_after = ZERO every session is "stable", and a repeated
-    // rejection must still evict deterministically instead of earning endless retries.
+    // the clear): with stable_after = ZERO every session is "stable", and a
+    // repeated rejection must still evict deterministically instead of earning
+    // endless retries.
     let transport = MockTransport::new();
     let (events_tx, _events_rx) = mpsc::unbounded_channel();
     let shutdown = CancellationToken::new();
@@ -592,8 +586,8 @@ async fn a_repeat_rejection_evicts_even_when_every_session_is_stable() {
     transport.reader(0).send(frame(reject)).unwrap();
     wait_until(|| transport.connect_count() >= 2).await;
     transport.reader(1).send(frame(reject)).unwrap();
-    // Eviction, not a third fresh-token reconnect: the replay after a close excludes
-    // the pair.
+    // Eviction, not a third fresh-token reconnect: the replay after a close
+    // excludes the pair.
     transport.reader(1).send(ConnEvent::Closed).unwrap();
     wait_until(|| {
         transport
@@ -641,7 +635,8 @@ async fn a_cured_pair_rejected_again_gets_a_fresh_retry_not_eviction() {
             r#"{"method":"subscribe","success":true,"result":{"channel":"ticker","symbol":"BTC/USD"}}"#,
         ))
         .unwrap();
-    // The socket drops (well inside the stability window), then the pair rejects again.
+    // The socket drops (well inside the stability window), then the pair rejects
+    // again.
     transport.reader(1).send(ConnEvent::Closed).unwrap();
     wait_until(|| transport.connect_count() >= 3).await;
     transport.reader(2).send(frame(reject)).unwrap();

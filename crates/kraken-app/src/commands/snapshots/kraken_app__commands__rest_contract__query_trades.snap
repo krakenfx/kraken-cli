@@ -1,0 +1,68 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+assertion_line: 277
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "THVRQM-33VKH-UCI7BS": {
+      "ordertxid": "OQCLML-BW3P3-BUCMWZ",
+      "postxid": "TKH2SE-M7IF5-CFI7LT",
+      "pair": "XXBTZUSD",
+      "time": "1688667796.8802",
+      "side": "buy",
+      "ordertype": "limit",
+      "price": 30010.0,
+      "cost": 600.2,
+      "fee": 0.0,
+      "vol": 0.02,
+      "margin": 0.0,
+      "misc": "",
+      "trade_id": 93748276,
+      "maker": true
+    },
+    "TTEUX3-HDAAA-RC2RUO": {
+      "ordertxid": "OH76VO-UKWAD-PSBDX6",
+      "postxid": "TKH2SE-M7IF5-CFI7LT",
+      "pair": "XXBTZEUR",
+      "time": "1688082549.3138",
+      "side": "buy",
+      "ordertype": "limit",
+      "price": 27732.0,
+      "cost": 0.2002,
+      "fee": 0.0,
+      "vol": 0.0002,
+      "margin": 0.0,
+      "misc": "",
+      "trade_id": 74625834,
+      "maker": true
+    }
+  },
+  "headers": [
+    "TXID",
+    "Pair",
+    "Side",
+    "Price",
+    "Volume",
+    "Cost"
+  ],
+  "rows": [
+    [
+      "THVRQM-33VKH-UCI7BS",
+      "XXBTZUSD",
+      "buy",
+      "30010.0",
+      "0.02",
+      "600.2"
+    ],
+    [
+      "TTEUX3-HDAAA-RC2RUO",
+      "XXBTZEUR",
+      "buy",
+      "27732.0",
+      "0.0002",
+      "0.2002"
+    ]
+  ],
+  "footer": []
+}

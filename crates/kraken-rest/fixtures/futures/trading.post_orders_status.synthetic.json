@@ -1,0 +1,27 @@
+{
+  "result": "success",
+  "orders": [
+    {
+      "order": {
+        "type": "ORDER",
+        "orderId": "2ce038ae-c144-4de7-a0f1-82f7f4fca864",
+        "cliOrdId": null,
+        "symbol": "PF_XBTUSD",
+        "side": "buy",
+        "quantity": 1,
+        "filled": 0,
+        "limitPrice": 50000,
+        "reduceOnly": false,
+        "timestamp": "2026-10-20T12:00:00.000Z",
+        "lastUpdateTimestamp": "2026-10-20T12:00:00.000Z",
+        "algoId": null,
+        "priceTriggerOptions": null,
+        "triggerTime": null
+      },
+      "status": "ENTERED_BOOK",
+      "updateReason": null,
+      "error": null
+    }
+  ],
+  "serverTime": "2026-10-20T12:00:00.000Z"
+}

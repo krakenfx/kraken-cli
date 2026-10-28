@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 
 /// One `ticker` snapshot/update entry.
 ///
-/// No `deny_unknown_fields`: an extensible inbound payload — a field Kraken adds later is
-/// ignored rather than failing the decode, which would drop every frame on the channel.
+/// No `deny_unknown_fields`: an extensible inbound payload — a field Kraken
+/// adds later is ignored rather than failing the decode, which would drop every
+/// frame on the channel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TickerData {
     pub symbol: String,

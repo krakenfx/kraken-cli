@@ -1,0 +1,30 @@
+[package]
+description            = "The kraken-cli command tree as a shared contract"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-contract"
+publish                = false
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+[dependencies]
+chrono       = { workspace = true }
+clap         = { workspace = true }
+kraken-core  = { workspace = true, features = ["clap", "schema"] }
+rust_decimal = { workspace = true }
+schemars     = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+# A tool call's refusal must name the argument that failed, not only the type it
+# wanted: `serde`'s own message carries no path.
+serde_path_to_error = { workspace = true }
+strum               = { workspace = true }
+thiserror           = { workspace = true }
+tracing             = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

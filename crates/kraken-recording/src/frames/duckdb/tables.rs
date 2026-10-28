@@ -1,35 +1,42 @@
 //! Channel-table dispatch for the recording schema.
 //!
-//! Each recordable channel declares its [`TableSpec`], row mapping, and read-back
-//! by implementing [`Recordable`] on its payload entry type in its own submodule
-//! here (one per channel), so a table's spec, encode, and decode live in one file
-//! where they can't drift apart — and the wire types stay free of persistence
-//! code: `record` depends on `kraken-core`, never the reverse. This module
-//! gathers, dispatches, and hosts the read half the entry-per-row tables share:
+//! Each recordable channel declares its [`TableSpec`], row mapping, and
+//! read-back by implementing [`Recordable`] on its payload entry type in its
+//! own submodule here (one per channel), so a table's spec, encode, and decode
+//! live in one file where they can't drift apart — and the wire types stay free
+//! of persistence code: `record` depends on `kraken-core`, never the reverse.
+//! This module gathers, dispatches, and hosts the read half the entry-per-row
+//! tables share:
 //!
-//! [`schema_tables_for`] collects every table's spec for the up-front `CREATE TABLE`;
-//! [`record_frame`] routes a parsed frame to its channel's rows and writes them
-//! through one cached prepared statement per table; [`group_frames`] regroups read
-//! rows into the frames the writer expanded. Only the subscribeable market-data
-//! channels are recorded — account feeds (executions, balances) are out of scope
-//! and skipped without error.
+//! [`schema_tables_for`] collects every table's spec for the up-front `CREATE
+//! TABLE`; [`record_frame`] routes a parsed frame to its channel's rows and
+//! writes them through one cached prepared statement per table;
+//! [`group_frames`] regroups read rows into the frames the writer expanded.
+//! Only the subscribeable market-data channels are recorded — account feeds
+//! (executions, balances) are out of scope and skipped without error.
 
 mod book;
 mod ohlc;
 mod ticker;
 mod trade;
 
+use crate::{
+    error::Result,
+    frames::{
+        capture,
+        duckdb::table::{Recordable, Row, RowError, Stored, TableSpec},
+    },
+};
 use duckdb::Connection;
-use kraken_core::subscribe::message::{BookData, MessageType, OhlcData, TickerData, TradeData};
-use kraken_core::{ChannelData, ChannelMessage, SubscribableChannel};
-
-use crate::error::Result;
-use crate::frames::capture;
-use crate::frames::duckdb::table::{Recordable, Row, RowError, Stored, TableSpec};
+use kraken_core::{
+    ChannelData, ChannelMessage, SubscribableChannel,
+    subscribe::message::{BookData, MessageType, OhlcData, TickerData, TradeData},
+};
 
 /// The table a subscribeable channel records into, or `None` for the channels
-/// that aren't persisted (`instrument`, `executions`, `balances`, `level3` — the same set
-/// [`record_frame`] skips). Single source of truth for the channel → table mapping.
+/// that aren't persisted (`instrument`, `executions`, `balances`, `level3` —
+/// the same set [`record_frame`] skips). Single source of truth for the channel
+/// → table mapping.
 pub(crate) fn table_for(channel: SubscribableChannel) -> Option<&'static TableSpec> {
     use SubscribableChannel as Sub;
     Some(match channel {
@@ -115,9 +122,10 @@ pub(crate) struct RowEntry<T> {
     pub entry: T,
 }
 
-/// Regroup `(seq, rowid)`-ordered rows into the frames [`Recordable::rows`] expanded:
-/// same-`seq` runs are one frame, rebuilt through `make` (the channel's [`ChannelData`]
-/// variant constructor). The wire `sequence` was never stored; it reads back `None`.
+/// Regroup `(seq, rowid)`-ordered rows into the frames [`Recordable::rows`]
+/// expanded: same-`seq` runs are one frame, rebuilt through `make` (the
+/// channel's [`ChannelData`] variant constructor). The wire `sequence` was
+/// never stored; it reads back `None`.
 pub(crate) fn group_frames<T>(
     make: fn(Vec<T>) -> ChannelData,
     rows: Vec<RowEntry<T>>,

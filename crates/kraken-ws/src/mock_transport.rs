@@ -1,18 +1,20 @@
-//! The scripted fake [`Transport`] shared by the connection test suites: records
-//! every frame written, feeds each connection's reader from a test-controlled
-//! channel, and fails or hangs dials on demand.
-
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
-use kraken_core::error::{Error, Result};
-use tokio::sync::mpsc;
+//! The scripted fake [`Transport`] shared by the connection test suites:
+//! records every frame written, feeds each connection's reader from a
+//! test-controlled channel, and fails or hangs dials on demand.
 
 use super::transport::{ConnEvent, ConnReader, ConnWriter, Transport};
+use kraken_core::error::{Error, Result};
+use std::{
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+use tokio::sync::mpsc;
 
-/// Poll `cond` until true, panicking if it never holds — so an exhausted wait fails
-/// loud here instead of falling through to a confusing downstream assert.
+/// Poll `cond` until true, panicking if it never holds — so an exhausted wait
+/// fails loud here instead of falling through to a confusing downstream assert.
 pub(crate) async fn wait_until(mut cond: impl FnMut() -> bool) {
     for _ in 0..500 {
         if cond() {
@@ -33,10 +35,12 @@ pub(crate) struct MockTransport {
     closes: Arc<AtomicUsize>,
     /// When set, every `connect()` fails — a permanently dead endpoint.
     pub(crate) fail: bool,
-    /// Fail this many connect attempts before succeeding — a transient dial failure.
+    /// Fail this many connect attempts before succeeding — a transient dial
+    /// failure.
     pub(crate) fail_first: Arc<AtomicUsize>,
     /// When set, `connect()` registers the attempt then never resolves — a hung
-    /// handshake, so a test can prove shutdown (or a dial budget) still ends it.
+    /// handshake, so a test can prove shutdown (or a dial budget) still ends
+    /// it.
     pub(crate) hang: bool,
 }
 
@@ -65,7 +69,8 @@ impl MockTransport {
         self.closes.load(Ordering::SeqCst)
     }
 
-    /// The feed sender for the `nth` connection (0-based), once it has connected.
+    /// The feed sender for the `nth` connection (0-based), once it has
+    /// connected.
     pub(crate) fn reader(&self, nth: usize) -> mpsc::UnboundedSender<ConnEvent> {
         self.readers.lock().unwrap()[nth].clone()
     }
@@ -75,6 +80,8 @@ impl Transport for MockTransport {
     type Writer = MockWriter;
     type Reader = MockReader;
 
+    // `try_update` (1.99+) is the rename; it does not exist on the 1.97 MSRV.
+    #[allow(deprecated)]
     async fn connect(&self) -> Result<(MockWriter, MockReader)> {
         self.connects.fetch_add(1, Ordering::SeqCst);
         if self.fail {

@@ -33,6 +33,10 @@ Compare rates across contracts to find the highest yield.
 
 ## Carry Entry (Positive Funding)
 
+Both legs are live orders on the real account, so run `unset KRAKEN_WORKSPACE`
+first. Inside a paper workspace the spot leg fills on paper and the workspace
+guard refuses the futures leg, which leaves the hedge half done.
+
 When funding is positive (longs pay shorts):
 1. Short the perpetual.
 2. Buy spot as a hedge.
@@ -42,10 +46,14 @@ When funding is positive (longs pay shorts):
 kraken order buy BTCUSD 0.01 --type market -o json 2>/dev/null
 
 # Carry: short perpetual (collect funding)
-kraken futures order sell PF_XBTUSD 1 -o json 2>/dev/null
+kraken futures order sell PF_XBTUSD 1 --type market -o json 2>/dev/null
 ```
 
 ## Carry Entry (Negative Funding)
+
+Both legs are live orders on the real account, so run `unset KRAKEN_WORKSPACE`
+first. Inside a paper workspace the spot leg fills on paper and the workspace
+guard refuses the futures leg, which leaves the hedge half done.
 
 When funding is negative (shorts pay longs):
 1. Long the perpetual.
@@ -53,7 +61,7 @@ When funding is negative (shorts pay longs):
 
 ```bash
 # Carry: long perpetual (collect funding)
-kraken futures order buy PF_XBTUSD 1 -o json 2>/dev/null
+kraken futures order buy PF_XBTUSD 1 --type market -o json 2>/dev/null
 
 # Hedge: sell spot
 kraken order sell BTCUSD 0.01 --type market -o json 2>/dev/null
@@ -89,10 +97,14 @@ If the rate flips direction, the position switches from collecting to paying. Ex
 
 ## Exit
 
+Both legs are live orders on the real account, so run `unset KRAKEN_WORKSPACE`
+first. Inside a paper workspace the spot leg fills on paper and the workspace
+guard refuses the futures leg, which leaves the hedge half done.
+
 Close both legs when carry becomes unprofitable:
 
 ```bash
-kraken futures order buy PF_XBTUSD 1 --reduce-only -o json 2>/dev/null
+kraken futures order buy PF_XBTUSD 1 --type market --reduce-only -o json 2>/dev/null
 kraken order sell BTCUSD 0.01 --type market -o json 2>/dev/null
 ```
 

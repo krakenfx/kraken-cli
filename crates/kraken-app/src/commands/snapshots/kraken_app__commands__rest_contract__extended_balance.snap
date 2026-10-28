@@ -1,0 +1,31 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "USD": {
+      "balance": 25435.21,
+      "hold_trade": 8249.76
+    },
+    "BTC": {
+      "balance": 1.2435,
+      "hold_trade": 0.8423
+    }
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "USD",
+      "{\"balance\":25435.21,\"hold_trade\":8249.76}"
+    ],
+    [
+      "BTC",
+      "{\"balance\":1.2435,\"hold_trade\":0.8423}"
+    ]
+  ],
+  "footer": []
+}

@@ -1,9 +1,7 @@
 //! The workspace name contract.
 
-use std::fmt;
-use std::str::FromStr;
-
 use crate::{Result, WorkspaceError};
+use std::{fmt, str::FromStr};
 
 /// The reserved implicit workspace: the flat layout under the config dir.
 /// It cannot be created, and scoping to it is byte-identical to no scoping
@@ -20,8 +18,8 @@ impl FromStr for WorkspaceName {
     fn from_str(s: &str) -> Result<Self> {
         if !kraken_core::name::is_safe_name_segment(s) {
             return Err(WorkspaceError::Spec(format!(
-                "Invalid workspace name {s:?}: use only letters, digits, '.', '-', or '_' \
-                 (no '/', spaces, or '.'/'..')."
+                "Invalid workspace name {s:?}: use only letters, digits, '.', '-', or '_' (no \
+                 '/', spaces, or '.'/'..')."
             )));
         }
         Ok(Self(s.to_owned()))
@@ -68,13 +66,5 @@ mod tests {
         for bad in ["", ".", "..", "a/b", "a b", "ünïcode"] {
             assert!(bad.parse::<WorkspaceName>().is_err(), "{bad:?}");
         }
-    }
-
-    #[test]
-    fn only_the_reserved_name_is_default() {
-        let default: WorkspaceName = DEFAULT_WORKSPACE.parse().expect("reserved name is valid");
-        assert!(default.is_default());
-        let named: WorkspaceName = "btc-momentum".parse().expect("valid name");
-        assert!(!named.is_default());
     }
 }

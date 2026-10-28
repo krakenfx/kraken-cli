@@ -1,23 +1,30 @@
 # kraken-cli
 
-Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken with structured JSON output.
+Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken with structured JSON output. One install puts `kraken`, `kraken-mcp` (the MCP server) and `kraken-shell` on your PATH.
 
 ## Start Here
 
-- [CONTEXT.md](CONTEXT.md): Runtime context for tool-using agents
-- [AGENTS.md](AGENTS.md): Full integration guide for agent builders
-- [CLAUDE.md](CLAUDE.md): Anthropic-specific guidance
+- [CONTEXT.md](https://raw.githubusercontent.com/krakenfx/kraken-cli/main/CONTEXT.md): Runtime context for tool-using agents
+- [AGENTS.md](https://raw.githubusercontent.com/krakenfx/kraken-cli/main/AGENTS.md): Full integration guide for agent builders
+- [CLAUDE.md](https://raw.githubusercontent.com/krakenfx/kraken-cli/main/CLAUDE.md): Anthropic-specific guidance
+- [README.md](https://raw.githubusercontent.com/krakenfx/kraken-cli/main/README.md): Install, commands and troubleshooting
 
 ## Machine Contracts
 
-- [agents/tool-catalog.json](agents/tool-catalog.json): Canonical command catalog (134 commands, with parameter schemas and `dangerous` flags)
-- [agents/error-catalog.json](agents/error-catalog.json): Error categories and retry guidance
+- [agents/tool-catalog.json](https://raw.githubusercontent.com/krakenfx/kraken-cli/main/agents/tool-catalog.json): Canonical command catalog (188 commands, with generated argument schemas, `dangerous` flags and a `reach` field that says which are MCP tools)
+- [agents/error-catalog.json](https://raw.githubusercontent.com/krakenfx/kraken-cli/main/agents/error-catalog.json): Error categories and retry guidance
 
 ## Workflow Skills
 
-- [skills/](skills/): Goal-oriented SKILL.md packages for execution, market intel, paper testing, and risk operations
+- [skills/INDEX.md](https://raw.githubusercontent.com/krakenfx/kraken-cli/main/skills/INDEX.md): Goal-oriented SKILL.md packages for execution, market intel, paper testing, and risk operations
+
+## Docs Site
+
+- [kraken-cli](https://docs.kraken.com/home/cli): Install and command overview
+- [MCP server](https://docs.kraken.com/home/mcp): Client setup and services
 
 ## Notes
 
 - `tool-catalog.json` is the single source of truth for command discovery.
-- `kraken mcp -s market,trade,paper` starts a built-in MCP server over stdio for direct agent integration.
+- `kraken-mcp -s market,paper,feedback` starts the built-in MCP server over stdio with no live-trading tools. Add `trade` only with a least-privilege API key.
+- Install: `curl --proto '=https' --tlsv1.2 -LsSf https://github.com/krakenfx/kraken-cli/releases/latest/download/kraken-cli-installer.sh | sh`

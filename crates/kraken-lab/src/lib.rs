@@ -21,8 +21,7 @@ pub use hash::sha256_file;
 pub use plan::{NextAction, NextState, SessionObservation, SessionStatus};
 pub use replay::{Curve, Point, Replay, replay};
 pub use score::{CurveSummary, Metrics, ScoreSource, Scorecard, TradeStats, score};
-pub use store::SessionRef;
-pub use store::experiments_root;
+pub use store::{SessionRef, experiments_root};
 pub use window::parse_window;
 
 pub type Result<T, E = LabError> = std::result::Result<T, E>;
@@ -42,8 +41,8 @@ pub enum LabError {
     /// A freeze under a name already sealed — a spec is immutable by design.
     /// → envelope `validation`.
     #[error(
-        "experiment '{0}' already exists; a frozen spec is immutable — choose a new name or \
-         show it with 'kraken lab show {0}'"
+        "experiment '{0}' already exists; a frozen spec is immutable — choose a new name or show \
+         it with 'kraken lab show {0}'"
     )]
     ExperimentExists(String),
     /// A spec the lab refuses to freeze (bad name, no hypothesis, no
@@ -62,9 +61,10 @@ pub enum LabError {
     /// delegates to the recording bridge.
     #[error(transparent)]
     Recording(#[from] kraken_recording::Error),
-    /// Reading a session's session timeline failed; the envelope mapping delegates
-    /// to the session bridge. The crate now reads sessions itself (the facade
-    /// scores and compares from disk), so this failure mode is first-class.
+    /// Reading a session's session timeline failed; the envelope mapping
+    /// delegates to the session bridge. The crate now reads sessions itself
+    /// (the facade scores and compares from disk), so this failure mode is
+    /// first-class.
     #[error(transparent)]
     Session(#[from] kraken_session::SessionError),
     /// A scorecard's explain-pnl input failed; the envelope mapping delegates

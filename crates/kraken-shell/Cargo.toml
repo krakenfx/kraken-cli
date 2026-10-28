@@ -1,0 +1,26 @@
+[package]
+description            = "The kraken REPL: a front-end that reads lines and dispatches them through kraken-app"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-shell"
+publish                = false
+repository.workspace   = true
+rust-version.workspace = true
+version.workspace      = true
+
+[features]
+# Forwarded so a workspace-wide `--features record-duckdb` resolves here too.
+# The shipped binary gets the backend through `kraken-cli`'s feature.
+record-duckdb = ["kraken-app/record-duckdb"]
+
+[dependencies]
+# A front-end, so it depends on the engine and the engine never depends on it.
+# Each line typed at the prompt is parsed with the engine's own clap tree.
+clap             = { workspace = true, features = ["env"] }
+kraken-app       = { workspace = true }
+kraken-workspace = { workspace = true }
+rustyline        = "19.0.0"
+tokio            = { workspace = true, features = ["rt-multi-thread"] }
+
+[lints]
+workspace = true

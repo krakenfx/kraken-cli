@@ -22,9 +22,9 @@ For futures paper trading (leverage, margin, shorts, liquidation), see `kraken f
 
 Paper trading runs locally against live market prices. It simulates fees and slippage but has other limitations.
 
-- **Fees are configurable.** A 0.26% taker fee (Kraken Starter tier) is applied by default. Override with `--fee-rate` at `workspace create` (fixed for the account's life). Real fees vary by volume tier and maker/taker status. Live maker fees are lower (0.16%).
+- **Fees are configurable.** A 0.26% taker fee (Kraken Starter tier) is applied by default. Override with `--fee-rate` at `workspace create`; `workspace reset` can change it. Real fees vary by volume tier and maker/taker status. Live maker fees are lower (0.16%).
 - **Slippage is configurable.** A flat slippage rate can be applied to market orders with `--slippage-rate` (default: 0.0). Market buys fill at `ask * (1 + slippage_rate)`, sells at `bid * (1 - slippage_rate)`. This is a conservative approximation; real slippage depends on order book depth, size, and volatility.
-- **No partial fills or rejection.** Paper orders always fill in full immediately. Live orders may partially fill, queue, or be rejected.
+- **No partial fills or rejection.** A market order fills in full at once; a limit order rests until the market crosses it, then fills in full at its limit price. Live orders may partially fill, queue, or be rejected.
 
 When presenting paper results to the user, note that partial fills and order book dynamics are not simulated. If slippage is set to 0.0 (default), remind the user that live market orders will fill at worse prices.
 

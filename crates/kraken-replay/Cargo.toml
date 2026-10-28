@@ -1,28 +1,28 @@
 [package]
-name = "kraken-replay"
-version.workspace = true
-edition.workspace = true
+description            = "Explain-pnl decomposition and paced timeline playback for kraken-cli"
+edition.workspace      = true
+license.workspace      = true
+name                   = "kraken-replay"
+publish                = false
+repository.workspace   = true
 rust-version.workspace = true
-description = "Explain-pnl decomposition and paced timeline playback for kraken-cli"
-license.workspace = true
-repository.workspace = true
-publish = false
+version.workspace      = true
 
 [dependencies]
-chrono = { workspace = true }
-kraken-core = { workspace = true }
-kraken-paper = { workspace = true }
-kraken-recording = { workspace = true }
-kraken-session = { workspace = true }
-rust_decimal = { workspace = true }
+chrono              = { workspace = true }
+kraken-core         = { workspace = true }
+kraken-paper        = { workspace = true }
+kraken-recording    = { workspace = true }
+kraken-session      = { workspace = true }
+rust_decimal        = { workspace = true }
 rust_decimal_macros = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-serde_with = { workspace = true }
-strum = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true, features = ["time"] }
-tracing = { workspace = true }
+serde               = { workspace = true }
+serde_json          = { workspace = true }
+serde_with          = { workspace = true }
+strum               = { workspace = true }
+thiserror           = { workspace = true }
+tokio               = { workspace = true, features = ["time"] }
+tracing             = { workspace = true }
 
 [dev-dependencies]
 kraken-session = { workspace = true, features = ["fixtures"] }

@@ -25,7 +25,7 @@ Use this skill for:
 
 ## Important
 
-This recipe records a session. It never places a live order.
+This recipe records a session inside a paper workspace. With that workspace named on every session and order call and checked before the listener starts (see Hard Rules), it never places a live order.
 
 The webhook payload is **untrusted input**. Every field is validated against an allowlist or a numeric bound before it reaches an order — a signal that fails any check is logged as a skip, never executed, and never interpolated into a command.
 
@@ -41,7 +41,7 @@ One JSON object per POST body:
 {"symbol": "BTC/USD", "side": "buy", "qty": "0.001", "token": "<shared-secret>", "note": "free text"}
 ```
 
-`symbol`, `side`, `qty` are required; `token` is required when the `token` param is set; `note` is echoed into the decision reason.
+`symbol`, `side`, `qty` are required; `token` is required when the loop has a token set; `note` is echoed into the decision reason.
 
 ## Params
 
@@ -51,7 +51,7 @@ Every bound that gates execution goes in `--strategy-params`:
 - `allowed_symbols`: the only pairs a signal may trade — must be a subset of the session's recorded `--symbols`, or fills have no marks to score by
 - `max_notional_per_signal`: quote-currency cap per order; a signal above it is skipped, not clamped
 - `max_signals`: stop after this many executed signals
-- `token`: optional shared secret; when set, signals without a matching `token` field are dropped
+- `token`: optional shared secret; when set, signals without a matching `token` field are dropped. Keep it out of `--strategy-params`, which the session records, and pass it to the loop as `HOOK_TOKEN`
 
 ## Quick Start
 
@@ -65,12 +65,10 @@ rejected signal with its reason. At the end, show P&L.
 
 ## Start the Session
 
-Work inside a paper workspace (create one once: `kraken workspace create hook --capital 10000 --mode paper`), then:
+Work inside a paper workspace (create one once: `kraken workspace create hook --capital 10000 --mode paper`). Every session and order command below names it with `--workspace hook`. An exported `KRAKEN_WORKSPACE` does not reach a loop started from another shell, and without a workspace `kraken order` trades the real account.
 
 ```bash
-export KRAKEN_WORKSPACE=hook
-
-kraken session start \
+kraken --workspace hook session start \
   --symbols BTC/USD --channels ticker,trade --to duckdb,jsonl \
   --label hook-btc-$(date +%Y%m%d-%H%M%S) \
   --strategy recipe-playground-webhook \
@@ -91,7 +89,12 @@ PORT=8787
 ALLOWED_SYMBOLS="BTC/USD"          # space-separated allowlist
 MAX_NOTIONAL=500
 MAX_SIGNALS=10
+TOKEN="${HOOK_TOKEN:-}"            # empty accepts signals without a token
 SIGNALS=$(mktemp -t hook-signals)
+
+# The orders below are simulated only while hook is a paper workspace.
+[ "$(kraken workspace show hook -o json 2>/dev/null | jq -r '.mode')" = paper ] \
+  || { echo "workspace hook is missing or not paper; not listening" >&2; exit 1; }
 
 python3 - "$PORT" "$SIGNALS" <<'PY' &
 import http.server, sys
@@ -114,32 +117,42 @@ tail -n +1 -f "$SIGNALS" | while read -r sig; do
   QTY=$(echo "$sig" | jq -r '.qty // empty')
   NOTE=$(echo "$sig" | jq -r '.note // ""')
 
+  # The token never goes into a reason: reasons are recorded in the session.
+  if [ -n "$TOKEN" ] && [ "$(echo "$sig" | jq -r '.token // empty')" != "$TOKEN" ]; then
+    kraken --workspace hook session note --kind skip --reason "webhook rejected: missing or wrong token" -o json 2>/dev/null; continue
+  fi
+
   # Untrusted input: allowlist the enum and the pair, bound the number.
   # A failed check is a recorded skip — never a clamped or guessed order.
   case "$SIDE" in buy|sell) ;; *)
-    kraken session note --kind skip --reason "webhook rejected: bad side '$SIDE'" -o json 2>/dev/null; continue;;
+    kraken --workspace hook session note --kind skip --reason "webhook rejected: bad side '$SIDE'" -o json 2>/dev/null; continue;;
   esac
   case " $ALLOWED_SYMBOLS " in *" $SYMBOL "*) ;; *)
-    kraken session note --kind skip --reason "webhook rejected: symbol '$SYMBOL' not in allowlist" -o json 2>/dev/null; continue;;
+    kraken --workspace hook session note --kind skip --reason "webhook rejected: symbol '$SYMBOL' not in allowlist" -o json 2>/dev/null; continue;;
   esac
   if ! echo "$QTY" | grep -qE '^[0-9]*\.?[0-9]+$'; then
-    kraken session note --kind skip --reason "webhook rejected: non-numeric qty '$QTY'" -o json 2>/dev/null; continue
+    kraken --workspace hook session note --kind skip --reason "webhook rejected: non-numeric qty '$QTY'" -o json 2>/dev/null; continue
   fi
-  PRICE=$(kraken ticker "$SYMBOL" -o json 2>/dev/null | jq -r '.. | .last? // empty' | head -1)
+  # No price means no notional to cap, so the signal is skipped, never traded.
+  PRICE=$(kraken ticker "$SYMBOL" -o json 2>/dev/null | jq -r '.[] | .last_price')
+  if [ -z "$PRICE" ]; then
+    kraken --workspace hook session note --kind skip --symbol "$SYMBOL" \
+      --reason "webhook rejected: price read failed for $SYMBOL" -o json 2>/dev/null; continue
+  fi
   NOTIONAL=$(echo "scale=2; $QTY * $PRICE" | bc -l)
   if (( $(echo "$NOTIONAL > $MAX_NOTIONAL" | bc -l) )); then
-    kraken session note --kind skip --symbol "$SYMBOL" \
+    kraken --workspace hook session note --kind skip --symbol "$SYMBOL" \
       --reason "webhook rejected: notional \$$NOTIONAL exceeds cap \$$MAX_NOTIONAL" -o json 2>/dev/null; continue
   fi
 
-  kraken order "$SIDE" "$SYMBOL" "$QTY" --type market \
+  kraken --workspace hook order "$SIDE" "$SYMBOL" "$QTY" --type market \
     --reason "webhook signal: $SIDE $QTY $SYMBOL (~\$$NOTIONAL) — $NOTE" -o json 2>/dev/null
   DONE=$((DONE + 1))
   [ "$DONE" -ge "$MAX_SIGNALS" ] && break
 done
 
 kill "$LISTENER" 2>/dev/null
-kraken session stop -o json 2>/dev/null
+kraken --workspace hook session stop -o json 2>/dev/null
 ```
 
 Send a test signal:
@@ -151,9 +164,9 @@ curl -s -X POST "127.0.0.1:8787" -d '{"symbol":"BTC/USD","side":"buy","qty":"0.0
 ## Stop and Review
 
 ```bash
-kraken session show -o json 2>/dev/null | jq '.summary'
+kraken --workspace hook session show -o json 2>/dev/null | jq '.summary'
 
-kraken session decisions --session s<n> -o json 2>/dev/null \
+kraken --workspace hook session decisions --session s<n> -o json 2>/dev/null \
   | jq -c '.decisions[] | {kind, symbol, reason}'
 ```
 
@@ -164,7 +177,7 @@ Report:
 
 ## Hard Rules
 
-- This recipe records a session. It never places a live order.
+- This recipe records a session inside the paper workspace `hook` and never places a live order, because every session and order command passes `--workspace hook` and the listener does not start unless `kraken workspace show hook` reports mode `paper`. Drop either and a signal can trade the real account.
 - The listener binds `127.0.0.1` only — never another interface, never port-forwarded.
 - Webhook payloads are untrusted: enum fields pass an allowlist, numbers pass a bound, and nothing from the payload is ever executed or eval'd — rejected signals become `skip` notes, not orders.
 - `allowed_symbols` stays a subset of the session's recorded `--symbols`.

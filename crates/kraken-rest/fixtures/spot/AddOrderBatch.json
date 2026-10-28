@@ -1,0 +1,20 @@
+{
+  "error": [],
+  "result": {
+    "orders": [
+      {
+        "txid": "O5OR23-ADFAD-Y2G61C",
+        "descr": {
+          "order": "buy 0.80300000 XBTUSD @ limit 28300.0",
+          "close": "close position @ stop loss 27000.0 -> limit 26000.0"
+        }
+      },
+      {
+        "txid": "9K6KFS-5H3PL-XBRC7A",
+        "descr": {
+          "order": "sell 0.10500000 XBTUSD @ limit 36000.0"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "leveragePreferences": [
+      {
+        "symbol": "PF_XBTUSD",
+        "maxLeverage": 10
+      }
+    ],
+    "serverTime": "2022-06-28T15:01:12.762Z"
+  },
+  "headers": [
+    "symbol",
+    "maxLeverage"
+  ],
+  "rows": [
+    [
+      "PF_XBTUSD",
+      "10"
+    ]
+  ],
+  "footer": []
+}

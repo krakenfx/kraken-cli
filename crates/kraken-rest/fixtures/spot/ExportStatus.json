@@ -1,0 +1,41 @@
+{
+  "error": [],
+  "result": [
+    {
+      "id": "VSKC",
+      "descr": "my_trades_1",
+      "format": "CSV",
+      "report": "trades",
+      "subtype": "all",
+      "status": "Processed",
+      "flags": "0",
+      "fields": "all",
+      "createdtm": "1688669085",
+      "expiretm": "1688878685",
+      "starttm": "1688669093",
+      "completedtm": "1688669093",
+      "datastarttm": "1683556800",
+      "dataendtm": "1688669085",
+      "aclass": "forex",
+      "asset": "all"
+    },
+    {
+      "id": "TCJA",
+      "descr": "my_trades_1",
+      "format": "CSV",
+      "report": "trades",
+      "subtype": "all",
+      "status": "Processed",
+      "flags": "0",
+      "fields": "all",
+      "createdtm": "1688363637",
+      "expiretm": "1688573237",
+      "starttm": "1688363664",
+      "completedtm": "1688363664",
+      "datastarttm": "1683235200",
+      "dataendtm": "1688363637",
+      "aclass": "forex",
+      "asset": "all"
+    }
+  ]
+}

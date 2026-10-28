@@ -1,40 +1,44 @@
 //! Inbound frame classification: one text frame in, one typed [`Inbound`] out.
 
+use super::{
+    response::{Method, MethodResponse},
+    subscribe::{Channel, ChannelMessage},
+};
+use crate::error::{Error, Result};
 use serde::Deserialize;
 
-use super::response::{Method, MethodResponse};
-use super::subscribe::{Channel, ChannelMessage};
-use crate::error::{Error, Result};
-
-/// What a decoded inbound frame is. Exhaustive over the wire: a frame that fits none of
-/// these is a parse error, never silently dropped.
+/// What a decoded inbound frame is. Exhaustive over the wire: a frame that fits
+/// none of these is a parse error, never silently dropped.
 #[derive(Debug)]
 pub enum Inbound {
     /// A channel-data frame (market data or an account stream).
     Channel(ChannelMessage),
-    /// A method reply: an order reply, a subscribe/unsubscribe ack, an error, or
-    /// `pong`. Routed by `req_id` to an awaiting caller, or surfaced as an event.
+    /// A method reply: an order reply, a subscribe/unsubscribe ack, an error,
+    /// or `pong`. Routed by `req_id` to an awaiting caller, or surfaced as
+    /// an event.
     Method(MethodResponse),
-    /// A server keepalive (`{"channel":"heartbeat"}`). Deliberately payload-less on the
-    /// wire (<https://docs.kraken.com/api/docs/websocket-v2/heartbeat>), so a unit
-    /// variant *is* its full type; its arrival is the connection-level liveness signal
-    /// the live monitor watches to tell a stalled socket from a merely quiet market.
+    /// A server keepalive (`{"channel":"heartbeat"}`). Deliberately
+    /// payload-less on the wire (<https://docs.kraken.com/api/docs/websocket-v2/heartbeat>), so a unit
+    /// variant *is* its full type; its arrival is the connection-level liveness
+    /// signal the live monitor watches to tell a stalled socket from a
+    /// merely quiet market.
     Heartbeat,
 }
 
 impl std::str::FromStr for Inbound {
     type Err = Error;
 
-    /// Classify one inbound text frame — the single source of truth for what a frame *is*.
-    /// Deliberately strict: an unknown discriminant, a payload off its schema, or a frame
-    /// with neither key fails, so a surprise on the wire is a logged error to fix, never
-    /// silently reinterpreted. The one tolerance is vocabulary inside a payload: an
-    /// unrecognized enum token decodes to that enum's `Unknown` variant, degrading one
-    /// field, not the frame.
+    /// Classify one inbound text frame — the single source of truth for what a
+    /// frame *is*. Deliberately strict: an unknown discriminant, a payload
+    /// off its schema, or a frame with neither key fails, so a surprise on
+    /// the wire is a logged error to fix, never silently reinterpreted. The
+    /// one tolerance is vocabulary inside a payload: an unrecognized enum
+    /// token decodes to that enum's `Unknown` variant, degrading one field,
+    /// not the frame.
     fn from_str(text: &str) -> Result<Self> {
-        /// A channel frame carries `channel`, a method reply carries `method`. Both parse
-        /// straight into their typed vocabularies; a name outside either catalogue fails
-        /// the frame here.
+        /// A channel frame carries `channel`, a method reply carries `method`.
+        /// Both parse straight into their typed vocabularies; a name
+        /// outside either catalogue fails the frame here.
         #[derive(Deserialize)]
         struct Routing {
             channel: Option<Channel>,

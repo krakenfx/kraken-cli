@@ -1,0 +1,157 @@
+---
+source: crates/kraken-cli/tests/mcp_surface.rs
+assertion_line: 135
+expression: "lines.join(\"\\n\")"
+---
+kraken_assets                            market       -
+kraken_auth_show                         auth         -
+kraken_auth_test                         auth         -
+kraken_balance                           account      -
+kraken_closed_orders                     account      -
+kraken_credit_lines                      account      -
+kraken_deposit_addresses                 funding      -
+kraken_deposit_methods                   funding      -
+kraken_deposit_status                    funding      -
+kraken_earn_allocate                     earn         DANGEROUS ack-required
+kraken_earn_allocate_status              earn         -
+kraken_earn_allocations                  earn         -
+kraken_earn_deallocate                   earn         DANGEROUS ack-required
+kraken_earn_deallocate_status            earn         -
+kraken_earn_strategies                   earn         -
+kraken_explain_pnl                       paper        -
+kraken_export_delete                     account      DANGEROUS ack-required
+kraken_export_report                     account      -
+kraken_export_retrieve                   account      DANGEROUS ack-required
+kraken_export_status                     account      -
+kraken_extended_balance                  account      -
+kraken_feedback                          feedback     -
+kraken_futures_accounts                  futures      -
+kraken_futures_assignment_programs       futures      -
+kraken_futures_batch_order               futures      DANGEROUS ack-required
+kraken_futures_cancel                    futures      DANGEROUS ack-required
+kraken_futures_cancel_after              futures      DANGEROUS ack-required
+kraken_futures_cancel_all                futures      DANGEROUS ack-required
+kraken_futures_edit_order                futures      DANGEROUS ack-required
+kraken_futures_fee_schedule_volumes      futures      -
+kraken_futures_feeschedules              futures      -
+kraken_futures_fills                     futures      -
+kraken_futures_historical_funding_rates  futures      -
+kraken_futures_history                   futures      -
+kraken_futures_history_account_log_csv   futures      -
+kraken_futures_history_executions        futures      -
+kraken_futures_history_orders            futures      -
+kraken_futures_history_triggers          futures      -
+kraken_futures_instrument_status         futures      -
+kraken_futures_instruments               futures      -
+kraken_futures_leverage                  futures      -
+kraken_futures_notifications             futures      -
+kraken_futures_open_orders               futures      -
+kraken_futures_order_buy                 futures      DANGEROUS ack-required
+kraken_futures_order_sell                futures      DANGEROUS ack-required
+kraken_futures_order_status              futures      -
+kraken_futures_orderbook                 futures      -
+kraken_futures_paper_balance             futures-paper -
+kraken_futures_paper_batch_order         futures-paper -
+kraken_futures_paper_buy                 futures-paper -
+kraken_futures_paper_cancel              futures-paper -
+kraken_futures_paper_cancel_all          futures-paper -
+kraken_futures_paper_edit_order          futures-paper -
+kraken_futures_paper_fills               futures-paper -
+kraken_futures_paper_history             futures-paper -
+kraken_futures_paper_init                futures-paper -
+kraken_futures_paper_leverage            futures-paper -
+kraken_futures_paper_order_status        futures-paper -
+kraken_futures_paper_orders              futures-paper -
+kraken_futures_paper_positions           futures-paper -
+kraken_futures_paper_reset               futures-paper -
+kraken_futures_paper_sell                futures-paper -
+kraken_futures_paper_set_leverage        futures-paper -
+kraken_futures_paper_status              futures-paper -
+kraken_futures_pnl_preferences           futures      -
+kraken_futures_positions                 futures      -
+kraken_futures_set_leverage              futures      DANGEROUS ack-required
+kraken_futures_set_pnl_preference        futures      DANGEROUS ack-required
+kraken_futures_set_subaccount_status     futures      DANGEROUS ack-required
+kraken_futures_subaccount_status         futures      -
+kraken_futures_subaccounts               futures      -
+kraken_futures_ticker                    futures      -
+kraken_futures_tickers                   futures      -
+kraken_futures_trading_instruments       futures      -
+kraken_futures_transfer                  futures      DANGEROUS ack-required
+kraken_futures_transfers                 futures      -
+kraken_futures_unwind_queue              futures      -
+kraken_futures_wallet_transfer           futures      DANGEROUS ack-required
+kraken_lab_compare                       paper        -
+kraken_lab_curve                         paper        -
+kraken_lab_new                           paper        -
+kraken_lab_next                          paper        -
+kraken_lab_score                         paper        -
+kraken_lab_show                          paper        -
+kraken_ledgers                           account      -
+kraken_ohlc                              market       -
+kraken_open_orders                       account      -
+kraken_order_amend                       trade        DANGEROUS ack-required
+kraken_order_batch                       trade        DANGEROUS ack-required
+kraken_order_buy                         trade        DANGEROUS ack-required
+kraken_order_cancel                      trade        DANGEROUS ack-required
+kraken_order_cancel_after                trade        DANGEROUS ack-required
+kraken_order_cancel_all                  trade        DANGEROUS ack-required
+kraken_order_cancel_batch                trade        DANGEROUS ack-required
+kraken_order_edit                        trade        DANGEROUS ack-required
+kraken_order_sell                        trade        DANGEROUS ack-required
+kraken_orderbook                         market       -
+kraken_orderbook_grouped                 market       -
+kraken_orderbook_l3                      account      -
+kraken_pairs                             market       -
+kraken_paper_balance                     paper        -
+kraken_paper_buy                         paper        -
+kraken_paper_cancel                      paper        -
+kraken_paper_cancel_all                  paper        -
+kraken_paper_history                     paper        -
+kraken_paper_init                        paper        -
+kraken_paper_orders                      paper        -
+kraken_paper_reset                       paper        DANGEROUS ack-required
+kraken_paper_sell                        paper        -
+kraken_paper_status                      paper        -
+kraken_plugin_init                       workspace    -
+kraken_plugin_list                       workspace    -
+kraken_positions                         account      -
+kraken_query_ledgers                     account      -
+kraken_query_orders                      account      -
+kraken_query_trades                      account      -
+kraken_recipe_create                     workspace    -
+kraken_recipe_list                       workspace    -
+kraken_recipe_show                       workspace    -
+kraken_server_time                       market       -
+kraken_session_decisions                 workspace    -
+kraken_session_list                      workspace    -
+kraken_session_note                      workspace    -
+kraken_session_show                      workspace    -
+kraken_session_state_get                 workspace    -
+kraken_session_state_set                 workspace    -
+kraken_session_stop                      workspace    -
+kraken_spreads                           market       -
+kraken_status                            market       -
+kraken_subaccount_create                 subaccount   DANGEROUS ack-required
+kraken_subaccount_transfer               subaccount   DANGEROUS ack-required
+kraken_tape_list                         market       -
+kraken_ticker                            market       -
+kraken_trade_balance                     account      -
+kraken_trades                            market       -
+kraken_trades_history                    account      -
+kraken_volume                            account      -
+kraken_wallet_transfer                   funding      DANGEROUS ack-required
+kraken_withdraw                          funding      DANGEROUS ack-required
+kraken_withdrawal_addresses              funding      -
+kraken_withdrawal_cancel                 funding      DANGEROUS ack-required
+kraken_withdrawal_info                   funding      -
+kraken_withdrawal_methods                funding      -
+kraken_withdrawal_status                 funding      -
+kraken_workspace_balance                 workspace    -
+kraken_workspace_create                  workspace    ack-optional
+kraken_workspace_list                    workspace    -
+kraken_workspace_promote                 workspace    DANGEROUS ack-required
+kraken_workspace_report                  workspace    -
+kraken_workspace_reset                   workspace    DANGEROUS ack-required
+kraken_workspace_show                    workspace    -
+kraken_workspace_status                  workspace    -

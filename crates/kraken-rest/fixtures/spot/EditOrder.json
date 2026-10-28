@@ -1,0 +1,15 @@
+{
+  "error": [],
+  "result": {
+    "status": "ok",
+    "txid": "OFVXHJ-KPQ3B-VS7ELA",
+    "originaltxid": "OHYO67-6LP66-HMQ437",
+    "volume": "0.00030000",
+    "price": "19500.0",
+    "price2": "32500.0",
+    "orders_cancelled": 1,
+    "descr": {
+      "order": "buy 0.00030000 XXBTZGBP @ limit 19500.0"
+    }
+  }
+}

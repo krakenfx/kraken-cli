@@ -1,6 +1,6 @@
 ---
 name: kraken-shared
-version: 1.0.0
+version: 1.1.0
 description: "Shared runtime contract for kraken-cli: auth, invocation, parsing, and safety."
 metadata:
   openclaw:
@@ -52,13 +52,13 @@ Public market data and paper trading require no credentials.
 Route on `.error`:
 - `auth`: re-authenticate
 - `rate_limit`: read `suggestion` and `docs_url` fields, adapt strategy
-- `network`: retry with exponential backoff
+- `network`: retry with exponential backoff; if `verify_first` is `true`, check order or transfer state first
 - `validation`: fix inputs, do not retry unchanged request
 - `api`: inspect request parameters
 
 ## Safety
 
-The catalog marks 41 commands as `dangerous: true`. Always check the `dangerous` field in `agents/tool-catalog.json` before executing a command.
+The catalog marks 43 commands as `dangerous: true`. Always check the `dangerous` field in `agents/tool-catalog.json` before executing a command. Two more carry `effect: local_or_live` and `dangerous: false`, because one argument points them at the real account: `workspace create --mode live` and `recipe run --real-account`. Treat them as dangerous whenever that argument is set.
 
 Require explicit human approval before:
 - live buy or sell orders (spot and futures)
@@ -68,6 +68,12 @@ Require explicit human approval before:
 - earn allocate/deallocate
 - subaccount transfers
 - WebSocket order mutations
+- `kraken workspace promote`, which switches a paper workspace to live, and `kraken workspace create --mode live` or `kraken recipe run --real-account`
+- `kraken workspace reset` and `kraken paper reset`
+- `kraken auth switch` and `kraken auth reset`, which change or delete the key that signs every request
+- `kraken auth set` when an API key is already stored: it overwrites that key without asking
+
+Never start `kraken auth login`. It is a browser sign-in for a person, and it refuses to run without a terminal.
 
 Use paper trading for dry runs:
 

@@ -3,16 +3,14 @@
 //! The locked journal is authoritative. Projection changes follow durable
 //! appends, keeping each read-decide-write command atomic across processes.
 
-use std::path::PathBuf;
-
-use chrono::{DateTime, Utc};
-use kraken_recording::JsonlSink;
-use kraken_recording::Sink;
-use kraken_recording::Source;
-use kraken_recording::paper::{journal, replay};
-use serde::{Deserialize, Serialize};
-
 use crate::{AccountEvent, CommandEntry, PaperError, PaperState, Result};
+use chrono::{DateTime, Utc};
+use kraken_recording::{
+    JsonlSink, Sink, Source,
+    paper::{journal, replay},
+};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Version stamped on every record this build writes. A higher version aborts
 /// the replay — skipping a newer build's state event would corrupt balances.
@@ -227,7 +225,8 @@ impl Projection {
     fn apply(&mut self, record: &AccountRecord) -> Result<()> {
         if record.v > RECORD_VERSION {
             return Err(PaperError::Incompatible(format!(
-                "account log record version {} is newer than this build supports ({RECORD_VERSION}); upgrade kraken",
+                "account log record version {} is newer than this build supports \
+                 ({RECORD_VERSION}); upgrade kraken",
                 record.v
             )));
         }
@@ -255,15 +254,13 @@ impl Projection {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-
+    use super::*;
+    use crate::{CommandEntry, PaperConfig};
     use kraken_core::OrderSide;
     use kraken_recording::JsonlSource;
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
-
-    use super::*;
-    use crate::{CommandEntry, PaperConfig};
+    use std::io::Write;
 
     fn config(balance: Decimal) -> PaperConfig {
         PaperConfig {
@@ -1020,7 +1017,8 @@ mod tests {
     }
 
     /// A session marker's `session` stamp must survive the wire, and an
-    /// unstamped entry must not serialize the key at all (old readers see no change).
+    /// unstamped entry must not serialize the key at all (old readers see no
+    /// change).
     #[test]
     fn session_marker_command_entry_round_trips_and_stays_additive() {
         let marker = CommandEntry {

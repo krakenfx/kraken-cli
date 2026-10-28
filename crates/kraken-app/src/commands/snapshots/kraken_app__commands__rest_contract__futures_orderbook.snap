@@ -1,0 +1,78 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "orderBook": {
+      "asks": [
+        [
+          81348,
+          0.3033
+        ],
+        [
+          81349,
+          0.1186
+        ],
+        [
+          81350,
+          0.0125
+        ]
+      ],
+      "bids": [
+        [
+          1,
+          142
+        ],
+        [
+          5,
+          2.12
+        ],
+        [
+          13,
+          1.5384
+        ]
+      ]
+    },
+    "serverTime": "2026-10-20T13:30:56.585Z"
+  },
+  "headers": [
+    "OrderSide",
+    "Price",
+    "Size"
+  ],
+  "rows": [
+    [
+      "Ask",
+      "81348",
+      "0.3033"
+    ],
+    [
+      "Ask",
+      "81349",
+      "0.1186"
+    ],
+    [
+      "Ask",
+      "81350",
+      "0.0125"
+    ],
+    [
+      "Bid",
+      "1",
+      "142"
+    ],
+    [
+      "Bid",
+      "5",
+      "2.12"
+    ],
+    [
+      "Bid",
+      "13",
+      "1.5384"
+    ]
+  ],
+  "footer": []
+}

@@ -1,23 +1,25 @@
-//! Exact (de)serialization for `Decimal` fields that cross the wire boundary as money.
+//! Exact (de)serialization for `Decimal` fields that cross the wire boundary as
+//! money.
 //!
-//! The crate-wide `serde-float` default routes `Decimal` through `f64`, which silently
-//! rounds past ~17 significant digits — tolerable on ingest (forced by the flattened
-//! envelope, see the manifest note on `arbitrary_precision`), never for money we place
-//! on the wire. The serializers emit the decimal's own digits as a raw JSON number; the
-//! deserializers capture the raw token and let `Decimal` parse its own digits, so
-//! user-supplied JSON (`--orders`) is never rounded before the exact serializers run.
+//! The crate-wide `serde-float` default routes `Decimal` through `f64`, which
+//! silently rounds past ~17 significant digits — tolerable on ingest (forced by
+//! the flattened envelope, see the manifest note on `arbitrary_precision`),
+//! never for money we place on the wire. The serializers emit the decimal's own
+//! digits as a raw JSON number; the deserializers capture the raw token and let
+//! `Decimal` parse its own digits, so user-supplied JSON (`--orders`) is never
+//! rounded before the exact serializers run.
 //!
-//! The deserializers require serde_json's native str/slice deserializer (`RawValue`
-//! does not survive `serde_json::Value` or a `#[serde(flatten)]` envelope) — fine for
-//! the request types, which are parsed straight from user JSON text.
+//! The deserializers require serde_json's native str/slice deserializer
+//! (`RawValue` does not survive `serde_json::Value` or a `#[serde(flatten)]`
+//! envelope) — fine for the request types, which are parsed straight from user
+//! JSON text.
 
 use rust_decimal::Decimal;
-use serde::de::Error as _;
-use serde::ser::Error as _;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _, ser::Error as _};
 
 pub(super) fn serialize<S: Serializer>(value: &Decimal, serializer: S) -> Result<S::Ok, S::Error> {
-    // `Decimal`'s `Display` form is a plain decimal literal, i.e. a valid JSON number.
+    // `Decimal`'s `Display` form is a plain decimal literal, i.e. a valid JSON
+    // number.
     serde_json::value::RawValue::from_string(value.to_string())
         .map_err(S::Error::custom)?
         .serialize(serializer)
@@ -47,7 +49,8 @@ pub(super) fn de_opt<'de, D: Deserializer<'de>>(
 }
 
 /// Parse one raw JSON token as a decimal: a bare number (plain or scientific
-/// notation, which `from_str` alone rejects) or the same value quoted as a string.
+/// notation, which `from_str` alone rejects) or the same value quoted as a
+/// string.
 fn parse_token(token: &str) -> Result<Decimal, String> {
     let digits = if token.starts_with('"') {
         serde_json::from_str::<String>(token).map_err(|e| format!("invalid string: {e}"))?

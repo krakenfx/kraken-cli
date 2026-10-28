@@ -1,0 +1,25 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "transfer_id": "TOH3AS2-LPCWR8-JDQGEU",
+    "status": "complete"
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "transfer_id",
+      "TOH3AS2-LPCWR8-JDQGEU"
+    ],
+    [
+      "status",
+      "complete"
+    ]
+  ],
+  "footer": []
+}

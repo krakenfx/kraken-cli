@@ -1,0 +1,50 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "ticker": {
+      "tag": "perpetual",
+      "pair": "XBT:USD",
+      "symbol": "pi_xbtusd",
+      "markPrice": 30209.9,
+      "bid": 8634,
+      "bidSize": 1000,
+      "ask": 49289,
+      "askSize": 139984,
+      "vol24h": 15304,
+      "volumeQuote": 40351.34,
+      "openInterest": 149655,
+      "open24h": 49289,
+      "indexPrice": 21087.8,
+      "last": 49289,
+      "lastTime": "2022-06-17T10:46:35.705Z",
+      "lastSize": 100,
+      "suspended": false,
+      "fundingRate": 0.000000118588737106,
+      "fundingRatePrediction": 0.00000011852486794,
+      "postOnly": false,
+      "change24h": 1.9974017538161748
+    },
+    "serverTime": "2022-06-17T11:00:31.335Z"
+  },
+  "headers": [
+    "Symbol",
+    "Last",
+    "Bid",
+    "Ask",
+    "Vol24h"
+  ],
+  "rows": [
+    [
+      "pi_xbtusd",
+      "49289",
+      "8634",
+      "49289",
+      "15304"
+    ]
+  ],
+  "footer": []
+}

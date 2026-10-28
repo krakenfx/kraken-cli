@@ -3,11 +3,11 @@
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/cancel_all>. The request carries
 //! only the auth token (flattened in by [`Wire`](crate::Wire)), so its params
-//! struct is empty; the reply is a `count` of orders cancelled plus optional `warnings`.
-
-use serde::{Deserialize, Serialize};
+//! struct is empty; the reply is a `count` of orders cancelled plus optional
+//! `warnings`.
 
 use crate::{MethodReply, Request};
+use serde::{Deserialize, Serialize};
 
 /// `cancel_all` request params (only the token, flattened in at send time).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]

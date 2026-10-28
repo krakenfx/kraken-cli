@@ -1,0 +1,23 @@
+exclude = ["**/node_modules/**", "**/target/**"]
+include = ["*.toml", ".cargo/config.toml", ".config/*.toml", "crates/**/*.toml"]
+
+[formatting]
+align_entries        = true
+array_auto_collapse  = true
+array_auto_expand    = true
+array_trailing_comma = true
+column_width         = 80
+indent_entries       = false
+indent_tables        = false
+inline_table_expand  = false
+reorder_arrays       = true
+reorder_keys         = true
+
+# Cargo reads these arrays positionally: `rustflags = ["-C", "link-arg=…"]`
+# means nothing once sorted. Nothing here has one yet — this is here so the
+# first one added does not get silently reordered into a broken build.
+[[rule]]
+include = ["**/.cargo/config.toml"]
+
+[rule.formatting]
+reorder_arrays = false

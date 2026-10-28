@@ -1,15 +1,17 @@
 //! The `balances` channel: asset balances and account-ledger transactions.
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/balances>. A snapshot entry
-//! carries the per-wallet breakdown (`wallets`); an update entry carries the ledger
-//! transaction (`amount`, `fee`, `ledger_id`, …). Both share `asset`, `asset_class`
-//! and the resulting total `balance`; each shape's exclusive fields are `Option`s.
+//! carries the per-wallet breakdown (`wallets`); an update entry carries the
+//! ledger transaction (`amount`, `fee`, `ledger_id`, …). Both share `asset`,
+//! `asset_class` and the resulting total `balance`; each shape's exclusive
+//! fields are `Option`s.
 //!
-//! The ledger vocabulary fields decode into open enums: documented tokens are typed
-//! variants, and anything newer lands in that enum's `Unknown(String)` — the token
-//! preserved and re-serialized verbatim (a `#[serde(untagged)]` fallback variant) —
-//! while tripping the unknown-vocabulary warn. Drift on the account's own money
-//! records is observed, never a hard error and never a narrowed record.
+//! The ledger vocabulary fields decode into open enums: documented tokens are
+//! typed variants, and anything newer lands in that enum's `Unknown(String)` —
+//! the token preserved and re-serialized verbatim (a `#[serde(untagged)]`
+//! fallback variant) — while tripping the unknown-vocabulary warn. Drift on the
+//! account's own money records is observed, never a hard error and never a
+//! narrowed record.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -18,15 +20,17 @@ use strum::Display;
 
 /// One balance snapshot entry or ledger transaction (see the module schema).
 ///
-/// No `deny_unknown_fields`: an extensible inbound payload — a field Kraken adds later is
-/// ignored rather than failing the decode, which would drop every frame on the channel.
+/// No `deny_unknown_fields`: an extensible inbound payload — a field Kraken
+/// adds later is ignored rather than failing the decode, which would drop every
+/// frame on the channel.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BalanceData {
     pub asset: String,
-    /// The docs pin only the placeholder `"currency"` and keep the set open, so this
-    /// stays a plain string — unlike the closed ledger vocabularies below, typed with
-    /// a verbatim `Unknown` fallback. Identifiers (`wallet_id`, `user`) stay strings.
+    /// The docs pin only the placeholder `"currency"` and keep the set open, so
+    /// this stays a plain string — unlike the closed ledger vocabularies
+    /// below, typed with a verbatim `Unknown` fallback. Identifiers
+    /// (`wallet_id`, `user`) stay strings.
     pub asset_class: String,
     /// The total held across all wallets after this event.
     pub balance: Decimal,
@@ -46,7 +50,8 @@ pub struct BalanceData {
     pub wallet_type: Option<WalletType>,
     pub wallet_id: Option<String>,
     pub user: Option<String>,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
@@ -58,13 +63,15 @@ pub struct WalletBalance {
     pub wallet_type: WalletType,
     pub id: String,
     pub balance: Decimal,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
 
 impl BalanceData {
-    /// Whether any ledger vocabulary field decoded through its `Unknown` fallback.
+    /// Whether any ledger vocabulary field decoded through its `Unknown`
+    /// fallback.
     pub(crate) fn has_unknown_vocabulary(&self) -> bool {
         matches!(self.event_type, Some(LedgerEntryType::Unknown(_)))
             || matches!(self.subtype, Some(LedgerSubtype::Unknown(_)))
@@ -100,7 +107,8 @@ pub enum LedgerEntryType {
     Dividend,
     Reward,
     CreatorFee,
-    /// Vocabulary Kraken adds later; the token is preserved and re-serialized verbatim.
+    /// Vocabulary Kraken adds later; the token is preserved and re-serialized
+    /// verbatim.
     #[serde(untagged)]
     #[strum(to_string = "{0}")]
     Unknown(String),
@@ -118,7 +126,8 @@ pub enum LedgerSubtype {
     SpotFromStaking,
     StakingToSpot,
     SpotToStaking,
-    /// Vocabulary Kraken adds later; the token is preserved and re-serialized verbatim.
+    /// Vocabulary Kraken adds later; the token is preserved and re-serialized
+    /// verbatim.
     #[serde(untagged)]
     #[strum(to_string = "{0}")]
     Unknown(String),
@@ -150,7 +159,8 @@ pub enum LedgerCategory {
     RewardBonus,
     Nft,
     BlockTrade,
-    /// Vocabulary Kraken adds later; the token is preserved and re-serialized verbatim.
+    /// Vocabulary Kraken adds later; the token is preserved and re-serialized
+    /// verbatim.
     #[serde(untagged)]
     #[strum(to_string = "{0}")]
     Unknown(String),
@@ -164,7 +174,8 @@ pub enum LedgerCategory {
 pub enum WalletType {
     Spot,
     Earn,
-    /// Vocabulary Kraken adds later; the token is preserved and re-serialized verbatim.
+    /// Vocabulary Kraken adds later; the token is preserved and re-serialized
+    /// verbatim.
     #[serde(untagged)]
     #[strum(to_string = "{0}")]
     Unknown(String),

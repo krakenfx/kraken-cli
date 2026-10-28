@@ -72,7 +72,7 @@ kraken futures order buy PF_XBTUSD 1 --type stop --stop-price 55000 --trigger-si
 Trailing stop:
 
 ```bash
-kraken futures order sell PF_XBTUSD 1 --type trailing-stop --stop-price 68000 --trailing-stop-max-deviation 500 --trailing-stop-deviation-unit quote_currency -o json 2>/dev/null
+kraken futures order sell PF_XBTUSD 1 --type trailing-stop --trailing-stop-max-deviation 500 --trailing-stop-deviation-unit quote_currency --trigger-signal mark -o json 2>/dev/null
 ```
 
 Reduce-only (close position without opening new exposure):
@@ -86,11 +86,15 @@ kraken futures order sell PF_XBTUSD 1 --type market --reduce-only -o json 2>/dev
 Place multiple orders atomically (useful for bracket entries):
 
 ```bash
-kraken futures batch-order '[
-  {"order":"sendorder","orderTag":"entry","symbol":"PF_XBTUSD","side":"buy","size":1,"orderType":"lmt","limitPrice":50000},
-  {"order":"sendorder","orderTag":"tp","symbol":"PF_XBTUSD","side":"sell","size":1,"orderType":"lmt","limitPrice":55000,"reduceOnly":true}
-]' -o json 2>/dev/null
+kraken futures batch-order '{"batchOrder":[
+  {"order":"send","order_tag":"entry","symbol":"PF_XBTUSD","side":"buy","size":1,"orderType":"lmt","limitPrice":50000},
+  {"order":"send","order_tag":"tp","symbol":"PF_XBTUSD","side":"sell","size":1,"orderType":"lmt","limitPrice":55000,"reduceOnly":true}
+]}' -o json 2>/dev/null
 ```
+
+Each instruction is `send`, `edit` or `cancel`. Pass a file as `@orders.json`.
+`kraken futures paper batch-order` takes a bare array of rows named like the
+paper flags instead: `[{"symbol":"PF_XBTUSD","side":"buy","size":1,"type":"limit","price":50000}]`.
 
 ## Edit and Cancel
 
@@ -106,16 +110,16 @@ Cancel one:
 kraken futures cancel --order-id <ID> -o json 2>/dev/null
 ```
 
-Cancel all:
+Cancel all. `--yes` skips the CLI prompt, so pass it only after the user approves:
 
 ```bash
-kraken futures cancel-all -o json 2>/dev/null
+kraken futures cancel-all --yes -o json 2>/dev/null
 ```
 
 Cancel by symbol:
 
 ```bash
-kraken futures cancel-all --symbol PF_XBTUSD -o json 2>/dev/null
+kraken futures cancel-all --symbol PF_XBTUSD --yes -o json 2>/dev/null
 ```
 
 ## Position Monitoring
@@ -156,7 +160,7 @@ Refresh periodically. If the agent crashes, orders auto-cancel.
 
 ## Paper Trading
 
-Test futures strategies without real money using `kraken futures paper`. Near-parity with live futures: all 8 order types (market, limit, post, stop, take-profit, ioc, trailing-stop, fok); leverage, margin tracking, liquidation simulation, and funding rates. Known differences: single-ID `order-status`, post-only orders are cancelled rather than queued, fills use the bid/ask snapshot with no depth-based slippage, and partial fills are not modeled.
+Test futures strategies without real money using `kraken futures paper`. Near-parity with live futures: all 8 order types (market, limit, post, stop, take-profit, ioc, trailing-stop, fok); leverage, margin tracking, liquidation simulation, and funding rates. Known differences: single-ID `order-status`, post-only orders are cancelled rather than queued, fills use the bid/ask snapshot with no depth-based slippage, and only IOC orders fill partially: the size the book snapshot holds at or better than the limit price fills at the best bid/ask, and the rest is cancelled.
 
 ```bash
 kraken futures paper init --balance 10000 -o json 2>/dev/null
@@ -166,11 +170,11 @@ kraken futures paper status -o json 2>/dev/null
 kraken futures paper reset -o json 2>/dev/null
 ```
 
-Switch between paper and live by replacing `futures paper` with `futures order`. No credentials required for paper trading.
+To go live, `futures paper buy` and `sell` become `futures order buy` and `sell` without `--leverage` (set it first with `kraken futures set-leverage`), and the reads become `kraken futures positions`, `kraken futures open-orders` and `kraken futures fills`. `kraken-paper-to-live` has the full mapping. No credentials required for paper trading.
 
 ## Hard Rules
 
-- Never place futures orders without explicit human approval.
+- Never place, edit or cancel futures orders without explicit human approval. Futures order commands have no `--validate` dry run; rehearse on `kraken futures paper`.
 - Always check `futures accounts` before trading to confirm margin availability.
 - Use `--reduce-only` when closing positions to prevent accidental flips.
 - Enable `cancel-after` for any automated session.

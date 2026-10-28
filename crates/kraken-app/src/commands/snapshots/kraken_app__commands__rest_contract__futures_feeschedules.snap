@@ -1,0 +1,119 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "result": "success",
+    "feeSchedules": [
+      {
+        "uid": "7fc4d7c0-464f-4029-a9bb-55856d0c5247",
+        "name": "PGTMainFees",
+        "tiers": [
+          {
+            "makerFee": 0.02,
+            "takerFee": 0.05,
+            "usdVolume": 0
+          },
+          {
+            "makerFee": 0.015,
+            "takerFee": 0.04,
+            "usdVolume": 100000
+          },
+          {
+            "makerFee": 0.0125,
+            "takerFee": 0.03,
+            "usdVolume": 1000000
+          },
+          {
+            "makerFee": 0.01,
+            "takerFee": 0.025,
+            "usdVolume": 5000000
+          },
+          {
+            "makerFee": 0.0075,
+            "takerFee": 0.02,
+            "usdVolume": 10000000
+          },
+          {
+            "makerFee": 0.005,
+            "takerFee": 0.015,
+            "usdVolume": 20000000
+          },
+          {
+            "makerFee": 0.0025,
+            "takerFee": 0.0125,
+            "usdVolume": 50000000
+          },
+          {
+            "makerFee": 0,
+            "takerFee": 0.01,
+            "usdVolume": 100000000
+          }
+        ]
+      },
+      {
+        "uid": "d46c2190-81e3-4370-a333-424f24387829",
+        "name": "mainfees",
+        "tiers": [
+          {
+            "makerFee": 0.02,
+            "takerFee": 0.05,
+            "usdVolume": 0
+          },
+          {
+            "makerFee": 0.015,
+            "takerFee": 0.04,
+            "usdVolume": 100000
+          },
+          {
+            "makerFee": 0.0125,
+            "takerFee": 0.03,
+            "usdVolume": 1000000
+          },
+          {
+            "makerFee": 0.01,
+            "takerFee": 0.025,
+            "usdVolume": 5000000
+          },
+          {
+            "makerFee": 0.0075,
+            "takerFee": 0.02,
+            "usdVolume": 10000000
+          },
+          {
+            "makerFee": 0.005,
+            "takerFee": 0.015,
+            "usdVolume": 20000000
+          },
+          {
+            "makerFee": 0.0025,
+            "takerFee": 0.0125,
+            "usdVolume": 50000000
+          },
+          {
+            "makerFee": 0,
+            "takerFee": 0.01,
+            "usdVolume": 100000000
+          }
+        ]
+      }
+    ],
+    "serverTime": "2022-03-31T20:38:53.677Z"
+  },
+  "headers": [
+    "Name",
+    "Uid"
+  ],
+  "rows": [
+    [
+      "PGTMainFees",
+      "7fc4d7c0-464f-4029-a9bb-55856d0c5247"
+    ],
+    [
+      "mainfees",
+      "d46c2190-81e3-4370-a333-424f24387829"
+    ]
+  ],
+  "footer": []
+}

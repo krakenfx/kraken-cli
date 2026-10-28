@@ -55,6 +55,13 @@ kraken workspace status -o json 2>/dev/null
 
 ## Live Grid Placement
 
+Live commands run outside the paper workspace, so clear it first. Inside it,
+orders fill on paper and `order batch` and `order cancel-batch` are refused:
+
+```bash
+unset KRAKEN_WORKSPACE
+```
+
 1. Read current price to center the grid:
    ```bash
    kraken ticker BTCUSD -o json 2>/dev/null
@@ -99,10 +106,10 @@ kraken ws executions -o json 2>/dev/null
 
 ## Grid Shutdown
 
-Cancel all grid orders cleanly:
+Cancel all grid orders cleanly. `--yes` skips the CLI prompt, so pass it only after the user approves:
 
 ```bash
-kraken order cancel-all -o json 2>/dev/null
+kraken order cancel-all --yes -o json 2>/dev/null
 ```
 
 Or cancel specific orders by TXID:
@@ -120,7 +127,7 @@ kraken order cancel-batch <TXID1> <TXID2> <TXID3> -o json 2>/dev/null
 
 ## Hard Rules
 
-- Never place a live grid without explicit human approval.
+- Never place or cancel live grid orders without explicit human approval.
 - Paper-test every grid configuration before live deployment.
 - Enable `cancel-after` for unattended grid sessions.
 - Track total grid P&L, not just individual level fills.

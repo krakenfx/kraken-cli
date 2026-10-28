@@ -1,0 +1,8 @@
+---
+source: crates/kraken-mcp/tests/seam_snapshots.rs
+expression: refusal
+---
+{
+  "code": -32602,
+  "message": "`ticker` needs a different shape: `pairs`, `all` are mutually exclusive; drop all but one"
+}

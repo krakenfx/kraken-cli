@@ -1,0 +1,12 @@
+{
+  "error": [],
+  "result": {
+    "descr": {
+      "order": "buy 2.12340000 XBTUSD @ limit 25000.1 with 2:1 leverage",
+      "close": "close position @ stop loss 22000.0 -> limit 21000.0"
+    },
+    "txid": [
+      "OUF4EM-FRGI2-MQMWZD"
+    ]
+  }
+}

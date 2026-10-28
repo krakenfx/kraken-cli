@@ -25,7 +25,7 @@ Use this skill for:
 
 ## Important
 
-This recipe records a session inside a paper workspace. It never places a live order. Paper results may overstate live performance: fees and slippage are simulated and there are no partial fills (see `kraken-paper-strategy`).
+This recipe records a session inside a paper workspace. With that workspace named on every session and order call and checked each round (see Hard Rules), it never places a live order. Paper results may overstate live performance: fees and slippage are simulated and there are no partial fills (see `kraken-paper-strategy`).
 
 Pacing is external. `/loop` owns the schedule and fires one round per interval (see `kraken-playground` → Pacing). One decision per interval, paced from outside, so the session is interventional over the window (see `kraken-playground` → Running over a Window).
 
@@ -50,12 +50,10 @@ average cost. At the end, show P&L.
 
 ## Start the Session
 
-Work inside a paper workspace (create one once: `kraken workspace create dca --capital 10000 --mode paper`), then:
+Work inside a paper workspace (create one once: `kraken workspace create dca --capital 10000 --mode paper`). Every session and order command below names it with `--workspace dca`. An exported `KRAKEN_WORKSPACE` does not reach a later shell, such as a `/loop` fire, and without a workspace `kraken order buy` trades the real account.
 
 ```bash
-export KRAKEN_WORKSPACE=dca
-
-kraken session start \
+kraken --workspace dca session start \
   --symbols BTC/USD --channels ticker,trade --to duckdb,jsonl \
   --label dca-btc-$(date +%Y%m%d-%H%M%S) \
   --strategy recipe-playground-dca \
@@ -89,18 +87,23 @@ Check the last completed round against `rounds`. The round cursor lives in the s
 ROUNDS=10   # the `rounds` you set in --strategy-params
 SESSION_ID=s1   # from the session_started line
 
-# The typed cursor is the loop's memory: unset reads as round 0.
-LAST_ROUND=$(kraken session state get --session "$SESSION_ID" -o json 2>/dev/null \
-  | jq '.cursor.round // 0')
+# The buys below are simulated only while dca is a paper workspace.
+[ "$(kraken workspace show dca -o json 2>/dev/null | jq -r '.mode')" = paper ] \
+  || { echo "workspace dca is missing or not paper; no round runs" >&2; exit 1; }
+
+# The typed cursor is the loop's memory: unset reads as round 0, but a failed
+# read must end the firing rather than restart at round 1.
+STATE=$(kraken --workspace dca session state get --session "$SESSION_ID" -o json 2>/dev/null) || exit 1
+LAST_ROUND=$(echo "$STATE" | jq '.cursor.round // 0')
 if [ "${LAST_ROUND:-0}" -ge "$ROUNDS" ]; then
-  kraken session stop -o json 2>/dev/null
+  kraken --workspace dca session stop -o json 2>/dev/null
   exit 0
 fi
 ROUND=$((LAST_ROUND + 1))
 # CLAIM the round BEFORE acting: a crash after the claim skips one buy
 # (harmless); the reverse order would redo the round and buy twice. `set`
 # replaces the whole cursor — carry every field your strategy tracks.
-kraken session state set --round "$ROUND" -o json 2>/dev/null
+kraken --workspace dca session state set --round "$ROUND" -o json 2>/dev/null || exit 1
 ```
 
 READ: price and the short-term average. Mind the response shapes: the ticker
@@ -122,7 +125,7 @@ with plausible-looking false reasons:
 
 ```bash
 if [ -z "$PRICE" ] || [ -z "$SMA" ]; then
-  kraken session note --kind alert --symbol BTC/USD \
+  kraken --workspace dca session note --kind alert --symbol BTC/USD \
     --reason "round $ROUND aborted: READ failed (price='$PRICE' sma='$SMA')" -o json 2>/dev/null
   exit 0
 fi
@@ -138,7 +141,7 @@ THINK:
 ACT (buy):
 
 ```bash
-kraken order buy BTC/USD <volume> --type market \
+kraken --workspace dca order buy BTC/USD <volume> --type market \
   --reason "DCA round N: BTC/USD at <price> is <vs_sma>% below 1h SMA <sma> (threshold <dip>%); deploying \$<dollars_per_buy>" \
   -o json 2>/dev/null
 ```
@@ -148,7 +151,7 @@ Inside the paper workspace the order fills on the paper account, and the reason 
 ACT (skip):
 
 ```bash
-kraken session note --kind skip --symbol BTC/USD \
+kraken --workspace dca session note --kind skip --symbol BTC/USD \
   --reason "skip round N: BTC/USD at <price> is <vs_sma>% from 1h SMA (threshold <dip>%)" \
   -o json 2>/dev/null
 ```
@@ -161,11 +164,11 @@ Always pass the numeric reason so the decision log carries the "why" behind ever
 ## Stop and Review
 
 ```bash
-kraken session stop -o json 2>/dev/null
-kraken session show -o json 2>/dev/null | jq '.summary'
-kraken explain pnl --session latest -o json 2>/dev/null | jq '{anchor, waterfall: [.components[] | {kind, amount}]}'
+kraken --workspace dca session stop -o json 2>/dev/null
+kraken --workspace dca session show -o json 2>/dev/null | jq '.summary'
+kraken --workspace dca explain pnl --session latest -o json 2>/dev/null | jq '{anchor, waterfall: [.components[] | {kind, amount}]}'
 
-kraken session decisions --session "$SESSION_ID" -o json 2>/dev/null \
+kraken --workspace dca session decisions --session "$SESSION_ID" -o json 2>/dev/null \
   | jq -c '.decisions[] | {kind, symbol, reason, timestamp}'
 ```
 
@@ -177,10 +180,10 @@ Report:
 
 ## Hard Rules
 
-- This recipe records a session inside a paper workspace. It never places a live order.
+- This recipe records a session inside the paper workspace `dca` and never places a live order, because every session and order command passes `--workspace dca` and every round exits unless `kraken workspace show dca` reports mode `paper`. Drop either and `kraken order buy` can trade the real account.
 - `/loop` drives the pace and the agent runs each round. The CLI has no scheduler and runs no strategy.
 - Do not add a pacing gate inside the round; `/loop` enforces spacing.
-- A scheduled `/loop` fire only runs what the agent may invoke unprompted. Keep `kraken order buy`, `kraken session note`, and `kraken session show` permitted non-interactively, or a fire stalls waiting on an approval you never see.
+- A scheduled `/loop` fire only runs what the agent may invoke unprompted. Keep the round's commands permitted non-interactively in exactly these forms: `kraken workspace show dca`, `kraken ticker`, `kraken ohlc`, and `kraken --workspace dca` followed by `session state`, `session note`, `session stop` or `order buy`. Otherwise a fire stalls waiting on an approval you never see. Never permit a bare `kraken order buy`: outside a workspace it is a real order.
 - Keep every gating number in `--strategy-params` and the arithmetic in `jq`/`bc`, so a rerun on the same tape reproduces the decisions.
 - The session directory (`session.json`, `decisions.jsonl`, and the tape sinks) is owned by the CLI recorder. The agent only **reads** it, and only for the stop-time summary. Never write, edit, `mkdir`, or append inside it — every buy and skip goes through `kraken order buy` / `kraken session note`, so the recorder stays the single writer.
 - If you hit a mismatch between what you are trying to do and the CLI's interface or responses — including a mismatch between this skill and the installed CLI version's contract — feel free to submit feedback with `kraken feedback`.

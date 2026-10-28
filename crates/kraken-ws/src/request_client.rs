@@ -1,34 +1,38 @@
 //! The one-shot request/response client — the request-side sibling of
 //! [`StreamClient`](crate::StreamClient).
 //!
-//! The client owns the data: parsing each raw frame, correlating replies, gathering
-//! the batch — complete at the request's expected reply count — and typing the
-//! outcomes. Everything session-shaped (dial, token, deadlines, the teardown close
-//! once the batch is done) belongs to the [`OneShotConnection`] it spawns per send,
-//! answered over the events channel exactly as the stream actors answer their client.
+//! The client owns the data: parsing each raw frame, correlating replies,
+//! gathering the batch — complete at the request's expected reply count — and
+//! typing the outcomes. Everything session-shaped (dial, token, deadlines, the
+//! teardown close once the batch is done) belongs to the [`OneShotConnection`]
+//! it spawns per send, answered over the events channel exactly as the stream
+//! actors answer their client.
 
+use super::{
+    config::WsConfig,
+    connection::{OneShot, OneShotConnection},
+    token::TokenCache,
+    transport::ConnEvent,
+};
+use kraken_core::{
+    Inbound, MethodResponse, Request,
+    endpoint::Endpoint,
+    error::{Error, Result},
+};
 use std::sync::Arc;
-
-use kraken_core::endpoint::Endpoint;
-use kraken_core::error::{Error, Result};
-use kraken_core::{Inbound, MethodResponse, Request};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::config::WsConfig;
-use super::connection::{OneShot, OneShotConnection};
-use super::token::TokenCache;
-use super::transport::ConnEvent;
-
-/// One-shot request/response client. Holds the connection config and its one token
-/// cache (shared across sends); every send spawns its own single-use connection.
+/// One-shot request/response client. Holds the connection config and its one
+/// token cache (shared across sends); every send spawns its own single-use
+/// connection.
 pub struct RequestClient {
     cfg: WsConfig,
     token: Option<Arc<TokenCache>>,
 }
 
-/// Hand-written: the token cache holds a live credential, so only its presence is
-/// shown.
+/// Hand-written: the token cache holds a live credential, so only its presence
+/// is shown.
 impl std::fmt::Debug for RequestClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RequestClient")
@@ -46,21 +50,23 @@ impl RequestClient {
         }
     }
 
-    /// Submit one request and collect every correlated reply, typed, in arrival order.
-    /// Most methods answer once; a multi-id `cancel_order` answers once per id, and each
-    /// reply projects into [`Request::Response`] individually, so a half-completed batch
-    /// still reports per-id outcomes — with [`ReplyBatch::stopped_short`] carrying the
+    /// Submit one request and collect every correlated reply, typed, in arrival
+    /// order. Most methods answer once; a multi-id `cancel_order` answers
+    /// once per id, and each reply projects into [`Request::Response`]
+    /// individually, so a half-completed batch still reports per-id
+    /// outcomes — with [`ReplyBatch::stopped_short`] carrying the
     /// typed reason the batch is incomplete.
     ///
     /// # Errors
-    /// An `Err` means no reply arrived at all. The modes a caller must tell apart
-    /// before retrying:
-    /// - [`Error::DialTimeout`]: the dial missed its budget — nothing was sent, safe
-    ///   to retry.
-    /// - [`Error::SendTimeout`] / [`Error::Unacknowledged`] / [`Error::ReplyLost`]: the
-    ///   frame may have reached the exchange — verify before retrying.
-    /// - [`Error::NoTokenSource`] / [`Error::MintFailed`]: no token source, or the mint
-    ///   failed — pre-send, nothing reached the exchange.
+    /// An `Err` means no reply arrived at all. The modes a caller must tell
+    /// apart before retrying:
+    /// - [`Error::DialTimeout`]: the dial missed its budget — nothing was sent,
+    ///   safe to retry.
+    /// - [`Error::SendTimeout`] / [`Error::Unacknowledged`] /
+    ///   [`Error::ReplyLost`]: the frame may have reached the exchange — verify
+    ///   before retrying.
+    /// - [`Error::NoTokenSource`] / [`Error::MintFailed`]: no token source, or
+    ///   the mint failed — pre-send, nothing reached the exchange.
     /// - [`Error::Transport`]: the dial failed — nothing was sent.
     pub async fn send<P: Request + Send + Sync + 'static>(
         &self,
@@ -120,22 +126,24 @@ impl RequestClient {
 #[derive(Debug)]
 pub struct ReplyBatch<R> {
     pub outcomes: Vec<Result<R>>,
-    /// Why the session ended before every expected reply arrived, when it did — typed,
-    /// so a caller classifies the shortfall (verify-first, category) instead of
-    /// guessing from counts. `None` when the batch completed.
+    /// Why the session ended before every expected reply arrived, when it did —
+    /// typed, so a caller classifies the shortfall (verify-first, category)
+    /// instead of guessing from counts. `None` when the batch completed.
     pub stopped_short: Option<Error>,
 }
 
-/// Whether the venue rejected the session token itself — the cache-invalidation cue.
+/// Whether the venue rejected the session token itself — the cache-invalidation
+/// cue.
 fn saw_token_rejection<T>(outcomes: &[Result<T>]) -> bool {
     outcomes
         .iter()
         .any(|outcome| matches!(outcome, Err(error) if error.is_token_rejection()))
 }
 
-/// A reply correlated to `req_id`, or `None` for anything else on the wire. An id-less
-/// *error* reply is kept too: the server rejected before echoing the id, and only our
-/// request is in flight on this single-use socket, so it is ours.
+/// A reply correlated to `req_id`, or `None` for anything else on the wire. An
+/// id-less *error* reply is kept too: the server rejected before echoing the
+/// id, and only our request is in flight on this single-use socket, so it is
+/// ours.
 fn correlated(frame: Inbound, req_id: u64) -> Option<MethodResponse> {
     match frame {
         Inbound::Method(resp) if resp.req_id == Some(req_id) => Some(resp),
@@ -147,8 +155,8 @@ fn correlated(frame: Inbound, req_id: u64) -> Option<MethodResponse> {
 
 /// How a gather run ended.
 enum GatherEnd {
-    /// The batch completed: `expected` replies, or an id-less whole-frame rejection
-    /// (the per-id replies it leaves unanswered were never owed).
+    /// The batch completed: `expected` replies, or an id-less whole-frame
+    /// rejection (the per-id replies it leaves unanswered were never owed).
     Complete,
     /// The server closed the socket before the batch completed.
     ServerClosed,
@@ -164,12 +172,12 @@ struct Gathered {
     end: GatherEnd,
 }
 
-/// Gather every correlated reply until the batch completes — `expected` replies, or an
-/// id-less whole-frame rejection — or the session ends.
+/// Gather every correlated reply until the batch completes — `expected`
+/// replies, or an id-less whole-frame rejection — or the session ends.
 ///
-/// Each raw frame is parsed here — this client's strictness, not the connection's. A
-/// frame that fails the pinned schema is recorded (first kept), never fatal: later
-/// replies of a batch may still parse.
+/// Each raw frame is parsed here — this client's strictness, not the
+/// connection's. A frame that fails the pinned schema is recorded (first kept),
+/// never fatal: later replies of a batch may still parse.
 async fn gather(
     events: &mut mpsc::UnboundedReceiver<ConnEvent>,
     endpoint: Endpoint,
@@ -219,18 +227,20 @@ async fn gather(
     }
 }
 
-/// Gather replies until the batch completes or the session ends. An empty batch is
-/// the shortfall verdict as `Err`; a partial one survives as `Ok` with that same
-/// verdict riding along, so the reason it stopped short never vanishes at this seam.
+/// Gather replies until the batch completes or the session ends. An empty batch
+/// is the shortfall verdict as `Err`; a partial one survives as `Ok` with that
+/// same verdict riding along, so the reason it stopped short never vanishes at
+/// this seam.
 ///
-/// The verdict for an early end: missing replies are verify-first territory whatever
-/// else was seen — a frame arrived only if the request was sent. A recorded malformed
-/// frame rides along as the [`Error::ReplyLost`] cause (it may well have been the
-/// drifted reply) rather than replacing the verdict: a bare parse error would classify
-/// as non-retryable with no instruction to check order state. With nothing recorded,
-/// the connection's stop reason, then bare [`Error::Unacknowledged`] for a server that
-/// closed without answering. A completed batch takes the early return — no verdict
-/// path exists for it to take.
+/// The verdict for an early end: missing replies are verify-first territory
+/// whatever else was seen — a frame arrived only if the request was sent. A
+/// recorded malformed frame rides along as the [`Error::ReplyLost`] cause (it
+/// may well have been the drifted reply) rather than replacing the verdict: a
+/// bare parse error would classify as non-retryable with no instruction to
+/// check order state. With nothing recorded, the connection's stop reason, then
+/// bare [`Error::Unacknowledged`] for a server that closed without answering. A
+/// completed batch takes the early return — no verdict path exists for it to
+/// take.
 async fn collect_replies(
     events: &mut mpsc::UnboundedReceiver<ConnEvent>,
     endpoint: Endpoint,
@@ -259,8 +269,8 @@ async fn collect_replies(
 mod tests {
     use super::*;
 
-    /// A gather feed as the connection would deliver it: the scripted events, then the
-    /// channel closes (the sender drops here).
+    /// A gather feed as the connection would deliver it: the scripted events,
+    /// then the channel closes (the sender drops here).
     fn feed(events: Vec<ConnEvent>) -> mpsc::UnboundedReceiver<ConnEvent> {
         let (tx, rx) = mpsc::unbounded_channel();
         for event in events {
@@ -283,7 +293,8 @@ mod tests {
         ConnEvent::Error(Error::Transport(msg.into()))
     }
 
-    /// A reply whose result body drifted from the pinned schema (`order_id` as a number).
+    /// A reply whose result body drifted from the pinned schema (`order_id` as
+    /// a number).
     const DRIFTED_REPLY: &str =
         r#"{"method":"add_order","success":true,"result":{"order_id":42},"req_id":5}"#;
 

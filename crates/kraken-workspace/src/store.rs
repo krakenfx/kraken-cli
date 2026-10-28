@@ -1,12 +1,13 @@
 //! Filesystem and clock boundary behind [`crate::Workspaces`].
 
-use std::path::{Path, PathBuf};
-
+use crate::{
+    CreateSpec, Result, WorkspaceError,
+    manifest::{WORKSPACE_FILE, WORKSPACE_VERSION, WorkspaceManifest, is_compatible},
+    naming::WorkspaceName,
+    workspace_dir, workspaces_root,
+};
 use chrono::Utc;
-
-use crate::manifest::{WORKSPACE_FILE, WORKSPACE_VERSION, WorkspaceManifest, is_compatible};
-use crate::naming::WorkspaceName;
-use crate::{CreateSpec, Result, WorkspaceError, workspace_dir, workspaces_root};
+use std::path::{Path, PathBuf};
 
 /// The contract file: `<base>/workspaces/<name>/workspace.json`.
 pub fn manifest_path(base: &Path, name: &WorkspaceName) -> PathBuf {
@@ -41,7 +42,8 @@ pub(crate) fn create(base: &Path, spec: &CreateSpec) -> Result<WorkspaceManifest
     Ok(manifest)
 }
 
-/// Loads a contract, preserving distinct routing for absence, damage, and version mismatch.
+/// Loads a contract, preserving distinct routing for absence, damage, and
+/// version mismatch.
 pub(crate) fn load(base: &Path, name: &WorkspaceName) -> Result<WorkspaceManifest> {
     let path = manifest_path(base, name);
     let data = match std::fs::read_to_string(&path) {
@@ -120,10 +122,9 @@ pub(crate) fn list(base: &Path) -> Result<Vec<(WorkspaceName, Result<WorkspaceMa
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use super::*;
     use crate::manifest::WorkspaceMode;
+    use rust_decimal_macros::dec;
 
     fn spec(name: &str) -> CreateSpec {
         CreateSpec {

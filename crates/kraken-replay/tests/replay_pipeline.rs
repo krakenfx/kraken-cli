@@ -2,8 +2,7 @@
 //! the lab crate above: a fixture session explains and replays without
 //! reaching past `pub` items.
 
-use kraken_paper::OrderSide;
-use kraken_paper::account::Origin;
+use kraken_paper::{OrderSide, account::Origin};
 use kraken_replay::{MAX_SPEED, PlaybackClock, explain_pnl, replay_events};
 use kraken_session::timeline::{self, fixtures};
 use rust_decimal::Decimal;

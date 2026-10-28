@@ -1,10 +1,10 @@
-//! The `instrument` channel: reference data for all active assets and tradeable pairs —
-//! symbol identifiers, precisions, trading parameters and rules.
+//! The `instrument` channel: reference data for all active assets and tradeable
+//! pairs — symbol identifiers, precisions, trading parameters and rules.
 //!
 //! Source: <https://docs.kraken.com/api/docs/websocket-v2/instrument>. Unlike the other
-//! channels, `data` is a single object holding two catalogues, not an array of entries.
-//! Fields the docs mark conditional (margin parameters, tokenized-asset extras) are
-//! `Option`s; everything else is required.
+//! channels, `data` is a single object holding two catalogues, not an array of
+//! entries. Fields the docs mark conditional (margin parameters,
+//! tokenized-asset extras) are `Option`s; everything else is required.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -13,8 +13,9 @@ use strum::Display;
 
 /// One asset in the reference catalogue.
 ///
-/// No `deny_unknown_fields`: an extensible inbound payload — a field Kraken adds later is
-/// ignored rather than failing the decode, which would drop every frame on the channel.
+/// No `deny_unknown_fields`: an extensible inbound payload — a field Kraken
+/// adds later is ignored rather than failing the decode, which would drop every
+/// frame on the channel.
 #[skip_serializing_none]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetInfo {
@@ -28,7 +29,8 @@ pub struct AssetInfo {
     /// Fixed conversion rate of a tokenized asset.
     pub multiplier: Option<Decimal>,
     pub class: Option<String>,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
@@ -54,9 +56,11 @@ pub struct PairInfo {
     pub position_limit_long: Option<u64>,
     pub position_limit_short: Option<u64>,
     pub ws_display_price_precision: Option<u32>,
-    /// Deprecated on the wire (use `price_increment`); still sent, so still decoded.
+    /// Deprecated on the wire (use `price_increment`); still sent, so still
+    /// decoded.
     pub tick_size: Option<Decimal>,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
@@ -74,7 +78,8 @@ pub enum AssetStatus {
     FundingTemporarilyDisabled,
     WithdrawalOnly,
     WorkInProgress,
-    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the original token.
+    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the
+    /// original token.
     #[serde(other)]
     Unknown,
 }
@@ -93,24 +98,27 @@ pub enum PairStatus {
     PostOnly,
     ReduceOnly,
     WorkInProgress,
-    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the original token.
+    /// Vocabulary Kraken adds later; re-serializes as `"unknown"`, not the
+    /// original token.
     #[serde(other)]
     Unknown,
 }
 
-/// The `data` object: the full asset and pair catalogues (snapshot), or the changed
-/// subset (update).
+/// The `data` object: the full asset and pair catalogues (snapshot), or the
+/// changed subset (update).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstrumentData {
     pub assets: Vec<AssetInfo>,
     pub pairs: Vec<PairInfo>,
-    /// Wire fields outside the pinned schema, preserved verbatim (see [`ExtraFields`](super::ExtraFields)).
+    /// Wire fields outside the pinned schema, preserved verbatim (see
+    /// [`ExtraFields`](super::ExtraFields)).
     #[serde(flatten)]
     pub extra: super::ExtraFields,
 }
 
 impl InstrumentData {
-    /// Whether any channel-local enum field decoded through its `Unknown` fallback.
+    /// Whether any channel-local enum field decoded through its `Unknown`
+    /// fallback.
     pub(crate) fn has_unknown_vocabulary(&self) -> bool {
         self.assets.iter().any(|a| a.status == AssetStatus::Unknown)
             || self.pairs.iter().any(|p| p.status == PairStatus::Unknown)

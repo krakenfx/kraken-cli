@@ -1,0 +1,9 @@
+{
+  "MD013": { "tables": false, "code_blocks": false },
+  "MD028": false,
+  "MD033": { "allowed_elements": ["details", "summary"] },
+  "MD036": false,
+  "MD043": false,
+  "MD054": false,
+  "MD060": { "aligned_delimiter": true, "style": "aligned" }
+}

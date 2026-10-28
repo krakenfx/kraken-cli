@@ -26,7 +26,7 @@ Immediately cancel all orders and close all positions across spot and futures.
 3. Check spot positions: `kraken positions -o json 2>/dev/null`
 4. Close each spot margin position with a market order (requires human approval)
 5. Check futures positions and extract sizes: `kraken futures positions -o json 2>/dev/null` (parse each position's `size` and `side` fields)
-6. Close each futures position with reduce-only market orders (use `sell` for longs, `buy` for shorts): e.g., `kraken futures order sell PF_XBTUSD 1 --reduce-only -o json 2>/dev/null`
+6. Close each futures position with reduce-only market orders (requires human approval; use `sell` for longs, `buy` for shorts): e.g., `kraken futures order sell PF_XBTUSD 1 --type market --reduce-only -o json 2>/dev/null`
 7. Verify no open orders remain: `kraken open-orders -o json 2>/dev/null`
 8. Verify no futures orders remain: `kraken futures open-orders -o json 2>/dev/null`
 9. Verify all positions closed: `kraken futures positions -o json 2>/dev/null`

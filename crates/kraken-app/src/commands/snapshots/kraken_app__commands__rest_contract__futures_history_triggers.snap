@@ -1,0 +1,35 @@
+---
+source: crates/kraken-app/src/commands/rest_contract.rs
+expression: "json!({\n    \"data\": output.data, \"headers\": output.headers, \"rows\": output.rows,\n    \"footer\": output.footer,\n})"
+---
+{
+  "data": {
+    "accountUid": "f7d5571c-6d10-4cf1-944a-048d25682ed0",
+    "len": 0,
+    "serverTime": "2026-10-20T12:00:00.000Z",
+    "elements": []
+  },
+  "headers": [
+    "Field",
+    "Value"
+  ],
+  "rows": [
+    [
+      "accountUid",
+      "f7d5571c-6d10-4cf1-944a-048d25682ed0"
+    ],
+    [
+      "len",
+      "0"
+    ],
+    [
+      "serverTime",
+      "2026-10-20T12:00:00.000Z"
+    ],
+    [
+      "elements",
+      "[]"
+    ]
+  ],
+  "footer": []
+}

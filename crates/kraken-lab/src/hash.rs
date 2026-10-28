@@ -3,11 +3,9 @@
 //! its file bytes). One home for the primitive so the domain and the store
 //! hash identically.
 
-use std::path::Path;
-
-use sha2::{Digest, Sha256};
-
 use crate::Result;
+use sha2::{Digest, Sha256};
+use std::path::Path;
 
 /// `sha256:<hex>` over a file's bytes — the content identity a sealed run
 /// plan pins, so a re-recorded tape never satisfies a frozen plan.
