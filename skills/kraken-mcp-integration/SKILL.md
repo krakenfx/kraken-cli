@@ -17,7 +17,7 @@ MCP tool calls execute through the same command path as CLI commands, so error h
 
 ## Supported Clients
 
-Claude Desktop, ChatGPT, Codex, Gemini CLI, Cursor, VS Code, Windsurf, and any client that supports the MCP `mcpServers` configuration block.
+Claude Desktop, Codex, Gemini CLI, Cursor, VS Code, Windsurf, and other clients that start local stdio MCP servers. Most take an `mcpServers` JSON entry; VS Code and Codex use their own formats (below).
 
 ## Setup
 
@@ -36,9 +36,17 @@ Add this to your MCP client configuration (Claude Desktop: `claude_desktop_confi
 }
 ```
 
+VS Code takes the same entry under a top-level `"servers"` key in `.vscode/mcp.json`. Codex reads TOML in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.kraken]
+command = "kraken-mcp"
+args = ["-s", "market,paper,feedback"]
+```
+
 `-s market,paper,feedback` is the service list every marketplace listing ships:
-public market data, paper trading, and the feedback tool, which sends the text
-it is given to Kraken. No real funds can be touched until you opt in explicitly by
+public market data, paper trading, and the feedback tool, which uploads the text
+it is given, or a local file it names, to Kraken. The file upload has no approval step, so a model can send any file it can name, including the CLI config file that holds your stored keys; drop `feedback` from `-s` for an agent that reads untrusted input. No real funds can be touched until you opt in explicitly by
 expanding the service list. See [Enabling live trading](#enabling-live-trading)
 below.
 
@@ -102,7 +110,7 @@ Keep the service list to what you need. MCP clients typically handle 50-100 tool
 | earn | Yes | 6 | Staking (dangerous) |
 | auth | Mixed | 2 | Read-only (auth login/set/switch/reset excluded) |
 | subaccount | Yes | 2 | Transfers (dangerous) |
-| feedback | No | 1 | Sends feedback text to Kraken |
+| feedback | No | 1 | Uploads text or a local file to Kraken (no approval) |
 
 The counts are the tools each service serves, 152 in all. Streaming, interactive and withheld commands (such as `auth switch`) run only from the CLI.
 

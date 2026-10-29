@@ -63,27 +63,41 @@ Key fields in each strategy (under `.items[]`): `id`, `asset`, `apr_estimate`, `
 ## Allocation Workflow
 
 1. Pick a strategy from the list and note its `id`.
-2. Allocate funds (requires human approval):
+2. Record what is allocated to it now. In `.items[]`, find the entry whose
+   `strategy_id` is that `id`, and note `amount_allocated.total.native` and
+   `amount_allocated.pending.native` (a missing `pending`, or a strategy that is not listed, counts as zero):
+   ```bash
+   kraken earn allocations -o json 2>/dev/null
+   ```
+3. Allocate funds (requires human approval):
    ```bash
    kraken earn allocate <STRATEGY_ID> 1.5 -o json 2>/dev/null
    ```
-3. Check allocation status (bonded strategies may have a lock-up period):
+4. Check allocation status (bonded strategies may have a lock-up period):
    ```bash
    kraken earn allocate-status <STRATEGY_ID> -o json 2>/dev/null
    ```
 
 ## Deallocation Workflow
 
-1. Deallocate (requires human approval):
+1. Record what is allocated to it now. In `.items[]`, find the entry whose
+   `strategy_id` is the strategy's `id`, and note `amount_allocated.total.native` and
+   `amount_allocated.pending.native` (a missing `pending`, or a strategy that is not listed, counts as zero):
+   ```bash
+   kraken earn allocations -o json 2>/dev/null
+   ```
+2. Deallocate (requires human approval):
    ```bash
    kraken earn deallocate <STRATEGY_ID> 1.0 -o json 2>/dev/null
    ```
-2. Check deallocation status:
+3. Check deallocation status:
    ```bash
    kraken earn deallocate-status <STRATEGY_ID> -o json 2>/dev/null
    ```
 
 Bonded strategies may have unbonding periods. The status response indicates whether funds are pending or available.
+
+If `earn allocate` or `earn deallocate` returns a `network` error with `"verify_first": true`, the move may already have happened. Run `kraken earn allocations -o json` again, compare both values with the ones you recorded, and check `kraken ledgers`. Send the call again only if neither shows the move. `earn allocate-status` and `earn deallocate-status` only say whether a known move is still pending.
 
 ## View Current Allocations
 
