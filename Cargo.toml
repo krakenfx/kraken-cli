@@ -9,7 +9,7 @@ resolver = "3"
 
 [workspace.package]
 edition = "2024"
-version = "0.5.0"
+version = "0.5.1"
 # Deliberate floor: bumped manually to current stable. Gated by `just msrv`,
 # which reads the version from here alone.
 license      = "MIT"

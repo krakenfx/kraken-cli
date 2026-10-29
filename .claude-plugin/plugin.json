@@ -1,6 +1,6 @@
 {
   "name": "kraken-cli",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Agent-first CLI for trading crypto, stocks, forex, and derivatives on Kraken. Paper trading by default; live trading is an explicit opt-in via expanded MCP service flags.",
   "author": {
     "name": "Kraken",

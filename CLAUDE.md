@@ -140,7 +140,7 @@ kraken ticker EURUSD --asset-class forex -o json
 ### Futures
 
 Futures use a separate engine with separate credentials. Symbols: `PF_XBTUSD`
-(perp), `FI_XBTUSD_260327` (fixed-date), `PF_AAPLXUSD` (equity perp).
+(perp), `FI_XBTUSD_<YYMMDD>` (fixed-date), `PF_AAPLXUSD` (equity perp).
 
 ```bash
 kraken futures order buy PF_XBTUSD 1 --type limit --price 50000 -o json

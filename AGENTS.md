@@ -147,8 +147,10 @@ kraken order buy BTCUSD 0.001 --type limit --price 50000 --leverage 5 -o json
 ### Tokenized U.S. stocks & ETFs (xStocks)
 
 Requires `--asset-class tokenized_asset`. Stock symbols use the `x` suffix: AAPL
-becomes `AAPLx`, TSLA becomes `TSLAx`. 79 assets available with margin up to 3x
-on the top 10. Not available in the USA.
+becomes `AAPLx`, TSLA becomes `TSLAx`. 170+ xStocks are listed. Margin up to 3x
+is available on a few of them, such as AAPLx, NVDAx, TSLAx, SPYx and QQQx;
+`leverage_buy` in `kraken pairs --asset-class tokenized_asset -o json` shows
+which. Not available in the USA.
 
 ```bash
 kraken ticker AAPLx/USD --asset-class tokenized_asset -o json
@@ -161,7 +163,7 @@ To list all xStocks assets:
 
 ### Forex
 
-Requires `--asset-class forex` on market data commands. 11 fiat pairs including
+Requires `--asset-class forex` on market data commands. 12 fiat pairs including
 EUR/USD, GBP/USD, USD/JPY, AUD/USD.
 
 ```bash
@@ -171,16 +173,20 @@ kraken ticker EURUSD --asset-class forex -o json
 ### Futures
 
 Separate engine with its own credentials (`KRAKEN_FUTURES_API_KEY`,
-`KRAKEN_FUTURES_API_SECRET`). Covers crypto perpetuals, 5 forex perps
-(PF_EURUSD, PF_GBPUSD, PF_AUDUSD, PF_CHFUSD, PF_JPYUSD), 11 equity/index perps
-(PF_AAPLXUSD, PF_NVDAXUSD, PF_TSLAXUSD, PF_SPYXUSD, PF_QQQXUSD, PF_SPXUSD, and
-others), and fixed-date contracts. Leverage up to 50x.
+`KRAKEN_FUTURES_API_SECRET`). Covers 200+ perpetuals: crypto, 3 forex perps
+(PF_EURUSD, PF_GBPUSD, PF_CHFUSD), xStocks perps (PF_AAPLXUSD, PF_NVDAXUSD,
+PF_TSLAXUSD, PF_SPYXUSD, PF_QQQXUSD, and others), equity and index perps
+(PF_AMDUSD, PF_PLTRUSD, PF_US100USD, and others), commodities, and pre-IPO
+contracts. PF_SPXUSD is the SPX6900 meme coin, not the S&P 500. The futures
+engine also lists inverse perpetuals (`PI_`), inverse fixed-date (`FI_`) and
+fixed-date (`FF_`) contracts. Leverage goes up to 100x on PF_XBTUSD, PF_ETHUSD
+and PF_SOLUSD and is lower on most other contracts.
 
 ```bash
 kraken futures instruments -o json                                            # list all contracts
 kraken futures order buy PF_XBTUSD 1 --type limit --price 50000 -o json      # crypto perp
 kraken futures order buy PF_AAPLXUSD 10 --type limit --price 200 -o json     # equity perp
-kraken futures order buy FI_XBTUSD_260327 1 --type limit --price 50000 -o json  # fixed-date
+kraken futures order buy FI_XBTUSD_<YYMMDD> 1 --type limit --price 50000 -o json  # fixed-date
 ```
 
 ### Earn / staking

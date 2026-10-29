@@ -133,7 +133,7 @@ The default MCP config in every `kraken-cli` marketplace listing (Claude, Cursor
 |---------|------|-------------------------|
 | `market` | None | Public price data, orderbooks, OHLC. |
 | `paper`  | None | Simulated trading with live prices. |
-| `feedback` | None | Lets the agent report friction or bugs; the text it writes is sent to Kraken. |
+| `feedback` | None | Lets the agent report friction or bugs. It uploads the text it writes, or a local file it names, to Kraken with no approval step; drop it from `-s` for an agent that reads untrusted input. |
 
 A fresh install can never place a real order. Live trading is an explicit
 opt-in: widen the service list in your MCP client's config to `-s market,trade,paper`

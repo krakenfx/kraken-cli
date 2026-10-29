@@ -5,6 +5,33 @@ User-visible changes are recorded here. kraken-cli follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-29
+
+Patch release: documentation. Commands, flags and output are unchanged.
+
+- The README walks from install to sign-in to a first real order: market data,
+  paper practice, `kraken auth login`, an account check, a `--validate` preview,
+  then the order. It shows how to size a market buy in quote currency with
+  `--oflags viqc`, and how to confirm the fill with `query-orders`.
+- A section for agents trading real money: validate first, confirm with the
+  human, use a fresh `--cl-ord-id`, and look a write up before sending it again
+  after a `network` error. The `network` entry in `agents/error-catalog.json`
+  names the lookup for each kind of write, Earn moves included, and the Earn
+  skill records the allocation before each move so that a timed-out call can be
+  checked.
+- Market counts in the README and agent docs match the live listings: 170+
+  xStocks, 12 forex pairs, and 200+ perpetuals with up to 100x on BTC, ETH and
+  SOL. `PF_SPXUSD` is the SPX6900 token, not the S&P 500 index.
+- The README, `CONTEXT.md` and the MCP skill show the Codex (TOML) and VS Code
+  (`servers` key) MCP configs, and no longer list ChatGPT among the clients that
+  start a local server.
+- The MCP docs and the setup skills warn that the `feedback` tool can upload a
+  local file it names, with no approval step. Drop `feedback` from `-s` for an
+  agent that reads untrusted input.
+- Smaller corrections across the auth, MCP and streaming docs, such as
+  `auth reset` deleting every stored key and `record` capturing market-data
+  channels only.
+
 ## [0.5.0] - 2026-10-27
 
 Sign in from the browser, run the MCP server and the REPL as their own binaries,
@@ -250,7 +277,8 @@ attestations, and Minisign signatures.
 
 Version 0.3.2 is the previous public release.
 
-[Unreleased]: https://github.com/krakenfx/kraken-cli/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/krakenfx/kraken-cli/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/krakenfx/kraken-cli/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/krakenfx/kraken-cli/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/krakenfx/kraken-cli/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/krakenfx/kraken-cli/compare/v0.3.2...v0.4.0

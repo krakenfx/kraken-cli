@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0.0",
-  "cli_version": "0.5.0",
+  "cli_version": "0.5.1",
   "description": "Every command kraken-cli can run. `tool` names the MCP tool that calls it, `usage` gives the positional order, and `input_schema` is generated from the command's own Rust type, so it cannot drift from the arguments the command accepts. Its property names are the argument names a tool call takes. On the command line, the arguments `usage` lists are positional and every other property is a flag with hyphens for underscores (`min_fills` is `--min-fills`), except where `--help` spells it otherwise: `trade_type` and `ledger_type` are `--type`, `window` is `--for`, and `sessions` is `--session`. `constraints` states the cross-field requirements no schema keyword carries. Confirm any command with `dangerous: true`, and any `effect: local_or_live` one whose live argument is set (`--mode live`, `--real-account`): those reach the real account too. Route errors on the `error` field, never on message text (see agents/error-catalog.json).",
   "groups": {
     "account": "Private account data: balances, orders, history",

@@ -62,17 +62,19 @@ The CLI trades six asset classes through the same command interface. Pass
 | Tokenized stocks & ETFs (xStocks) | `--asset-class tokenized_asset` | `AAPLx/USD`, `TSLAx/USD`   | `kraken order buy AAPLx/USD 0.1 --type limit --price 200 --asset-class tokenized_asset` |
 | Forex                             | `--asset-class forex`           | `EURUSD`, `GBPUSD`         | `kraken ticker EURUSD --asset-class forex`                                              |
 | Perpetual futures                 | _(futures engine)_              | `PF_XBTUSD`, `PF_AAPLXUSD` | `kraken futures order buy PF_XBTUSD 1 --type limit --price 50000`                       |
-| Inverse & fixed-date futures      | _(futures engine)_              | `FI_XBTUSD_260327`         | `kraken futures order buy FI_XBTUSD_260327 1 --type limit --price 50000`                |
+| Inverse & fixed-date futures      | _(futures engine)_              | `FI_XBTUSD_<YYMMDD>`       | `kraken futures order buy FI_XBTUSD_<YYMMDD> 1 --type limit --price 50000`              |
 | Earn / staking                    | —                               | —                          | `kraken earn strategies --asset ETH`                                                    |
 
 xStocks use the `x` suffix on the ticker symbol (AAPL becomes `AAPLx`, TSLA
 becomes `TSLAx`). The `--asset-class tokenized_asset` flag is required on trade,
 market data, and funding commands. xStocks are not available in the USA.
 
-Futures include crypto perps, 5 forex perps (PF_EURUSD, PF_GBPUSD, PF_AUDUSD,
-PF_CHFUSD, PF_JPYUSD), and 11 equity/index perps (PF_AAPLXUSD, PF_NVDAXUSD,
-PF_TSLAXUSD, PF_SPYXUSD, PF_QQQXUSD, PF_SPXUSD, and others). Use
-`kraken futures instruments -o json` to list all available contracts.
+Futures include 200+ perpetuals: crypto, 3 forex perps (PF_EURUSD, PF_GBPUSD,
+PF_CHFUSD), xStocks perps (PF_AAPLXUSD, PF_NVDAXUSD, PF_TSLAXUSD, PF_SPYXUSD,
+PF_QQQXUSD, and others), equity and index perps (PF_AMDUSD, PF_PLTRUSD,
+PF_US100USD, and others), commodities, and pre-IPO contracts. PF_SPXUSD is the
+SPX6900 meme coin, not the S&P 500. Use `kraken futures instruments -o json` to
+list all available contracts.
 
 ## Safety Rules
 
@@ -228,15 +230,17 @@ executes.
 
 ## MCP Server
 
-For MCP-compatible clients (Claude Desktop, ChatGPT, Codex, Gemini CLI, Cursor,
-VS Code, Windsurf), use the built-in MCP server:
+For MCP clients that start local stdio servers (Claude Desktop, Codex, Gemini
+CLI, Cursor, VS Code, Windsurf), use the built-in MCP server:
 
 ```bash
 kraken-mcp -s market,account,paper,workspace,feedback,futures-paper
 ```
 
 This exposes CLI commands as structured MCP tools over stdio. No subprocess
-wrappers needed.
+wrappers needed. Most clients take it as an `mcpServers` JSON entry. VS Code
+uses a top-level `"servers"` key in `.vscode/mcp.json`, and Codex reads a
+`[mcp_servers.kraken]` table in `~/.codex/config.toml`.
 
 Security note:
 

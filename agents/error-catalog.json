@@ -1,6 +1,6 @@
 {
   "schema_version": "1.1.0",
-  "cli_version": "0.5.0",
+  "cli_version": "0.5.1",
   "description": "Error categories emitted by kraken-cli. Agents should route on the error field, not message strings.",
   "usage_errors": {
     "exit_code": 2,
@@ -90,7 +90,7 @@
       "category": "network",
       "description": "Network-level failure. The request could not reach the Kraken API, or it may have reached it and no usable answer came back.",
       "retryable": true,
-      "agent_action": "Read `verify_first`. Without it, nothing was sent or the call was a read: retry with exponential backoff and check connectivity. With `\"verify_first\": true`, an order, cancel, withdrawal or transfer may already have executed, and the CLI does not resend it: check its state first. Spot orders: `kraken open-orders`, `kraken closed-orders`, `kraken trades-history` (match on `--cl-ord-id` or `--userref`). Futures orders: `kraken futures open-orders`, `kraken futures fills`, `kraken futures history-orders`. Withdrawals and transfers: `kraken withdrawal status`, `kraken ledgers`, `kraken futures transfers`. Send it again only if it is absent everywhere. The message prose restates the verdict ('verify its state before retrying') for older parsers.",
+      "agent_action": "Read `verify_first`. Without it, nothing was sent or the call was a read: retry with exponential backoff and check connectivity. With `\"verify_first\": true`, an order, cancel, withdrawal, transfer or Earn move may already have executed, and the CLI does not resend it: check its state first. Spot orders: `kraken open-orders` and `kraken closed-orders` (match on `--cl-ord-id` or `--userref`), then `kraken trades-history` (match on the `ordertxid` from `kraken closed-orders`). Futures orders: `kraken futures open-orders`, `kraken futures fills`, `kraken futures history-orders`. Withdrawals and transfers: `kraken withdrawal status`, `kraken ledgers`, `kraken futures transfers`. Earn allocations: compare `amount_allocated.total.native` and `amount_allocated.pending.native` for the same `strategy_id` in `kraken earn allocations` with the values recorded before the call (a missing `pending`, or a strategy that is not listed, counts as zero), and check `kraken ledgers`; `kraken earn allocate-status` and `kraken earn deallocate-status` only say whether a known move is still pending. Send it again only if it is absent everywhere. The message prose restates the verdict ('verify its state before retrying') for older parsers.",
       "backoff_strategy": {
         "type": "exponential",
         "initial_delay_ms": 1000,
