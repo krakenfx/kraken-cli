@@ -27,14 +27,13 @@ pub async fn run(ctx: &AppContext) -> Result<()> {
     // Global tracing cannot change mid-session, so explain ignored flags once.
     let mut logging_flag_notice_shown = false;
 
-    let prompt = scope_prompt(ctx);
     loop {
+        let prompt = scope_prompt(ctx);
         // `readline` blocks its thread, and the editor it borrows is not
         // `Send`. Moving both into `spawn_blocking` keeps the runtime free
         // during the wait and keeps this future `Send` — every command shares
         // one future type through `Execute`, and the MCP host requires `Send`.
         let (line, editor) = {
-            let prompt = prompt.clone();
             tokio::task::spawn_blocking(move || {
                 let line = rl.readline(&prompt);
                 (line, rl)
