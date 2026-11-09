@@ -552,7 +552,7 @@ async fn live_order_at(
     manifest: &kraken_workspace::WorkspaceManifest,
     ctx: &AppContext,
 ) -> Result<CommandOutput> {
-    ensure_paper_mappable(&order, manifest)?;
+    ensure_paper_mappable(&order, manifest, false)?;
     let canonical_pair = kraken_workspace::policy::canonical_pair(&order.pair)?;
     kraken_workspace::policy::ensure_pair_allowed(manifest, &canonical_pair)?;
     if !order.validate {
@@ -875,12 +875,15 @@ fn spend_requirement(
     }
 }
 
-/// The explicit paper mapping: market/limit, price, --validate, and
-/// --reason cross 1:1; any other set flag is refused naming the parameter —
-/// honest validation, never silent degradation.
+/// The explicit paper mapping: market/limit, price, --validate and --reason
+/// cross 1:1, and `--oflags viqc` too where `quote_volume` says the engine can
+/// fill it; any other set flag is refused naming the parameter — honest
+/// validation, never silent degradation. A live workspace passes `false`: its
+/// allocation ledger prices and reserves `volume` in the base asset.
 fn ensure_paper_mappable(
     order: &OrderRequest,
     manifest: &kraken_workspace::WorkspaceManifest,
+    quote_volume: bool,
 ) -> Result<()> {
     let unsupported: &[(&str, bool)] = &[
         ("--price2", order.price2.is_some()),
@@ -893,7 +896,12 @@ fn ensure_paper_mappable(
         ("--expire-time", order.expire_time.is_some()),
         ("--userref", order.userref.is_some()),
         ("--cl-ord-id", order.cl_ord_id.is_some()),
-        ("--oflags", order.oflags.is_some()),
+        (
+            "--oflags",
+            order.oflags.as_deref().is_some_and(|flags| {
+                !quote_volume || super::paper::volume_in_quote(Some(flags)).is_err()
+            }),
+        ),
         ("--stptype", order.stptype.is_some()),
         ("--close-ordertype", order.close_ordertype.is_some()),
         ("--close-price", order.close_price.is_some()),
@@ -929,7 +937,7 @@ async fn paper_order(
     use kraken_workspace::receipt::{
         OrderReceipt, PaperFill, ReceiptCore, ReceiptStatus, TradeMode,
     };
-    ensure_paper_mappable(&order, manifest)?;
+    ensure_paper_mappable(&order, manifest, true)?;
     let routed = super::paper::RoutedOrder {
         side,
         pair: &order.pair,
@@ -937,9 +945,10 @@ async fn paper_order(
         order_type: &order.r#type,
         price: order.price.as_deref(),
         reason: order.reason.as_deref(),
+        volume_in_quote: super::paper::volume_in_quote(order.oflags.as_deref())?,
     };
     if order.validate {
-        super::paper::validate_routed_order(ctx, manifest, routed).await?;
+        let volume = super::paper::validate_routed_order(ctx, manifest, routed).await?;
         return receipt_output(OrderReceipt {
             core: ReceiptCore {
                 mode: TradeMode::Paper,
@@ -953,7 +962,7 @@ async fn paper_order(
                 ),
                 side: Some(side),
                 order_type: Some(order.r#type.to_lowercase()),
-                volume: order.volume.parse().ok(),
+                volume: Some(volume),
                 price: order.price.as_deref().and_then(|p| p.parse().ok()),
             },
             venue: None,
@@ -2402,6 +2411,49 @@ mod tests {
         }
     }
 
+    fn mapping_manifest(
+        mode: kraken_workspace::WorkspaceMode,
+    ) -> kraken_workspace::WorkspaceManifest {
+        let dir = tempfile::tempdir().unwrap();
+        kraken_workspace::Workspaces::new(dir.path())
+            .create(
+                kraken_workspace::CreateSpec {
+                    name: "mapped".parse().unwrap(),
+                    capital: rust_decimal_macros::dec!(1000),
+                    currency: "USD".into(),
+                    mode,
+                    fee_rate: rust_decimal_macros::dec!(0.0026),
+                    slippage_rate: rust_decimal_macros::dec!(0),
+                    allowed_pairs: None,
+                },
+                kraken_paper::account::Origin::Cli,
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn viqc_maps_onto_a_paper_workspace_and_no_other_flag_does() {
+        let paper = mapping_manifest(kraken_workspace::WorkspaceMode::Paper);
+        let mut viqc = order();
+        viqc.oflags = Some("viqc".into());
+        assert!(ensure_paper_mappable(&viqc, &paper, true).is_ok());
+        let mut post = order();
+        post.oflags = Some("post".into());
+        let err = ensure_paper_mappable(&post, &paper, true).unwrap_err();
+        assert!(err.to_string().contains("--oflags"), "{err}");
+    }
+
+    /// A live workspace's allocation ledger prices `volume` in the base asset,
+    /// so a quote-denominated order must not reach it.
+    #[test]
+    fn a_live_workspace_still_refuses_viqc() {
+        let live = mapping_manifest(kraken_workspace::WorkspaceMode::Live);
+        let mut viqc = order();
+        viqc.oflags = Some("viqc".into());
+        let err = ensure_paper_mappable(&viqc, &live, false).unwrap_err();
+        assert!(err.to_string().contains("--oflags"), "{err}");
+    }
+
     /// The live allocation gate end to end over [`live_order_at`]: an order
     /// the workspace's own ledger cannot fund never reaches the venue —
     /// `expect(0)` on `AddOrder` is the proof — and the exit order is never
@@ -2522,6 +2574,29 @@ mod tests {
             assert_eq!(envelope["available"], "100");
             assert_eq!(envelope["required"], "300000");
             assert_eq!(envelope["reconciled"], true);
+        }
+
+        /// A quote-denominated order never reaches the venue from a live
+        /// workspace, even one the allocation could fund: the ledger prices
+        /// and reserves `volume` in the base asset, so `30` would read as 30
+        /// BTC.
+        #[tokio::test]
+        async fn a_viqc_order_never_reaches_the_venue_from_a_live_workspace() {
+            let server = MockServer::start().await;
+            mount_balance(&server, "50000.00").await;
+            mount_add_order(&server, "ONEVER-00000-000001", 0).await;
+            let base = tempfile::tempdir().unwrap();
+            let manifest = live_workspace(base.path(), dec!(1000));
+            let ctx = venue_ctx(server.uri(), "test-api-key");
+            let mut order = sized("30", None);
+            order.r#type = "market".into();
+            order.oflags = Some("viqc".into());
+
+            let err = live_order_at(base.path(), OrderSide::Buy, order, &manifest, &ctx)
+                .await
+                .expect_err("a live workspace refuses --oflags");
+
+            assert!(err.to_string().contains("--oflags"), "{err}");
         }
 
         /// The gate bounds the workspace; it does not disable it.

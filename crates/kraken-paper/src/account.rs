@@ -1004,6 +1004,7 @@ mod tests {
                 volume: dec!(5.0),
                 price: None,
                 category: "validation".into(),
+                oflags: None,
             }),
         ]) {
             let line = serde_json::to_string(&record).unwrap();

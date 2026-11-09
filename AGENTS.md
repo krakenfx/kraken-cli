@@ -363,6 +363,7 @@ no real money. Both use live Kraken prices.
 kraken workspace create sandbox --capital 10000 --mode paper --slippage-rate 0.001 -o json   # Create AND fund the account
 export KRAKEN_WORKSPACE=sandbox
 kraken paper buy BTCUSD 0.01 -o json        # Market buy
+kraken paper buy BTCUSD 30 --oflags viqc -o json  # Market buy of 30 USD
 kraken paper sell BTCUSD 0.005 --type limit --price 70000 -o json  # Limit sell
 kraken workspace status -o json             # Check portfolio
 kraken paper orders -o json                 # Check open orders

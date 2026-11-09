@@ -53,6 +53,7 @@ fn account_summary(record: &AccountRecord) -> String {
             .field("side", rejection.side)
             .field("pair", &rejection.pair)
             .field("volume", rejection.volume)
+            .opt("oflags", rejection.oflags.as_deref())
             .field("category", &rejection.category)
             .build(),
         // `Unknown` — and, `AccountEvent` being `#[non_exhaustive]`, whatever
@@ -96,6 +97,29 @@ mod tests {
         .unwrap();
         let expected = frame.body.summary();
         assert_eq!(EventPayload::Market(frame).summary(), expected);
+    }
+
+    /// A rejected quote-currency order must not read as base volume.
+    #[test]
+    fn a_rejection_summary_names_its_viqc_flag() {
+        let rejection = |oflags: Option<&str>| {
+            let record = AccountRecord {
+                v: RECORD_VERSION,
+                ts: "2026-01-01T00:00:01Z".parse().unwrap(),
+                origin: Origin::Cli,
+                event: AccountEvent::OrderRejected(kraken_paper::OrderRejection {
+                    side: kraken_core::OrderSide::Buy,
+                    pair: "BTCUSD".into(),
+                    volume: dec!(1000),
+                    price: None,
+                    category: "validation".into(),
+                    oflags: oflags.map(str::to_owned),
+                }),
+            };
+            EventPayload::Account(Box::new(record)).summary()
+        };
+        assert!(rejection(Some("viqc")).contains("volume:1000 oflags:viqc"));
+        assert!(!rejection(None).contains("oflags"));
     }
 
     #[test]

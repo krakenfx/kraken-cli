@@ -5,6 +5,17 @@ User-visible changes are recorded here. kraken-cli follows
 
 ## [Unreleased]
 
+- `kraken paper buy` simulates `--oflags viqc`: the volume is a quote-currency
+  amount, as on the live venue. It is accepted on market buys only; a sell, a
+  limit order or any other flag is refused by name. The engine converts the
+  amount to base volume at the fill price, truncated to 8 decimals so the cost
+  never exceeds it, and the fee is charged on top as for every paper fill. In a
+  paper workspace, `kraken order buy --oflags viqc` now maps onto the same path
+  instead of being refused; a live workspace still refuses `--oflags`. The
+  journal records the flag on the command and on any rejection, and a
+  `--validate` receipt reports the converted base volume (with no workspace
+  selected, the receipt still echoes the venue's quote-currency volume).
+
 ## [0.5.1] - 2026-10-29
 
 Patch release: documentation. Commands, flags and output are unchanged.

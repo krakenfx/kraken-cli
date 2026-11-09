@@ -3896,6 +3896,10 @@
             "description": "Limit price (required for limit orders).",
             "type": "string"
           },
+          "oflags": {
+            "description": "Order flags (comma-delimited). Only `viqc` is simulated: volume in quote currency, for market buys only, as on the live venue.",
+            "type": "string"
+          },
           "reason": {
             "description": "Rationale to record in the decision log: the active session's when one is recording, else the workspace's.",
             "type": "string"
@@ -4126,6 +4130,10 @@
           },
           "price": {
             "description": "Limit price (required for limit orders).",
+            "type": "string"
+          },
+          "oflags": {
+            "description": "Order flags (comma-delimited). Only `viqc` is simulated: volume in quote currency, for market buys only, as on the live venue.",
             "type": "string"
           },
           "reason": {

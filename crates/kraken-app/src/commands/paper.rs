@@ -92,6 +92,7 @@ pub(crate) struct RoutedOrder<'a> {
     pub(crate) order_type: &'a str,
     pub(crate) price: Option<&'a str>,
     pub(crate) reason: Option<&'a str>,
+    pub(crate) volume_in_quote: bool,
 }
 
 fn routed_base(manifest: &kraken_workspace::WorkspaceManifest) -> Result<std::path::PathBuf> {
@@ -122,8 +123,57 @@ fn routed_entry(order: &RoutedOrder<'_>) -> CommandEntry {
         volume: order.volume.parse().ok(),
         order_type: Some(order.order_type.to_lowercase()),
         price: order.price.and_then(|p| p.parse().ok()),
+        oflags: order.volume_in_quote.then(|| VIQC.to_owned()),
         ..CommandEntry::default()
     }
+}
+
+/// The live venue's flag for an order volume expressed in quote currency.
+pub(crate) const VIQC: &str = "viqc";
+
+/// Whether `oflags` asks for volume in quote currency. `viqc` is the only flag
+/// the simulator can honour; any other is refused by name rather than
+/// silently dropped, so a paper fill never claims a behaviour it skipped.
+pub(crate) fn volume_in_quote(oflags: Option<&str>) -> Result<bool> {
+    let mut viqc = false;
+    for flag in oflags.unwrap_or_default().split(',').map(str::trim) {
+        if flag.is_empty() {
+            continue;
+        }
+        if flag.eq_ignore_ascii_case(VIQC) {
+            viqc = true;
+        } else {
+            return Err(KrakenError::Validation(format!(
+                "Order flag '{flag}' is not supported for paper orders. Only 'viqc' is simulated."
+            )));
+        }
+    }
+    Ok(viqc)
+}
+
+/// The flag as the journal records it: the normalised `viqc` whenever the
+/// order named it, even beside a flag that got the order refused, so a logged
+/// `volume` is never misread as base; else nothing. Every writer logs it alike.
+fn logged_oflags(oflags: Option<&str>) -> Option<String> {
+    oflags
+        .unwrap_or_default()
+        .split(',')
+        .any(|flag| flag.trim().eq_ignore_ascii_case(VIQC))
+        .then(|| VIQC.to_owned())
+}
+
+/// The live venue's rule for `viqc`: buy market orders only.
+fn ensure_quote_volume_allowed(
+    volume_in_quote: bool,
+    side: OrderSide,
+    is_limit: bool,
+) -> Result<()> {
+    if volume_in_quote && (is_limit || side != OrderSide::Buy) {
+        return Err(KrakenError::Validation(
+            "viqc (volume in quote currency) is supported only for market buy orders".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// One routed order against a paper workspace: the same open →
@@ -143,6 +193,7 @@ pub(crate) async fn place_routed_order(
         order_type: order.order_type,
         price: order.price,
         reason: order.reason,
+        volume_in_quote: order.volume_in_quote,
     };
     let entry = routed_entry(&order);
     // The scope's active session owns the pricing context: a replay session's
@@ -173,6 +224,7 @@ pub(crate) async fn place_routed_order(
                 volume,
                 price: order.price.and_then(|p| p.parse().ok()),
                 category: err.category().to_string(),
+                oflags: order.volume_in_quote.then(|| VIQC.to_owned()),
             }));
         }
         events.push(AccountEvent::Command(entry));
@@ -182,12 +234,13 @@ pub(crate) async fn place_routed_order(
 }
 
 /// `--validate` in a paper workspace: the exact decide path — params, pair
-/// policy, funds, market pricing — committing nothing.
+/// policy, funds, market pricing — committing nothing. Returns the base volume
+/// the order would carry, which differs from the typed one under `viqc`.
 pub(crate) async fn validate_routed_order(
     ctx: &AppContext,
     manifest: &kraken_workspace::WorkspaceManifest,
     order: RoutedOrder<'_>,
-) -> Result<()> {
+) -> Result<Decimal> {
     let (_, account) = routed_account(ctx, manifest)?;
     let (normalized, base_asset, quote) = parse_pair(order.pair)?;
     kraken_workspace::policy::ensure_pair_allowed(manifest, &format!("{base_asset}/{quote}"))?;
@@ -196,7 +249,9 @@ pub(crate) async fn validate_routed_order(
         .parse()
         .map_err(|_| KrakenError::Validation(format!("Invalid volume: {}", order.volume)))?;
     let state = account.state()?.clone();
-    if validate_order_type(order.order_type)? {
+    let is_limit = validate_order_type(order.order_type)?;
+    ensure_quote_volume_allowed(order.volume_in_quote, order.side, is_limit)?;
+    if is_limit {
         let price_val = order
             .price
             .ok_or_else(|| KrakenError::Validation("Limit orders require --price".into()))?;
@@ -204,12 +259,18 @@ pub(crate) async fn validate_routed_order(
             .parse()
             .map_err(|_| KrakenError::Validation(format!("Invalid price: {price_val}")))?;
         state.decide_limit_order(order.side, order.pair, volume, price)?;
+        Ok(volume)
     } else {
         let venue = Venue::resolve(ctx, &routed_base(manifest)?)?;
         let (ask, bid) = venue.ticker_price(&normalized).await?;
+        let volume = if order.volume_in_quote {
+            state.base_volume_for_quote(volume, ask)?
+        } else {
+            volume
+        };
         state.decide_market_order(order.side, order.pair, volume, ask, bid)?;
+        Ok(volume)
     }
-    Ok(())
 }
 
 pub(crate) async fn cancel_on_workspace(
@@ -319,15 +380,16 @@ async fn reconcile_if_simulated(
 
 /// Build the engine request for `order`. A free function rather than an
 /// inherent method: `OrderRequest` is `kraken_contract`'s type now.
-fn paper_request(order: &OrderRequest, side: OrderSide) -> PaperOrderRequest<'_> {
-    PaperOrderRequest {
+fn paper_request(order: &OrderRequest, side: OrderSide) -> Result<PaperOrderRequest<'_>> {
+    Ok(PaperOrderRequest {
         side,
         pair: &order.pair,
         volume: &order.volume,
         order_type: &order.r#type,
         price: order.price.as_deref(),
         reason: order.reason.as_deref(),
-    }
+        volume_in_quote: volume_in_quote(order.oflags.as_deref())?,
+    })
 }
 
 impl Execute for Init {
@@ -511,7 +573,7 @@ impl Transact for Buy {
         base: &Path,
     ) -> Result<CommandOutput> {
         execute_trade(
-            paper_request(&self.trade, OrderSide::Buy),
+            paper_request(&self.trade, OrderSide::Buy)?,
             trade_policy(ctx)?.as_ref(),
             base,
             account,
@@ -531,7 +593,7 @@ impl Transact for Sell {
         base: &Path,
     ) -> Result<CommandOutput> {
         execute_trade(
-            paper_request(&self.trade, OrderSide::Sell),
+            paper_request(&self.trade, OrderSide::Sell)?,
             trade_policy(ctx)?.as_ref(),
             base,
             account,
@@ -650,6 +712,7 @@ fn trade_entry(trade: &OrderRequest, side: OrderSide) -> CommandEntry {
         volume,
         r#type,
         price,
+        oflags,
         ..
     } = trade;
     CommandEntry {
@@ -659,6 +722,7 @@ fn trade_entry(trade: &OrderRequest, side: OrderSide) -> CommandEntry {
         volume: volume.parse().ok(),
         order_type: Some(r#type.to_lowercase()),
         price: price.as_deref().and_then(|p| p.parse().ok()),
+        oflags: logged_oflags(oflags.as_deref()),
         ..CommandEntry::default()
     }
 }
@@ -677,6 +741,7 @@ fn rejection_for(cmd: &PaperTradeCommand, err: &KrakenError) -> Option<OrderReje
         volume: trade.volume.parse().ok()?,
         price: trade.price.as_deref().and_then(|p| p.parse().ok()),
         category: err.category().to_string(),
+        oflags: logged_oflags(trade.oflags.as_deref()),
     })
 }
 
@@ -719,6 +784,8 @@ pub(crate) struct PaperOrderRequest<'a> {
     price: Option<&'a str>,
     /// Rationale to record in the session's decision log, if given.
     reason: Option<&'a str>,
+    /// `volume` is in quote currency (`viqc`): a market buy of that amount.
+    volume_in_quote: bool,
 }
 
 /// A free function, not `From`: both types now live in other crates, so the
@@ -843,6 +910,7 @@ pub(crate) async fn place_order_on_account(
         order_type: order_type_str,
         price: price_str,
         reason,
+        volume_in_quote,
     } = request;
 
     // Account permission policy: a denied pair fails before any
@@ -860,6 +928,7 @@ pub(crate) async fn place_order_on_account(
         .map_err(|_| KrakenError::Validation(format!("Invalid volume: {volume_str}")))?;
 
     let is_limit = validate_order_type(order_type_str)?;
+    ensure_quote_volume_allowed(volume_in_quote, side, is_limit)?;
 
     if is_limit {
         let price_val = price_str
@@ -894,9 +963,13 @@ pub(crate) async fn place_order_on_account(
     } else {
         let (normalized, _, _) = parse_pair(pair)?;
         let (ask, bid) = venue.ticker_price(&normalized).await?;
-        let trade = account
-            .state()?
-            .decide_market_order(side, pair, volume, ask, bid)?;
+        let state = account.state()?;
+        let volume = if volume_in_quote {
+            state.base_volume_for_quote(volume, ask)?
+        } else {
+            volume
+        };
+        let trade = state.decide_market_order(side, pair, volume, ask, bid)?;
         entry.outcome = CommandOutcome::Ok {
             order_ids: vec![trade.order_id.clone()],
             trade_ids: vec![trade.id.clone()],
@@ -1677,6 +1750,7 @@ mod tests {
                 volume: "inf".into(),
                 r#type: "market".into(),
                 price: None,
+                oflags: None,
                 reason: None,
             },
         });
@@ -1695,6 +1769,7 @@ mod tests {
             volume: "0.5".into(),
             r#type: "market".into(),
             price: None,
+            oflags: None,
             reason: None,
         };
         let buy = entry_for(&PaperTradeCommand::Buy(Buy { trade: trade() }));
@@ -1708,6 +1783,144 @@ mod tests {
         let rejection = rejection_for(&PaperTradeCommand::Sell(Sell { trade: trade() }), &err)
             .expect("well-formed sell describes a rejection");
         assert_eq!(rejection.side, OrderSide::Sell);
+    }
+
+    /// The routed transaction end to end: a `viqc` market buy prices at the
+    /// ask and fills the converted base volume through the shared engine path,
+    /// leaving the flag on the command log.
+    #[tokio::test]
+    async fn a_viqc_market_buy_fills_the_converted_base_volume() {
+        use wiremock::{
+            Mock, MockServer, ResponseTemplate,
+            matchers::{method, path},
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/0/public/Ticker"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "error": [],
+                "result": {
+                    "XXBTZUSD": crate::commands::test_support::ticker_row("75000.0", "74999.0")
+                }
+            })))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().unwrap();
+        let mut account = PaperAccount::open_at(
+            dir.path().join("events.jsonl"),
+            kraken_paper::account::Origin::Cli,
+        )
+        .unwrap();
+        account
+            .commit_if_uninitialized(
+                vec![AccountEvent::Initialized(kraken_paper::PaperConfig {
+                    balance: dec!(1000),
+                    currency: "USD".into(),
+                    fee_rate: dec!(0.0026),
+                    slippage_rate: dec!(0),
+                })],
+                CommandEntry::default(),
+            )
+            .unwrap();
+        let ctx = crate::commands::test_support::venue_ctx(server.uri(), "test-api-key");
+        let mut venue = Venue::resolve(&ctx, dir.path()).unwrap();
+        let request = PaperOrderRequest {
+            side: OrderSide::Buy,
+            pair: "BTCUSD",
+            volume: "30",
+            order_type: "market",
+            price: None,
+            reason: None,
+            volume_in_quote: true,
+        };
+        let entry = CommandEntry {
+            oflags: Some(VIQC.into()),
+            ..CommandEntry::default()
+        };
+
+        let placement =
+            place_order_on_account(request, None, None, &mut account, entry, &mut venue)
+                .await
+                .unwrap();
+
+        let PaperPlacement::Market { trade } = placement else {
+            panic!("a market buy fills");
+        };
+        assert_eq!(trade.volume, dec!(0.0004));
+        assert_eq!(trade.cost, dec!(30));
+        assert_eq!(trade.price, dec!(75000));
+        let usd = account.state().unwrap().available_balance("USD");
+        assert_eq!(usd, dec!(1000) - dec!(30) - dec!(0.078));
+    }
+
+    #[test]
+    fn viqc_is_the_only_paper_order_flag() {
+        assert!(!volume_in_quote(None).unwrap());
+        assert!(!volume_in_quote(Some("")).unwrap());
+        assert!(volume_in_quote(Some("viqc")).unwrap());
+        assert!(volume_in_quote(Some(" VIQC ,")).unwrap());
+        for refused in ["post", "fciq", "viqc,post"] {
+            let err = volume_in_quote(Some(refused)).unwrap_err();
+            assert_eq!(err.category().to_string(), "validation", "{refused}");
+        }
+    }
+
+    #[test]
+    fn a_rejection_keeps_the_viqc_flag_even_beside_a_refused_one() {
+        for (typed, logged) in [
+            ("viqc,post", Some("viqc")),
+            (" VIQC ", Some("viqc")),
+            ("post", None),
+        ] {
+            let cmd = PaperTradeCommand::Buy(Buy {
+                trade: OrderRequest {
+                    pair: "BTCUSD".into(),
+                    volume: "30".into(),
+                    r#type: "market".into(),
+                    price: None,
+                    oflags: Some(typed.into()),
+                    reason: None,
+                },
+            });
+            let err = KrakenError::Validation("refused".into());
+            let rejection = rejection_for(&cmd, &err).expect("a well-formed buy");
+            assert_eq!(rejection.oflags.as_deref(), logged, "{typed}");
+            assert_eq!(entry_for(&cmd).oflags.as_deref(), logged, "{typed}");
+        }
+    }
+
+    #[test]
+    fn viqc_follows_the_venue_rule_market_buys_only() {
+        assert!(ensure_quote_volume_allowed(true, OrderSide::Buy, false).is_ok());
+        assert!(ensure_quote_volume_allowed(false, OrderSide::Sell, true).is_ok());
+        for (side, is_limit) in [
+            (OrderSide::Sell, false),
+            (OrderSide::Buy, true),
+            (OrderSide::Sell, true),
+        ] {
+            let err = ensure_quote_volume_allowed(true, side, is_limit).unwrap_err();
+            assert!(
+                err.to_string().contains("market buy"),
+                "{side:?} limit={is_limit}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_quote_volume_entry_records_its_flag() {
+        let cmd = PaperTradeCommand::Buy(Buy {
+            trade: OrderRequest {
+                pair: "BTCUSD".into(),
+                volume: "30".into(),
+                r#type: "market".into(),
+                price: None,
+                oflags: Some("viqc".into()),
+                reason: None,
+            },
+        });
+        let entry = entry_for(&cmd);
+        assert_eq!(entry.volume, Some(dec!(30)));
+        assert_eq!(entry.oflags.as_deref(), Some("viqc"));
     }
 
     /// A real venue order must never render under a `[PAPER]` header. The

@@ -25,22 +25,18 @@ Dollar cost averaging buys a fixed dollar amount of an asset at regular interval
 
 Always validate the strategy in paper mode before going live.
 
-The `paper buy` command takes base-asset volume, not dollar amount. Calculate volume first:
+Buy a dollar amount with `--oflags viqc` (volume in quote currency, market buys only), as on the live venue:
 
 ```bash
 kraken workspace create sandbox --capital 10000 --mode paper --currency USD -o json 2>/dev/null
 export KRAKEN_WORKSPACE=sandbox
 
-# Calculate BTC volume for a $100 buy at current price
-PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].last_price')
-VOLUME=$(echo "scale=8; 100 / $PRICE" | bc)
-
-# Simulate weekly buys
-kraken paper buy BTCUSD $VOLUME -o json 2>/dev/null
+# Simulate a weekly $100 buy
+kraken paper buy BTCUSD 100 --oflags viqc -o json 2>/dev/null
 kraken workspace status -o json 2>/dev/null
 
 # Repeat buy, check status each iteration
-kraken paper buy BTCUSD $VOLUME -o json 2>/dev/null
+kraken paper buy BTCUSD 100 --oflags viqc -o json 2>/dev/null
 kraken workspace status -o json 2>/dev/null
 
 kraken paper history -o json 2>/dev/null
@@ -58,20 +54,16 @@ Each interval, the agent executes one market buy for the fixed amount:
    ```bash
    kraken ticker BTCUSD -o json 2>/dev/null
    ```
-2. Calculate volume from dollar amount (e.g., $100 at current price):
+2. Validate a market buy of the dollar amount (e.g., $100); `--oflags viqc` makes
+   the volume a quote-currency amount, the same flag the paper loop used:
    ```bash
-   PRICE=$(kraken ticker BTCUSD -o json 2>/dev/null | jq -r '.[].last_price')
-   VOLUME=$(echo "scale=8; 100 / $PRICE" | bc)
+   kraken order buy BTCUSD 100 --type market --oflags viqc --validate -o json 2>/dev/null
    ```
-3. Validate the order:
+3. Execute (requires human approval):
    ```bash
-   kraken order buy BTCUSD $VOLUME --type market --validate -o json 2>/dev/null
+   kraken order buy BTCUSD 100 --type market --oflags viqc -o json 2>/dev/null
    ```
-4. Execute (requires human approval):
-   ```bash
-   kraken order buy BTCUSD $VOLUME --type market -o json 2>/dev/null
-   ```
-5. Log the trade for cost basis tracking.
+4. Log the trade for cost basis tracking.
 
 ## Cost Basis Tracking
 

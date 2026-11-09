@@ -350,6 +350,9 @@ pub struct CommandEntry {
     pub outcome: CommandOutcome,
     /// Balances after the command (unchanged balances on failure).
     pub balances: Option<HashMap<String, Decimal>>,
+    /// `viqc` when the order asked for volume in quote currency, so a logged
+    /// `volume` is read in the right currency.
+    pub oflags: Option<String>,
     /// Run-window marker: set ONLY by the `run start` / `run
     /// stop` entries that cut a window into the journal. Every trading
     /// command leaves it `None` — trades attribute to runs by position
@@ -391,6 +394,8 @@ pub struct OrderRejection {
     pub volume: Decimal,
     pub price: Option<Decimal>,
     pub category: String,
+    /// `viqc` when `volume` is the quote amount the order asked to spend.
+    pub oflags: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -550,6 +555,24 @@ impl PaperState {
             filled_at: Utc::now(),
             reference_quote: Some(ReferenceQuote { ask, bid }),
         })
+    }
+
+    /// The base volume a market buy of `quote_volume` (quote currency, the
+    /// live venue's `viqc`) fills at against `ask`: priced the way
+    /// [`Self::decide_market_order`] fills, truncated to 8 decimals so the
+    /// cost never exceeds what was asked to spend.
+    pub fn base_volume_for_quote(&self, quote_volume: Decimal, ask: Decimal) -> Result<Decimal> {
+        validate_money(quote_volume, "Volume")?;
+        validate_money(ask, "Ask")?;
+        let fill_price = ask * (Decimal::ONE + self.slippage_rate);
+        let base = (quote_volume / fill_price)
+            .round_dp_with_strategy(8, rust_decimal::RoundingStrategy::ToZero);
+        if base <= Decimal::ZERO {
+            return Err(PaperError::Rejected(format!(
+                "Volume {quote_volume} in quote currency buys less than 0.00000001 at {fill_price}"
+            )));
+        }
+        Ok(base)
     }
 
     #[cfg(test)]
@@ -986,6 +1009,38 @@ mod tests {
         assert!(state.open_orders.is_empty());
         assert!(state.filled_trades.is_empty());
         assert!(!state.balances.contains_key("BTC"));
+    }
+
+    #[test]
+    fn quote_volume_buys_what_it_can_afford_at_the_fill_price() {
+        let state = PaperState::new(dec!(1000.0), "USD");
+        let base = state
+            .base_volume_for_quote(dec!(30), dec!(75716.4))
+            .unwrap();
+        assert_eq!(base, dec!(0.00039621));
+        assert!(base * dec!(75716.4) <= dec!(30));
+    }
+
+    #[test]
+    fn quote_volume_prices_slippage_like_the_fill() {
+        let mut state = PaperState::new(dec!(1000.0), "USD");
+        state.slippage_rate = dec!(0.01);
+        let base = state.base_volume_for_quote(dec!(101), dec!(100)).unwrap();
+        assert_eq!(base, dec!(1));
+        let trade = state
+            .place_market_order(OrderSide::Buy, "BTCUSD", base, dec!(100), dec!(99))
+            .unwrap();
+        assert!(trade.cost <= dec!(101));
+    }
+
+    #[test]
+    fn quote_volume_too_small_for_one_unit_is_rejected() {
+        let state = PaperState::new(dec!(1000.0), "USD");
+        let err = state
+            .base_volume_for_quote(dec!(0.000001), dec!(75716.4))
+            .unwrap_err();
+        assert!(matches!(err, PaperError::Rejected(_)));
+        assert!(state.base_volume_for_quote(dec!(0), dec!(1)).is_err());
     }
 
     #[test]

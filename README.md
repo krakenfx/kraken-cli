@@ -624,8 +624,10 @@ There are two ways to place a spot paper order:
   simulated account too. A strategy that sticks to these verbs, with `--type`
   and `--price`, runs unchanged once you promote it to live (see Strategy
   workspaces in the [full command reference](#commands)). Inside a workspace,
-  `order buy` and `sell` refuse `--cl-ord-id`, `--oflags` and most other
-  advanced flags.
+  `order buy` and `sell` refuse `--cl-ord-id` and most other advanced flags. A
+  paper workspace accepts `--oflags viqc` on a market buy and simulates the
+  quote-currency amount; a live workspace refuses `--oflags`, so a strategy
+  built on `viqc` does not yet run unchanged after promotion.
 
 `paper buy` defaults to a market order and `order buy` to a limit order, so pass
 `--type` when you switch. Paper supports `market` and `limit` orders, a
@@ -1483,8 +1485,9 @@ paper to live teaches you nothing new. You test with `order buy`, `open-orders`,
 `balance`, `workspace status`, `trades-history`, and `workspace report`, and
 after promotion you keep using exactly those. The verbs stay the same, and there
 is no separate live command set. Inside any workspace, `order buy` and `sell`
-take only `--type`, `--price`, `--validate` and `--reason`; `--cl-ord-id`,
-`--oflags` and the other advanced flags work only with no workspace selected.
+take only `--type`, `--price`, `--validate` and `--reason`, plus `--oflags viqc`
+on a market buy in a paper workspace; `--cl-ord-id`, any other `--oflags` and
+the other advanced flags work only with no workspace selected.
 
 Because the commands are identical, the _output_ is what has to tell you where
 you are. Order and status tables lead with a `Mode` row, order and trade lists
@@ -1754,8 +1757,9 @@ workspaces. The one-liners below use `jq` (`brew install jq` or
 > Remove `--validate` and they trade real money on your account. The dead
 > man's switch is the exception: it is live as soon as you run it. Run them
 > with no workspace selected (`unset KRAKEN_WORKSPACE`). Inside a workspace the
-> limit buy acts on that workspace, the `--oflags viqc` buy and `cancel-after`
-> are refused, and the balance check never passes.
+> limit buy acts on that workspace, the `--oflags viqc` buy is simulated in a
+> paper workspace and refused in a live one, `cancel-after` is refused, and the
+> balance check never passes.
 
 ### Limit buy at the current price
 

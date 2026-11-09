@@ -128,6 +128,10 @@ pub struct OrderRequest {
     /// Limit price (required for limit orders).
     #[arg(long)]
     pub price: Option<String>,
+    /// Order flags (comma-delimited). Only `viqc` is simulated: volume in
+    /// quote currency, for market buys only, as on the live venue.
+    #[arg(long)]
+    pub oflags: Option<String>,
     /// Rationale to record in the decision log: the active session's when one
     /// is recording, else the workspace's.
     #[arg(long)]
