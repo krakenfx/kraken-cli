@@ -5,7 +5,8 @@
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use tokio::time::Instant;
 
 use chrono::{DateTime, Utc};
 use clap::Subcommand;
@@ -636,6 +637,18 @@ pub(crate) async fn start(args: &Start, ctx: &AppContext) -> Result<()> {
     // without its contract — then cut the window open with the durable
     // start marker.
     let run_file = session_file_path(&scope, session_id.ordinal());
+    // Publish liveness before the manifest: stop can arrive before any tape opens.
+    // Keep this handle through the recorder-owned seal, not just the stream.
+    std::fs::create_dir_all(&dir)?;
+    let recorder_lock =
+        kraken_recording::FileLock::acquire(&dir.join("recorder"), "Session recorder")?;
+    // A supervisor needs the exact identity even if subscribe acknowledgement
+    // never arrives. This private, fresh-path handoff is not a readiness signal.
+    if let Some(path) = crate::config::session_identity_file() {
+        publish_recorder_identity(&path, &manifest)?;
+    }
+    // Publish identity first: even a kill racing manifest creation can then be
+    // sealed by an exact post-exit stop, without guessing an ordinal or label.
     manifest.save(&run_file)?;
     let mut account = account;
     account.append(&account.stamp_at(
@@ -671,7 +684,7 @@ pub(crate) async fn start(args: &Start, ctx: &AppContext) -> Result<()> {
                     fanout,
                     duration,
                     replay.guard,
-                    stream::shutdown_signal(),
+                    cooperative_shutdown(&dir, &manifest),
                 ),
                 ready_rx,
                 announce,
@@ -680,7 +693,15 @@ pub(crate) async fn start(args: &Start, ctx: &AppContext) -> Result<()> {
         }
         None => {
             stream_and_announce(
-                stream::run(subs, None, Some(ready_tx), fanout, duration, ctx),
+                stream::run_controlled(
+                    subs,
+                    None,
+                    Some(ready_tx),
+                    fanout,
+                    duration,
+                    ctx,
+                    cooperative_shutdown(&dir, &manifest),
+                ),
                 ready_rx,
                 announce,
             )
@@ -699,9 +720,48 @@ pub(crate) async fn start(args: &Start, ctx: &AppContext) -> Result<()> {
         // The pump has drained; stamp the end now, before finalize's work.
         let end = Utc::now();
         let manifest = finalize_session(&scope, session_id, manifest, ctx, end, is_master).await?;
-        emit_line(&session_stopped_line(&manifest))
+        let result = emit_line(&session_stopped_line(&manifest));
+        drop(recorder_lock);
+        result
     } else {
         streamed
+    }
+}
+
+// Requests live beside their session and contain the immutable manifest identity.
+// Never clear at startup: stop may race the recorder entering its stream loop.
+fn stop_identity(manifest: &SessionManifest) -> Vec<u8> {
+    format!(
+        "{}:{}:{}",
+        manifest.window.session, manifest.pid, manifest.window.started_at
+    )
+    .into_bytes()
+}
+
+fn request_stop(dir: &Path, manifest: &SessionManifest) -> Result<()> {
+    std::fs::write(dir.join("stop.request"), stop_identity(manifest))?;
+    Ok(())
+}
+
+fn cooperative_shutdown(
+    dir: &Path,
+    manifest: &SessionManifest,
+) -> impl Future<Output = ()> + Send + use<> {
+    let identity = stop_identity(manifest);
+    let dir = dir.to_path_buf();
+    async move {
+        let requested = async {
+            loop {
+                if std::fs::read(dir.join("stop.request")).ok().as_ref() == Some(&identity) {
+                    return;
+                }
+                tokio::time::sleep(STOP_POLL_INTERVAL).await;
+            }
+        };
+        tokio::select! {
+            () = requested => {},
+            () = stream::shutdown_signal() => {},
+        }
     }
 }
 
@@ -799,6 +859,25 @@ fn load_replay_source(
     })
 }
 
+/// Private supervisor handoff, published before any network readiness wait.
+/// The fresh path and terminating newline prevent stale/partial identities from
+/// being mistaken for this child. This is deliberately not `session_started`.
+fn publish_recorder_identity(path: &Path, manifest: &SessionManifest) -> Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    let identity = serde_json::json!({
+        "session": manifest.window.session,
+        "pid": manifest.pid,
+        "started_at": manifest.window.started_at,
+    });
+    writeln!(file, "{identity}")?;
+    file.sync_all()?;
+    Ok(())
+}
+
 /// The one-line `session_started` JSON a backgrounding caller parses for the session
 /// handle. Printed when the readiness signal fires on the first subscribe
 /// ack — a `start` that never comes up prints nothing and exits non-zero.
@@ -866,16 +945,19 @@ fn recorded_tape_paths(dir: &Path, manifest: &SessionManifest) -> Option<Vec<Pat
 /// recycled pid can't spoof. Safe on async paths: each probe is one
 /// non-blocking try-lock, microseconds, not worth `spawn_blocking`.
 fn recorder_alive(dir: &Path, manifest: &SessionManifest) -> bool {
+    if kraken_recording::is_lock_held(&dir.join("recorder")) {
+        return true;
+    }
     match recorded_tape_paths(dir, manifest) {
         None => process::process_alive(signalable_pid(manifest)),
         Some(paths) => paths.iter().any(|p| kraken_recording::is_lock_held(p)),
     }
 }
 
-/// How long [`stop`] waits for a signalled recorder to release its recording
-/// lock — generous enough for a DuckDB checkpoint on a session-sized tape;
-/// exceeding it returns a timeout, never a premature close.
-const STOP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+/// Cover the stream's 30s bounded drain plus checkpoint and session finalization.
+/// Exceeding this budget returns an error, never a premature close. Supervisors
+/// must let this command own its deadline rather than killing it after 10s.
+const STOP_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(120);
 /// Poll interval while waiting for the lock release; each probe is one
 /// non-blocking try-lock, so 50ms is responsive at negligible cost.
 const STOP_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -980,6 +1062,9 @@ async fn stop(session_ref: &str, ctx: &AppContext) -> Result<CommandOutput> {
     if recorder_alive(&dir, &manifest) {
         // Wrap the pid rejection with what the user can act on: the session
         // and session.json's real pid. Other error kinds pass through intact.
+        #[cfg(windows)]
+        request_stop(&dir, &manifest)?;
+        #[cfg(not(windows))]
         process::terminate(signalable_pid(&manifest)).map_err(|e| match e {
             KrakenError::Validation(msg) => KrakenError::Validation(format!(
                 "cannot stop session {session_id} (session.json pid {}): {msg}",
@@ -1654,6 +1739,78 @@ mod speed_tests {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test(start_paused = true)]
+    async fn graceful_shutdown_budget_covers_drain_and_finalization() {
+        assert!(STOP_SHUTDOWN_TIMEOUT > Duration::from_secs(31));
+        let dir = tempfile::tempdir().unwrap();
+        let run = manifest(vec![jsonl_recording()]);
+        let lock =
+            kraken_recording::FileLock::acquire(&dir.path().join("recorder"), "test recorder")
+                .unwrap();
+        let waiter =
+            await_recorder_exit(dir.path(), &run, STOP_SHUTDOWN_TIMEOUT, STOP_POLL_INTERVAL);
+        let release = async move {
+            tokio::time::sleep(Duration::from_secs(31)).await;
+            drop(lock);
+        };
+        let (result, ()) = tokio::join!(waiter, release);
+        result.expect("a drain longer than ten seconds must finish before timeout");
+    }
+
+    #[test]
+    fn recorder_identity_is_durable_before_readiness_and_never_overwrites() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = manifest(vec![]);
+        let path = dir.path().join("identity.json");
+        publish_recorder_identity(&path, &run).unwrap();
+        let identity: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(identity["session"], run.window.session);
+        assert_eq!(identity["pid"], run.pid);
+        assert_eq!(
+            identity["started_at"],
+            serde_json::to_value(run.window.started_at).unwrap()
+        );
+        assert!(publish_recorder_identity(&path, &run).is_err());
+        assert_eq!(
+            identity,
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap()).unwrap()
+        );
+    }
+
+    #[test]
+    fn recorder_is_alive_before_tape_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = manifest(vec![jsonl_recording()]);
+        let lock = std::fs::File::create(dir.path().join("recorder.lock")).unwrap();
+        lock.try_lock().unwrap();
+        assert!(recorder_alive(dir.path(), &run));
+        drop(lock);
+        assert!(!recorder_alive(dir.path(), &run));
+    }
+
+    #[tokio::test]
+    async fn cooperative_stop_survives_startup_race_and_is_scoped() {
+        let dir = tempfile::tempdir().unwrap();
+        let run = manifest(vec![]);
+        request_stop(dir.path(), &run).unwrap();
+        request_stop(dir.path(), &run).unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            cooperative_shutdown(dir.path(), &run),
+        )
+        .await
+        .unwrap();
+        let other = tempfile::tempdir().unwrap();
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(150),
+                cooperative_shutdown(other.path(), &run)
+            )
+            .await
+            .is_err()
+        );
+    }
     use kraken_session::manifest::PaperRef;
     use rust_decimal_macros::dec;
 

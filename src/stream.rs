@@ -41,6 +41,21 @@ pub(crate) async fn run<S>(
 where
     S: CaptureSink + Send + 'static,
 {
+    run_controlled(subs, req_id, ready, sink, duration, ctx, shutdown_signal()).await
+}
+
+pub(crate) async fn run_controlled<S>(
+    subs: Vec<WsSubscription>,
+    req_id: Option<NonZeroU64>,
+    ready: Option<oneshot::Sender<()>>,
+    sink: S,
+    duration: Option<Duration>,
+    ctx: &AppContext,
+    shutdown: impl Future<Output = ()>,
+) -> Result<()>
+where
+    S: CaptureSink + Send + 'static,
+{
     // Preserve channel classes so token failures can identify unaffected public data.
     let (private_channels, public_channels): (Vec<_>, Vec<_>) = subs
         .iter()
@@ -80,7 +95,7 @@ where
         bound_by_duration(stream, duration),
         |events| driver::run(sink, events),
         ctx.monitor.clone(),
-        shutdown_signal(),
+        shutdown,
         ready,
         client,
     )

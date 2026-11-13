@@ -211,6 +211,11 @@ fn normalize_env(value: Option<&str>) -> Option<&str> {
 /// this constant only names it for user guidance.
 pub(crate) const DANGER_ALLOW_ANY_URL_HOST_ENV: &str = "KRAKEN_DANGER_ALLOW_ANY_URL_HOST";
 
+/// Fresh-path identity handoff for a supervising session recorder.
+pub(crate) fn session_identity_file() -> Option<PathBuf> {
+    std::env::var_os("KRAKEN_SESSION_IDENTITY_FILE").map(PathBuf::from)
+}
+
 /// Whether the [`NO_COLOR`](https://no-color.org/) convention is active: the
 /// variable is present and non-empty. Read here so the logging layer
 /// ([`crate::logging`]) never touches the environment directly.

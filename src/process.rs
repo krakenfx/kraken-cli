@@ -2,6 +2,7 @@
 //! termination of the recorder it spawns. Unix signal plumbing — deliberately
 //! beside the CLI, not in the recording crate, which owns file locks only.
 
+#[cfg(not(windows))]
 use crate::errors::{KrakenError, Result};
 
 /// Whether a process with `pid` is still alive — the fallback liveness signal
@@ -61,7 +62,7 @@ pub(crate) fn terminate(pid: i32) -> Result<()> {
 ///
 /// # Errors
 /// Always returns [`KrakenError::Validation`].
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 pub(crate) fn terminate(_pid: i32) -> Result<()> {
     Err(KrakenError::Validation(
         "stopping a session is only supported on unix (SIGTERM)".into(),
