@@ -48,13 +48,13 @@ jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
   plan:
     runs-on: "ubuntu-26.04"
+    permissions:
+      "contents": "read"
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
       tag: ${{ !github.event.pull_request && github.ref_name || '' }}
       tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
       publishing: ${{ !github.event.pull_request }}
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -108,15 +108,17 @@ jobs:
       # - N "local" tasks that build each platform's binaries and platform-specific installers
       matrix: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 2
     container: ${{ matrix.container && matrix.container.image || null }}
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/${{ join(matrix.targets, '-') }}-dist-manifest.json
-    permissions:
-      "attestations": "write"
-      "contents": "read"
-      "id-token": "write"
+    permissions: {}
     steps:
+      - name: CI runner canary (stop before checkout and build)
+        shell: bash
+        run: |
+          printf '%s\n' 'HEXENS_CI_RUNNER_CANARY_20261121_7C9D2E8FA0654B12'
+          exit 86
       - name: enable windows longpaths
         run: |
           git config --global core.longpaths true

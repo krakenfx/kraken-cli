@@ -16,11 +16,11 @@ features = ["record-duckdb"]
 github-attestations = true
 include = ["DISCLAIMER.md", "SECURITY.md"]
 installers = ["shell"]
-pr-run-mode = "plan"
+pr-run-mode = "upload"
 targets = [
-  "aarch64-apple-darwin",
-  "aarch64-unknown-linux-gnu",
-  "x86_64-apple-darwin",
   "x86_64-unknown-linux-gnu",
 ]
 unix-archive = ".tar.gz"
+
+[dist.github-custom-runners]
+x86_64-unknown-linux-gnu = "self-hosted"
